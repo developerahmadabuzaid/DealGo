@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: auction-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auctions
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5442}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auctions"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: auction-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6389}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: src/AuctionPlatform.Api/Dockerfile
+    container_name: auction-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=auctions;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}"
+      Redis__Enabled: "true"
+      Redis__ConnectionString: "redis:6379"
+      # Supply real secrets through the environment; never commit them.
+      Jwt__Secret: ${JWT_SECRET:-development-only-signing-key-change-me-please-32+}
+      Payments__WebhookSecret: ${PAYMENT_WEBHOOK_SECRET:-development-webhook-secret}
+      Database__AutoMigrate: "true"
+      Database__SeedDevelopmentData: ${SEED_DEV_DATA:-true}
+    ports:
+      - "${API_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # A second API instance. The platform must behave identically with several running, so this is
+  # the quickest way to exercise the Redis backplane and the multi-instance scheduler guards.
+  api2:
+    profiles: ["scale"]
+    build:
+      context: .
+      dockerfile: src/AuctionPlatform.Api/Dockerfile
+    container_name: auction-api-2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=auctions;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}"
+      Redis__Enabled: "true"
+      Redis__ConnectionString: "redis:6379"
+      Jwt__Secret: ${JWT_SECRET:-development-only-signing-key-change-me-please-32+}
+      Payments__WebhookSecret: ${PAYMENT_WEBHOOK_SECRET:-development-webhook-secret}
+      # Only one instance needs to own migrations and seeding.
+      Database__AutoMigrate: "false"
+      Database__SeedDevelopmentData: "false"
+    ports:
+      - "${API2_PORT:-8091}:8080"
+
+volumes:
+  postgres-data:
+  redis-data:

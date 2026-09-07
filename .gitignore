@@ -1,0 +1,61 @@
+# ---- secrets and local configuration ----
+# Never commit signing keys, database passwords, payment keys or Firebase credentials.
+.env
+.env.*
+!.env.example
+secrets.json
+**/appsettings.Local.json
+**/appsettings.Production.json
+google-services.json
+GoogleService-Info.plist
+*.pfx
+*.p12
+
+# ---- .NET ----
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+*.userprefs
+.vs/
+.vscode/
+*.dll
+*.pdb
+TestResults/
+coverage*.xml
+*.trx
+
+# ---- logs ----
+logs/
+*.log
+
+# ---- Flutter / Dart ----
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/.pub-cache/
+mobile/.pub/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/key.properties
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/ephemeral/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/macos/Flutter/ephemeral/
+mobile/linux/flutter/ephemeral/
+mobile/windows/flutter/ephemeral/
+mobile/**/GeneratedPluginRegistrant.*
+mobile/.idea/
+
+# ---- editors / OS ----
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

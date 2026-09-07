@@ -1,0 +1,21 @@
+# Keep the build context small and free of local state.
+**/bin
+**/obj
+**/logs
+artifacts/
+
+mobile/
+docs/
+.github/
+.git/
+.vs/
+.idea/
+
+.env
+.env.*
+!.env.example
+**/appsettings.Local.json
+**/appsettings.Production.json
+
+*.md
+!README.md

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AuctionPlatform.Api/AuctionPlatform.Api.csproj" />
+    <Project Path="src/AuctionPlatform.Application/AuctionPlatform.Application.csproj" />
+    <Project Path="src/AuctionPlatform.Domain/AuctionPlatform.Domain.csproj" />
+    <Project Path="src/AuctionPlatform.Infrastructure/AuctionPlatform.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AuctionPlatform.Tests/AuctionPlatform.Tests.csproj" />
+  </Folder>
+</Solution>
