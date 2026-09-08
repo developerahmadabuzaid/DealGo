@@ -1,6 +1,7 @@
 using AuctionPlatform.Application.Auctions;
 using AuctionPlatform.Application.Bidding;
 using AuctionPlatform.Application.Common;
+using AuctionPlatform.Application.Identity;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Realtime;
 using AuctionPlatform.Application.Store;
@@ -8,9 +9,12 @@ using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Entities;
 using AuctionPlatform.Domain.Enums;
 using AuctionPlatform.Infrastructure.Persistence;
+using AuctionPlatform.Infrastructure.Identity;
 using AuctionPlatform.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
@@ -67,6 +71,16 @@ public sealed class DatabaseFixture : IAsyncLifetime
             o.BidRateLimitPerMinute = int.MaxValue;
         });
         services.Configure<JwtOptions>(_ => { });
+        services.Configure<OtpOptions>(_ => { });
+
+        // The tests run as Development, so the OTP service returns the code and the flow can be
+        // exercised without an SMS or email provider.
+        services.AddSingleton<IHostEnvironment>(new HostingEnvironment
+        {
+            EnvironmentName = Environments.Development,
+            ApplicationName = "AuctionPlatform.Tests"
+        });
+        services.AddSingleton<IOtpSender, NoopOtpSender>();
 
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
@@ -77,6 +91,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddSingleton<IAuctionRealtimeNotifier, NoopRealtimeNotifier>();
 
         services.AddScoped<ICurrentUserService>(_ => new TestCurrentUser(actingUserId));
+        services.AddScoped<IOtpService, OtpService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<INumberGenerator, NumberGenerator>();
         services.AddScoped<INotificationService, NotificationService>();
@@ -113,6 +128,14 @@ public sealed class DatabaseFixture : IAsyncLifetime
     {
         public Task<bool> TryAcquireAsync(string key, int limit, TimeSpan window, CancellationToken ct = default) =>
             Task.FromResult(true);
+    }
+
+    /// <summary>Delivery is out of scope here; the code comes back on the challenge.</summary>
+    private sealed class NoopOtpSender : IOtpSender
+    {
+        public Task SendAsync(string destination, OtpChannel channel, OtpPurpose purpose,
+            string code, TimeSpan validFor, string language, CancellationToken ct = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class NoopPushSender : IPushNotificationSender

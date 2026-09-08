@@ -3,7 +3,8 @@
 Base path: `/api/v1`. Interactive documentation: `/swagger`.
 
 Authentication is `Authorization: Bearer <accessToken>`. Access tokens last 15 minutes; refresh
-tokens rotate on every use and last 30 days.
+tokens rotate on every use and, by default, **do not expire on their own** — the session lasts
+until the user signs out (`Jwt:RefreshTokenDays = 0`).
 
 ## Error envelope
 
@@ -48,7 +49,11 @@ ORDER_AMOUNT_OUT_OF_RANGE  CATEGORY_NOT_FOUND
 PRIZE_CLAIM_NOT_FOUND      PRIZE_CLAIM_NOT_PAYABLE   PRIZE_CLAIM_NOT_CLAIMABLE
 
 UNAUTHORIZED  FORBIDDEN  INVALID_CREDENTIALS  INVALID_REFRESH_TOKEN
-EMAIL_ALREADY_REGISTERED   ACCOUNT_DISABLED   INVALID_OTP
+EMAIL_ALREADY_REGISTERED   ACCOUNT_DISABLED
+
+INVALID_OTP                OTP_EXPIRED          OTP_REQUIRED
+OTP_ALREADY_USED           OTP_TOO_MANY_ATTEMPTS
+OTP_REQUEST_TOO_SOON       OTP_DESTINATION_INVALID
 VALIDATION_FAILED  NOT_FOUND  CONFLICT  INTERNAL_ERROR
 ```
 
@@ -71,13 +76,55 @@ List endpoints accept `page`, `pageSize` (max 200), `search`, `sortBy`, `sortDes
 | POST | `/auth/login` | Same error for unknown email and wrong password |
 | POST | `/auth/refresh` | Rotates: the presented token is consumed |
 | POST | `/auth/logout` | `allDevices` revokes every session |
-| POST | `/auth/verify-otp` | |
+| POST | `/auth/otp/request` | Sign-in code by email or phone; never reveals whether an account exists |
+| POST | `/auth/otp/verify` | Exchanges a sign-in code for a session |
+| POST | `/auth/verify-otp` | Legacy contact verification |
 | POST | `/auth/forgot-password` | Always 200, so it cannot enumerate accounts |
 | POST | `/auth/reset-password` | Revokes all sessions |
 | POST | `/auth/change-password` | Revokes all sessions |
 
 Presenting an already-consumed refresh token is treated as theft: the whole token family for that
 user is revoked.
+
+### Signing in with a one-time code
+
+```http
+POST /api/v1/auth/otp/request
+{ "destination": "user@example.com", "language": "ar" }
+```
+
+`destination` is an email address or a phone number; the channel is inferred from its shape and
+the value is normalised, so `+966 50 123 4567` and `+966501234567` are the same identity.
+
+```json
+{
+  "destination": "us***@example.com",
+  "channel": "Email",
+  "expiresAt": "2026-09-08T12:05:00Z",
+  "codeLength": 6,
+  "resendAvailableInSeconds": 60,
+  "developmentCode": "482915"
+}
+```
+
+The destination comes back masked. `developmentCode` is present **outside Production only**, so the
+flow can be exercised without an SMS or email provider; it is always null in Production.
+
+The response is the same whether or not the destination belongs to an account — an unknown
+destination gets a plausible challenge with no code behind it — so the endpoint cannot be used to
+discover who is registered.
+
+```http
+POST /api/v1/auth/otp/verify
+{ "destination": "user@example.com", "code": "482915" }
+```
+
+Returns the same `AuthResultDto` as a password login. Signing in this way also confirms the email
+or phone, since the user just proved they control it.
+
+Codes are single-use, expire after 5 minutes, are scoped to one purpose, die after 5 wrong
+guesses, and are superseded whenever a new one is requested. Requesting again within the cooldown
+returns `OTP_REQUEST_TOO_SOON`.
 
 ## Profile
 
@@ -160,8 +207,30 @@ Retrying with the same key returns the original result with `wasDuplicate: true`
 | GET | `/wallet/shopping` | |
 | GET | `/wallet/shopping/transactions` | |
 | POST | `/wallet/deposit` | Main wallet |
-| POST | `/wallet/withdraw` | Main wallet only |
+| POST | `/wallet/withdraw/request-otp` | Sends the code that confirms one specific withdrawal |
+| POST | `/wallet/withdraw` | Main wallet only; requires that code |
 | POST | `/wallet/shopping/{withdraw,transfer,convert}` | **Always 403** |
+
+### Withdrawing
+
+A withdrawal moves real money out of the platform, so a valid access token alone is not enough.
+
+```http
+POST /api/v1/wallet/withdraw/request-otp
+{ "amount": 100.00, "currency": "USD", "destination": "IBAN123" }
+```
+
+The code is **bound to that exact amount, currency and destination**. A code obtained for a small
+transfer cannot approve a larger one, or one to a different account — both return `INVALID_OTP`.
+
+```http
+POST /api/v1/wallet/withdraw
+{ "amount": 100.00, "currency": "USD", "idempotencyKey": "...",
+  "destination": "IBAN123", "otpCode": "482915" }
+```
+
+Omitting the code returns `OTP_REQUIRED`; reusing one returns `OTP_ALREADY_USED`. Set
+`Auction:RequireOtpForWithdrawal` to `false` to disable the requirement.
 
 ## Store
 

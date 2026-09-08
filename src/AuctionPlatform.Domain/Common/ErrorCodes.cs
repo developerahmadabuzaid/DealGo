@@ -62,6 +62,12 @@ public static class ErrorCodes
     public const string EmailAlreadyRegistered = "EMAIL_ALREADY_REGISTERED";
     public const string AccountDisabled = "ACCOUNT_DISABLED";
     public const string InvalidOtp = "INVALID_OTP";
+    public const string OtpExpired = "OTP_EXPIRED";
+    public const string OtpRequired = "OTP_REQUIRED";
+    public const string OtpAlreadyUsed = "OTP_ALREADY_USED";
+    public const string OtpTooManyAttempts = "OTP_TOO_MANY_ATTEMPTS";
+    public const string OtpRequestTooSoon = "OTP_REQUEST_TOO_SOON";
+    public const string OtpDestinationInvalid = "OTP_DESTINATION_INVALID";
 
     // Generic
     public const string ValidationFailed = "VALIDATION_FAILED";

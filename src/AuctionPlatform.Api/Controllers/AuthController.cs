@@ -42,6 +42,33 @@ public sealed class AuthController : ApiControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Requests a sign-in code by email or phone.
+    ///
+    /// Always succeeds, whether or not the destination belongs to an account, so the endpoint
+    /// cannot be used to discover who is registered.
+    /// </summary>
+    [HttpPost("otp/request")]
+    [AllowAnonymous]
+    public async Task<ActionResult<OtpChallengeDto>> RequestLoginOtp(
+        RequestLoginOtpRequest request, CancellationToken ct)
+    {
+        var challenge = await _auth.RequestLoginOtpAsync(request, ct);
+
+        // The code is echoed outside Production only, so the flow is testable without a real
+        // SMS or email provider.
+        return Ok(_environment.IsProduction()
+            ? challenge with { DevelopmentCode = null }
+            : challenge);
+    }
+
+    /// <summary>Exchanges a sign-in code for a session.</summary>
+    [HttpPost("otp/verify")]
+    [AllowAnonymous]
+    public async Task<ActionResult<AuthResultDto>> VerifyLoginOtp(
+        VerifyLoginOtpRequest request, CancellationToken ct) =>
+        Ok(await _auth.VerifyLoginOtpAsync(request, ct));
+
     [HttpPost("verify-otp")]
     [AllowAnonymous]
     public async Task<IActionResult> VerifyOtp(VerifyOtpRequest request, CancellationToken ct)

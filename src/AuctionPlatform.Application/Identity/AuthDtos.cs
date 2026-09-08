@@ -15,6 +15,13 @@ public sealed record RefreshRequest(string RefreshToken);
 
 public sealed record LogoutRequest(string? RefreshToken, bool AllDevices);
 
+/// <summary>Ask for a sign-in code. The destination is an email address or a phone number.</summary>
+public sealed record RequestLoginOtpRequest(string Destination, string? Language);
+
+/// <summary>Exchange a sign-in code for a session.</summary>
+public sealed record VerifyLoginOtpRequest(string Destination, string Code);
+
+/// <summary>Legacy contact-verification code. Kept so existing clients keep working.</summary>
 public sealed record VerifyOtpRequest(string Email, string Code);
 
 public sealed record ForgotPasswordRequest(string Email);
@@ -77,6 +84,15 @@ public interface IAuthService
     Task<AuthResultDto> RefreshAsync(RefreshRequest request, CancellationToken ct = default);
 
     Task LogoutAsync(Guid userId, LogoutRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Issues a sign-in code. Always succeeds from the caller's point of view, whether or not the
+    /// destination belongs to an account, so the endpoint cannot be used to enumerate users.
+    /// </summary>
+    Task<OtpChallengeDto> RequestLoginOtpAsync(RequestLoginOtpRequest request, CancellationToken ct = default);
+
+    /// <summary>Consumes a sign-in code and returns a session.</summary>
+    Task<AuthResultDto> VerifyLoginOtpAsync(VerifyLoginOtpRequest request, CancellationToken ct = default);
 
     Task<UserProfileDto> GetProfileAsync(Guid userId, CancellationToken ct = default);
     Task<UserProfileDto> UpdateProfileAsync(Guid userId, UpdateProfileRequest request, CancellationToken ct = default);

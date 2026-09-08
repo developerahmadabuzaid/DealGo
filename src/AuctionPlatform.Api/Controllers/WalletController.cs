@@ -1,4 +1,5 @@
 using AuctionPlatform.Application.Common;
+using AuctionPlatform.Application.Identity;
 using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Enums;
@@ -12,8 +13,13 @@ namespace AuctionPlatform.Api.Controllers;
 public sealed class WalletController : ApiControllerBase
 {
     private readonly IWalletService _wallets;
+    private readonly IWebHostEnvironment _environment;
 
-    public WalletController(IWalletService wallets) => _wallets = wallets;
+    public WalletController(IWalletService wallets, IWebHostEnvironment environment)
+    {
+        _wallets = wallets;
+        _environment = environment;
+    }
 
     /// <summary>
     /// Both balances, reported separately. There is deliberately no combined total: presenting one
@@ -56,7 +62,25 @@ public sealed class WalletController : ApiControllerBase
         DepositRequest request, CancellationToken ct) =>
         Ok(await _wallets.DepositAsync(CurrentUserId, request, ct));
 
-    /// <summary>Withdrawals draw on the Main wallet only.</summary>
+    /// <summary>
+    /// Sends the code that confirms a withdrawal. The code is bound to this exact amount,
+    /// currency and destination.
+    /// </summary>
+    [HttpPost("withdraw/request-otp")]
+    public async Task<ActionResult<OtpChallengeDto>> RequestWithdrawalOtp(
+        RequestWithdrawalOtpRequest request, CancellationToken ct)
+    {
+        var challenge = await _wallets.RequestWithdrawalOtpAsync(CurrentUserId, request, ct);
+
+        return Ok(_environment.IsProduction()
+            ? challenge with { DevelopmentCode = null }
+            : challenge);
+    }
+
+    /// <summary>
+    /// Withdraws from the Main wallet. Requires the confirmation code issued by
+    /// <c>withdraw/request-otp</c> whenever withdrawal OTP is enabled.
+    /// </summary>
     [HttpPost("withdraw")]
     public async Task<ActionResult<WalletOperationResult>> Withdraw(
         WithdrawRequest request, CancellationToken ct) =>

@@ -17,6 +17,7 @@ public class ApplicationDbContext
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<UserDeviceToken> UserDeviceTokens => Set<UserDeviceToken>();
+    public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
 
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Domain.Entities.Auction> Auctions => Set<Domain.Entities.Auction>();

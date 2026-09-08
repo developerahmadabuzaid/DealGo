@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import '../features/prizes/data/prize_repository.dart';
 import '../features/store/data/store_repository.dart';
 import '../features/wallets/data/wallet_repository.dart';
 import 'config/app_config.dart';
+import 'errors/api_exception.dart';
 import 'network/api_client.dart';
 import 'realtime/auction_hub_client.dart';
 import 'storage/token_store.dart';
@@ -54,7 +57,13 @@ final notificationRepositoryProvider =
 // ---------------------------------------------------------------- session
 
 class AuthState {
-  const AuthState({this.user, this.isLoading = false, this.checked = false});
+  const AuthState({
+    this.user,
+    this.isLoading = false,
+    this.checked = false,
+    this.isOffline = false,
+    this.hasSession = false,
+  });
 
   final UserProfile? user;
   final bool isLoading;
@@ -62,13 +71,28 @@ class AuthState {
   /// True once the app has finished looking for a stored session.
   final bool checked;
 
-  bool get isSignedIn => user != null;
+  /// True when tokens exist but the server could not be reached on launch.
+  final bool isOffline;
 
-  AuthState copyWith({UserProfile? user, bool? isLoading, bool? checked, bool clearUser = false}) =>
+  /// True when tokens are stored, even if the profile could not be loaded.
+  final bool hasSession;
+
+  bool get isSignedIn => user != null || hasSession;
+
+  AuthState copyWith({
+    UserProfile? user,
+    bool? isLoading,
+    bool? checked,
+    bool? isOffline,
+    bool? hasSession,
+    bool clearUser = false,
+  }) =>
       AuthState(
         user: clearUser ? null : (user ?? this.user),
         isLoading: isLoading ?? this.isLoading,
         checked: checked ?? this.checked,
+        isOffline: isOffline ?? this.isOffline,
+        hasSession: hasSession ?? this.hasSession,
       );
 }
 
@@ -81,17 +105,69 @@ class AuthController extends StateNotifier<AuthState> {
 
   AuthRepository get _repo => _ref.read(authRepositoryProvider);
 
+  /// Restores the stored session on launch.
+  ///
+  /// The session lasts until the user signs out, so a failure to reach the server must not end it.
+  /// Only an outright missing session, or a refresh the server rejected, signs the user out — the
+  /// API client raises that through [forceSignOut].
   Future<void> _restore() async {
-    final user = await _repo.currentUser();
-    state = AuthState(user: user, checked: true);
-    if (user != null) await _ref.read(hubClientProvider).connect();
+    if (!await _repo.hasStoredSession()) {
+      state = const AuthState(checked: true);
+      return;
+    }
+
+    try {
+      final user = await _repo.currentUser();
+      state = AuthState(user: user, checked: true, hasSession: user != null);
+      if (user != null) await _ref.read(hubClientProvider).connect();
+    } on ApiException catch (e) {
+      if (e.code == ErrorCodes.unauthorized || e.code == ErrorCodes.accountDisabled) {
+        // The server refused the session; the tokens are already cleared.
+        state = const AuthState(checked: true);
+        return;
+      }
+
+      // Offline or the server is briefly unavailable. The tokens are still valid, so keep the
+      // session: signing the user out here would end a session they never chose to end.
+      state = const AuthState(checked: true, isOffline: true, hasSession: true);
+      unawaited(_ref.read(hubClientProvider).connect());
+      unawaited(refreshProfile());
+    }
+  }
+
+  /// Re-attempts the profile load after an offline start.
+  Future<void> refreshProfile() async {
+    try {
+      final user = await _repo.currentUser();
+      if (user != null) {
+        state = state.copyWith(user: user, isOffline: false, hasSession: true);
+      }
+    } catch (_) {
+      // Still unreachable; the session stays as it is.
+    }
+  }
+
+  /// Requests a sign-in code by email or phone.
+  Future<OtpChallenge> requestLoginOtp(String destination, String language) =>
+      _repo.requestLoginOtp(destination, language);
+
+  /// Exchanges a sign-in code for a session.
+  Future<void> signInWithOtp(String destination, String code) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final user = await _repo.verifyLoginOtp(destination, code);
+      state = AuthState(user: user, checked: true, hasSession: true);
+      await _ref.read(hubClientProvider).connect();
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   Future<void> signIn(String email, String password) async {
     state = state.copyWith(isLoading: true);
     try {
       final user = await _repo.login(email, password);
-      state = AuthState(user: user, checked: true);
+      state = AuthState(user: user, checked: true, hasSession: true);
       await _ref.read(hubClientProvider).connect();
     } finally {
       state = state.copyWith(isLoading: false);
@@ -114,7 +190,7 @@ class AuthController extends StateNotifier<AuthState> {
         phoneNumber: phone,
         language: language,
       );
-      state = AuthState(user: user, checked: true);
+      state = AuthState(user: user, checked: true, hasSession: true);
       await _ref.read(hubClientProvider).connect();
     } finally {
       state = state.copyWith(isLoading: false);

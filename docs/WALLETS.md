@@ -90,6 +90,26 @@ Keys used internally:
 | Credit expiry | `credit-expiry:{transactionId}` |
 | Deposit / withdrawal | client-supplied |
 
+## Withdrawal requires a one-time code
+
+A withdrawal is the only operation that moves money out of the platform, so it is confirmed twice:
+
+```text
+POST /wallet/withdraw/request-otp   { amount, currency, destination }
+        ↓  balance checked first, so the user is not asked to confirm something that cannot succeed
+   code sent to the account's phone (or email), bound to THIS amount + currency + destination
+        ↓
+POST /wallet/withdraw               { amount, currency, destination, idempotencyKey, otpCode }
+        ↓  code verified and consumed, then the wallet row is locked and debited
+```
+
+Because the code carries a fingerprint of the transfer, a code obtained for a small withdrawal
+cannot approve a larger one or one to a different account. Both return `INVALID_OTP`; a missing
+code returns `OTP_REQUIRED`; a reused one returns `OTP_ALREADY_USED`.
+
+Turn it off with `Auction:RequireOtpForWithdrawal = false`. The Shopping wallet stays
+non-withdrawable either way — the code is an extra gate on top of that rule, not a bypass.
+
 ## Restrictions in force
 
 `WalletRules` refuses at the domain level, and the API surfaces explicit endpoints so the refusal is

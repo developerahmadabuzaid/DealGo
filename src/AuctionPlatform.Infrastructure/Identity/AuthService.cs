@@ -7,6 +7,7 @@ using AuctionPlatform.Application.Identity;
 using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Entities;
+using AuctionPlatform.Domain.Enums;
 using AuctionPlatform.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +30,7 @@ public sealed class AuthService : IAuthService
     private readonly RoleManager<ApplicationRole> _roles;
     private readonly ApplicationDbContext _db;
     private readonly IWalletService _wallets;
+    private readonly IOtpService _otp;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly JwtOptions _jwt;
@@ -40,6 +42,7 @@ public sealed class AuthService : IAuthService
         RoleManager<ApplicationRole> roles,
         ApplicationDbContext db,
         IWalletService wallets,
+        IOtpService otp,
         ICurrentUserService currentUser,
         IDateTimeProvider clock,
         IOptions<JwtOptions> jwt,
@@ -50,6 +53,7 @@ public sealed class AuthService : IAuthService
         _roles = roles;
         _db = db;
         _wallets = wallets;
+        _otp = otp;
         _currentUser = currentUser;
         _clock = clock;
         _jwt = jwt.Value;
@@ -194,7 +198,13 @@ public sealed class AuthService : IAuthService
 
         var now = _clock.UtcNow;
         var accessExpires = now.AddMinutes(_jwt.AccessTokenMinutes);
-        var refreshExpires = now.AddDays(_jwt.RefreshTokenDays);
+
+        // RefreshTokenDays = 0 means the session does not expire on its own: it lasts until the
+        // user signs out. Rotation still applies on every refresh, so a stolen token remains
+        // single-use and its reuse is still detected.
+        DateTime? refreshExpires = _jwt.RefreshTokenDays > 0
+            ? now.AddDays(_jwt.RefreshTokenDays)
+            : null;
 
         var accessToken = BuildAccessToken(user, roles, permissions, now, accessExpires);
         var refreshTokenValue = GenerateRefreshToken();
@@ -220,7 +230,10 @@ public sealed class AuthService : IAuthService
         await _db.SaveChangesAsync(ct);
 
         return new AuthResultDto(
-            accessToken, refreshTokenValue, accessExpires, refreshExpires,
+            accessToken, refreshTokenValue, accessExpires,
+            // A never-expiring session still reports a far-future date, so clients that display or
+            // compare the value do not have to special-case null.
+            refreshExpires ?? DateTime.MaxValue.ToUniversalTime(),
             MapProfile(user, roles, permissions));
     }
 
@@ -286,6 +299,127 @@ public sealed class AuthService : IAuthService
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         return Convert.ToHexString(bytes);
+    }
+
+    // ---------------------------------------------------------------- OTP sign-in
+
+    /// <summary>
+    /// Issues a sign-in code.
+    ///
+    /// The response is identical whether or not the destination belongs to an account, so the
+    /// endpoint cannot be used to discover who is registered. A code is only actually issued for a
+    /// real, active account; for anything else the caller still gets a plausible challenge back.
+    /// </summary>
+    public async Task<OtpChallengeDto> RequestLoginOtpAsync(
+        RequestLoginOtpRequest request, CancellationToken ct = default)
+    {
+        var user = await FindByDestinationAsync(request.Destination, ct);
+        var language = request.Language ?? user?.Language ?? "ar";
+
+        if (user is null || !user.IsActive)
+        {
+            _logger.LogInformation(
+                "Sign-in code requested for a destination with no active account; returning a decoy challenge.");
+
+            return DecoyChallenge(request.Destination);
+        }
+
+        return await _otp.RequestAsync(new OtpRequest
+        {
+            Destination = request.Destination,
+            Purpose = OtpPurpose.Login,
+            UserId = user.Id,
+            Language = language
+        }, ct);
+    }
+
+    public async Task<AuthResultDto> VerifyLoginOtpAsync(
+        VerifyLoginOtpRequest request, CancellationToken ct = default)
+    {
+        var result = await _otp.VerifyAsync(new OtpVerification
+        {
+            Destination = request.Destination,
+            Purpose = OtpPurpose.Login,
+            Code = request.Code
+        }, ct);
+
+        // The code was issued against a specific account, so that is the account being signed in.
+        var user = result.UserId is { } userId
+            ? await _users.FindByIdAsync(userId.ToString())
+            : await FindByDestinationAsync(request.Destination, ct);
+
+        if (user is null)
+        {
+            throw new DomainException(ErrorCodes.InvalidOtp, "Invalid verification code.");
+        }
+
+        if (!user.IsActive)
+        {
+            throw new DomainException(ErrorCodes.AccountDisabled, "This account has been disabled.");
+        }
+
+        // Signing in with a code proves control of the destination, so mark it confirmed.
+        var (normalised, channel) = OtpService.Normalise(request.Destination);
+        if (channel == OtpChannel.Email && !user.EmailConfirmed &&
+            string.Equals(user.Email, normalised, StringComparison.OrdinalIgnoreCase))
+        {
+            user.EmailConfirmed = true;
+        }
+        else if (channel == OtpChannel.Sms && !user.PhoneNumberConfirmed)
+        {
+            user.PhoneNumberConfirmed = true;
+        }
+
+        user.LastLoginAt = _clock.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        await _wallets.EnsureWalletsExistAsync(user.Id, _auctionOptions.DefaultCurrency, ct);
+
+        _logger.LogInformation("User {UserId} signed in with a one-time code.", user.Id);
+
+        return await IssueTokensAsync(user, ct);
+    }
+
+    /// <summary>Resolves an account from either an email address or a phone number.</summary>
+    private async Task<ApplicationUser?> FindByDestinationAsync(string destination, CancellationToken ct)
+    {
+        var (value, channel) = OtpService.Normalise(destination);
+
+        if (channel == OtpChannel.Email)
+        {
+            return await _users.FindByEmailAsync(value);
+        }
+
+        // Phone numbers are stored as entered, so compare on digits only.
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+
+        var candidates = await _db.Users
+            .Where(u => u.PhoneNumber != null)
+            .Select(u => new { u.Id, u.PhoneNumber })
+            .ToListAsync(ct);
+
+        var match = candidates.FirstOrDefault(u =>
+            new string(u.PhoneNumber!.Where(char.IsDigit).ToArray()).EndsWith(digits, StringComparison.Ordinal) ||
+            digits.EndsWith(new string(u.PhoneNumber!.Where(char.IsDigit).ToArray()), StringComparison.Ordinal));
+
+        return match is null ? null : await _users.FindByIdAsync(match.Id.ToString());
+    }
+
+    /// <summary>
+    /// A challenge that looks exactly like a real one but has no code behind it, so an attacker
+    /// cannot tell registered destinations from unregistered ones.
+    /// </summary>
+    private static OtpChallengeDto DecoyChallenge(string destination)
+    {
+        var (value, channel) = OtpService.Normalise(destination);
+
+        return new OtpChallengeDto(
+            OtpService.Mask(value, channel),
+            channel,
+            DateTime.UtcNow.AddMinutes(5),
+            6,
+            60,
+            DevelopmentCode: null);
     }
 
     public async Task<UserProfileDto> GetProfileAsync(Guid userId, CancellationToken ct = default)

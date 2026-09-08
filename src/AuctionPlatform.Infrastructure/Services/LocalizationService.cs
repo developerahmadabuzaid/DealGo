@@ -46,7 +46,12 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.AuctionCancelledTitle] = "تم إلغاء المزاد",
             [NotificationKeys.AuctionCancelledBody] = "تم إلغاء المزاد وسيتم رد المبالغ المستحقة.",
             [NotificationKeys.LowStockTitle] = "تنبيه: مخزون منخفض",
-            [NotificationKeys.LowStockBody] = "المنتج {0} تبقى منه {1} فقط."
+            [NotificationKeys.LowStockBody] = "المنتج {0} تبقى منه {1} فقط.",
+
+            [OtpMessageKeys.Login] = "رمز الدخول الخاص بك هو {0}. صالح لمدة {1} دقائق. لا تشاركه مع أحد.",
+            [OtpMessageKeys.Withdrawal] = "رمز تأكيد السحب هو {0}. صالح لمدة {1} دقائق. إذا لم تطلب سحباً، تجاهل هذه الرسالة.",
+            [OtpMessageKeys.VerifyContact] = "رمز التحقق هو {0}. صالح لمدة {1} دقائق.",
+            [OtpMessageKeys.PrizePayment] = "رمز تأكيد دفع الجائزة هو {0}. صالح لمدة {1} دقائق."
         },
         ["en"] = new Dictionary<string, string>
         {
@@ -81,7 +86,12 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.AuctionCancelledTitle] = "Auction cancelled",
             [NotificationKeys.AuctionCancelledBody] = "The auction was cancelled and any amounts due will be returned.",
             [NotificationKeys.LowStockTitle] = "Low stock alert",
-            [NotificationKeys.LowStockBody] = "{0} has only {1} remaining."
+            [NotificationKeys.LowStockBody] = "{0} has only {1} remaining.",
+
+            [OtpMessageKeys.Login] = "Your sign-in code is {0}. It is valid for {1} minutes. Do not share it with anyone.",
+            [OtpMessageKeys.Withdrawal] = "Your withdrawal confirmation code is {0}. It is valid for {1} minutes. If you did not request a withdrawal, ignore this message.",
+            [OtpMessageKeys.VerifyContact] = "Your verification code is {0}. It is valid for {1} minutes.",
+            [OtpMessageKeys.PrizePayment] = "Your prize payment confirmation code is {0}. It is valid for {1} minutes."
         }
     };
 

@@ -12,7 +12,7 @@ Built to the specification in [`CLAUDE_CODE_MASTER_PROMPT.md`](CLAUDE_CODE_MASTE
 | Database | PostgreSQL 16 (authoritative for everything) |
 | Real-time | ASP.NET Core SignalR + Redis backplane |
 | Cache / locks / rate limiting | Redis 7 |
-| Auth | JWT + rotating refresh tokens |
+| Auth | JWT + rotating refresh tokens, one-time codes for sign-in and withdrawal |
 | Mobile | Flutter 3.44 (Arabic default, RTL, English supported) |
 | Admin | Dependency-free SPA served from the API |
 | ORM | Entity Framework Core 10 |
@@ -128,8 +128,8 @@ The layers depend inward only: `Api → Infrastructure → Application → Domai
 ## Tests
 
 ```bash
-dotnet test                    # 68 tests: unit, integration, concurrency
-cd mobile && flutter test      # 17 tests: models, formatting, localization
+dotnet test                    # 85 tests: unit, integration, concurrency, OTP
+cd mobile && flutter test      # 28 tests: models, formatting, localization, OTP
 ```
 
 The integration tests start a throwaway PostgreSQL container (Testcontainers) because the
@@ -139,6 +139,11 @@ The specification's critical scenarios are all covered:
 
 | Scenario | Test |
 |---|---|
+| A one-time code verifies once, then is dead | `OtpServiceTests` |
+| A code dies after 5 wrong guesses | `OtpServiceTests` |
+| A sign-in code cannot authorise a withdrawal | `OtpServiceTests` |
+| A withdrawal code cannot approve a different amount or destination | `WithdrawalOtpTests` |
+| A withdrawal without a code is refused | `WithdrawalOtpTests` |
 | 100 simultaneous bids at 2480 → exactly one reaches 2500 | `BidConcurrencyTests` |
 | Concurrent bids keep a gapless, unique sequence | `BidConcurrencyTests` |
 | Retried bid with one idempotency key creates one bid | `BidConcurrencyTests` |

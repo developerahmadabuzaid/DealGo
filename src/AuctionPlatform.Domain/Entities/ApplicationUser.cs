@@ -56,7 +56,13 @@ public class RefreshToken
     public string TokenHash { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime ExpiresAt { get; set; }
+
+    /// <summary>
+    /// Null means the session does not expire on its own: it lasts until the user signs out, or
+    /// until it is revoked by a password change, an account being disabled, or theft detection.
+    /// </summary>
+    public DateTime? ExpiresAt { get; set; }
+
     public DateTime? RevokedAt { get; set; }
     public DateTime? UsedAt { get; set; }
 
@@ -66,5 +72,8 @@ public class RefreshToken
     public string? CreatedByIp { get; set; }
     public string? UserAgent { get; set; }
 
-    public bool IsActive => RevokedAt is null && UsedAt is null && DateTime.UtcNow < ExpiresAt;
+    public bool IsActive =>
+        RevokedAt is null &&
+        UsedAt is null &&
+        (ExpiresAt is null || DateTime.UtcNow < ExpiresAt);
 }

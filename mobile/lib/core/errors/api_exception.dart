@@ -62,6 +62,15 @@ class ErrorCodes {
   static const orderNotCancellable = 'ORDER_NOT_CANCELLABLE';
 
   static const invalidCredentials = 'INVALID_CREDENTIALS';
+
+  // One-time codes, for the sign-in and withdrawal flows.
+  static const invalidOtp = 'INVALID_OTP';
+  static const otpExpired = 'OTP_EXPIRED';
+  static const otpRequired = 'OTP_REQUIRED';
+  static const otpAlreadyUsed = 'OTP_ALREADY_USED';
+  static const otpTooManyAttempts = 'OTP_TOO_MANY_ATTEMPTS';
+  static const otpRequestTooSoon = 'OTP_REQUEST_TOO_SOON';
+  static const otpDestinationInvalid = 'OTP_DESTINATION_INVALID';
   static const emailAlreadyRegistered = 'EMAIL_ALREADY_REGISTERED';
   static const accountDisabled = 'ACCOUNT_DISABLED';
   static const unauthorized = 'UNAUTHORIZED';

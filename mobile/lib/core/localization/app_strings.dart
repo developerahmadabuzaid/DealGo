@@ -41,6 +41,37 @@ class AppStrings {
   String get noAccount => _t('ليس لديك حساب؟', 'No account yet?');
   String get haveAccount => _t('لديك حساب بالفعل؟', 'Already have an account?');
 
+  // ---- one-time codes
+  String get signInWithCode => _t('الدخول برمز التحقق', 'Sign in with a code');
+  String get signInWithPassword => _t('الدخول بكلمة المرور', 'Sign in with a password');
+  String get emailOrPhone => _t('البريد الإلكتروني أو رقم الهاتف', 'Email or phone number');
+  String get sendCode => _t('إرسال الرمز', 'Send code');
+  String get codeSentTo => _t('تم إرسال الرمز إلى', 'We sent a code to');
+  String get enterCode => _t('أدخل رمز التحقق', 'Enter the code');
+  String get resendCode => _t('إعادة إرسال الرمز', 'Resend code');
+  String resendIn(int seconds) =>
+      _t('إعادة الإرسال بعد $seconds ثانية', 'Resend in ${seconds}s');
+  String codeExpiresIn(int seconds) =>
+      _t('ينتهي الرمز خلال $seconds ثانية', 'Code expires in ${seconds}s');
+  String get codeExpired => _t('انتهت صلاحية الرمز', 'The code has expired');
+  String get changeDestination => _t('تغيير', 'Change');
+
+  String get confirmWithdrawal => _t('تأكيد السحب', 'Confirm withdrawal');
+  String get withdrawalNeedsCode => _t(
+        'لحمايتك، نرسل رمز تأكيد قبل تنفيذ السحب.',
+        'For your protection, we send a confirmation code before a withdrawal goes through.',
+      );
+  String withdrawalSummary(String amount, String destination) => _t(
+        'سحب $amount إلى $destination',
+        'Withdraw $amount to $destination',
+      );
+  String get withdrawalDestination => _t('حساب الاستلام', 'Destination account');
+  String get withdrawalSent => _t('تم تنفيذ طلب السحب', 'Withdrawal submitted');
+  String get offlineSessionKept => _t(
+        'لا يوجد اتصال. جلستك محفوظة.',
+        'No connection. Your session is saved.',
+      );
+
   // ---- navigation
   String get home => _t('الرئيسية', 'Home');
   String get auctions => _t('المزادات', 'Auctions');

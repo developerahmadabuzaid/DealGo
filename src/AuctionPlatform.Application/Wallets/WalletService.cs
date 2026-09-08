@@ -1,4 +1,5 @@
 using AuctionPlatform.Application.Common;
+using AuctionPlatform.Application.Identity;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Entities;
 using AuctionPlatform.Domain.Enums;
@@ -12,17 +13,20 @@ namespace AuctionPlatform.Application.Wallets;
 public sealed class WalletService : IWalletService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IOtpService _otp;
     private readonly IDateTimeProvider _clock;
     private readonly AuctionOptions _options;
     private readonly ILogger<WalletService> _logger;
 
     public WalletService(
         IApplicationDbContext db,
+        IOtpService otp,
         IDateTimeProvider clock,
         IOptions<AuctionOptions> options,
         ILogger<WalletService> logger)
     {
         _db = db;
+        _otp = otp;
         _clock = clock;
         _options = options.Value;
         _logger = logger;
@@ -262,12 +266,76 @@ public sealed class WalletService : IWalletService
         return result;
     }
 
+    /// <summary>
+    /// Sends the code that confirms one specific withdrawal.
+    ///
+    /// The code is bound to a fingerprint of the amount, currency and destination, so a code
+    /// obtained for a small transfer to one account cannot approve a large transfer to another.
+    /// </summary>
+    public async Task<OtpChallengeDto> RequestWithdrawalOtpAsync(
+        Guid userId, RequestWithdrawalOtpRequest request, CancellationToken ct = default)
+    {
+        var currency = request.Currency ?? _options.DefaultCurrency;
+        WalletRules.EnsurePositiveAmount(request.Amount);
+
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new DomainException(ErrorCodes.NotFound, "User not found.");
+
+        // Prefer the confirmed phone; fall back to email.
+        var destination = !string.IsNullOrWhiteSpace(user.PhoneNumber)
+            ? user.PhoneNumber!
+            : user.Email
+              ?? throw new DomainException(
+                  ErrorCodes.OtpDestinationInvalid,
+                  "Add a phone number or email address before withdrawing.");
+
+        // Check the balance before sending a code, so the user is not asked to confirm a
+        // withdrawal that cannot succeed.
+        var wallets = await GetWalletsAsync(userId, ct);
+        WalletRules.EnsureSufficientBalance(wallets.Main.Balance, Money.Round(request.Amount), WalletType.Main);
+
+        return await _otp.RequestAsync(new OtpRequest
+        {
+            Destination = destination,
+            Purpose = OtpPurpose.Withdrawal,
+            UserId = userId,
+            OperationBinding = WithdrawalBinding(request.Amount, currency, request.Destination),
+            Language = user.Language
+        }, ct);
+    }
+
     public async Task<WalletOperationResult> WithdrawAsync(Guid userId, WithdrawRequest request, CancellationToken ct = default)
     {
         var currency = request.Currency ?? _options.DefaultCurrency;
 
         // Withdrawals are Main-wallet only. Shopping credit is never part of a withdrawable total.
         WalletRules.EnsureWithdrawable(WalletType.Main);
+
+        // A withdrawal moves real money out of the platform, so a stolen access token alone must
+        // not be enough: confirm with a code bound to this exact transfer.
+        if (_options.RequireOtpForWithdrawal)
+        {
+            if (string.IsNullOrWhiteSpace(request.OtpCode))
+            {
+                throw new DomainException(
+                    ErrorCodes.OtpRequired,
+                    "A confirmation code is required. Request one and try again.");
+            }
+
+            var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
+                ?? throw new DomainException(ErrorCodes.NotFound, "User not found.");
+
+            var destination = !string.IsNullOrWhiteSpace(user.PhoneNumber) ? user.PhoneNumber! : user.Email!;
+
+            await _otp.VerifyAsync(new OtpVerification
+            {
+                Destination = destination,
+                Purpose = OtpPurpose.Withdrawal,
+                Code = request.OtpCode!,
+                UserId = userId,
+                OperationBinding = WithdrawalBinding(request.Amount, currency, request.Destination)
+            }, ct);
+        }
 
         await using var tx = await _db.BeginTransactionAsync(ct);
 
@@ -303,6 +371,17 @@ public sealed class WalletService : IWalletService
 
         await tx.CommitAsync(ct);
         return result;
+    }
+
+    /// <summary>
+    /// A stable fingerprint of what a withdrawal code authorises. Verification recomputes it, so
+    /// changing the amount or destination after requesting the code invalidates it.
+    /// </summary>
+    private static string WithdrawalBinding(decimal amount, string currency, string? destination)
+    {
+        var canonical = $"withdraw|{Money.Round(amount):0.00}|{currency.ToUpperInvariant()}|{destination ?? string.Empty}";
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical));
+        return Convert.ToHexString(bytes);
     }
 
     public async Task<ShoppingCreditSummaryDto> GetShoppingCreditSummaryAsync(string currency, CancellationToken ct = default)

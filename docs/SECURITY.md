@@ -2,21 +2,78 @@
 
 ## Authentication
 
-JWT access tokens (15 minutes) plus rotating refresh tokens (30 days).
+JWT access tokens (15 minutes) plus rotating refresh tokens.
+
+### Sessions last until sign-out
+
+`Jwt:RefreshTokenDays = 0` — the default — means a refresh token has no expiry of its own. A user
+stays signed in until they explicitly sign out. Set a positive number for a fixed lifetime instead.
+
+This is a deliberate trade. What still ends a session:
+
+- signing out (`/auth/logout`, optionally on every device)
+- changing or resetting the password
+- an administrator disabling the account
+- refresh-token reuse being detected
+
+Rotation is unchanged: every refresh consumes the presented token and issues a replacement, so a
+stolen token is still single-use and its reuse still burns the whole family. The window in which a
+stolen token is useful is therefore governed by how quickly reuse is detected, not by a clock.
+
+### Token handling
 
 - Refresh tokens are stored as **SHA-256 hashes only**; the raw value never touches the database,
   so a database leak yields no usable tokens.
-- Every refresh consumes the presented token and issues a replacement, recording
-  `ReplacedByTokenId`.
+- Each rotation records `ReplacedByTokenId`, which is what makes reuse detectable.
 - Presenting an already-consumed token is treated as theft: the entire token family for that user
   is revoked and the attempt is logged as a warning.
-- Changing a password, resetting one, or disabling an account revokes every outstanding session.
 - Login returns the same error for an unknown email and a wrong password, so the endpoint cannot
   enumerate accounts. `forgot-password` always returns 200 for the same reason.
 
 The mobile client keeps tokens in the platform keystore (Keychain / EncryptedSharedPreferences),
 never in plain preferences, and shares a single in-flight refresh across concurrent 401s so a burst
 of requests cannot consume the single-use token more than once.
+
+### One-time codes
+
+Codes are used for two things: signing in, and confirming a withdrawal.
+
+| Property | How |
+|---|---|
+| Never stored in the clear | SHA-256, salted with the destination and purpose |
+| Unguessable | 6 digits from a cryptographic RNG, no modulo bias |
+| Compared safely | `CryptographicOperations.FixedTimeEquals` |
+| Single use | Consumed on success; replay returns `OTP_ALREADY_USED` |
+| Short-lived | 5 minutes by default |
+| Purpose-scoped | A sign-in code cannot authorise a withdrawal |
+| Operation-bound | A withdrawal code names the exact amount, currency and destination |
+| Brute-force resistant | Dies after 5 wrong guesses, even for the correct code afterwards |
+| Superseded on resend | Requesting a new code retires the previous one |
+| Throttled | 60s between requests, 10 per destination per hour |
+| Never enumerating | An unknown destination gets a plausible challenge with no code behind it |
+
+Destinations are normalised before use, so `+966 50 123 4567` and `+966501234567` are one identity
+and cannot be used to sidestep the rate limit. Everything shown back to the client is masked
+(`us***@example.com`, `*******4567`), including in logs.
+
+`Otp:ExposeCodeInDevelopment` echoes the code in the API response so the flow is testable without
+an SMS or email provider. The service checks `IHostEnvironment` directly, so the code is withheld
+in Production regardless of configuration — the decision is made once, not at each call site.
+
+Delivery is behind `IOtpSender`. The shipped implementation logs instead of sending; replace it
+with a Twilio/SNS/SendGrid client and nothing else changes.
+
+### Withdrawal confirmation
+
+`Auction:RequireOtpForWithdrawal` (on by default) requires a code before money leaves the platform,
+so a stolen access token alone is not enough.
+
+The code is bound to a SHA-256 fingerprint of the amount, currency and destination. Verification
+recomputes it, so a code obtained for a 10 transfer to your own account cannot approve a 5,000
+transfer to someone else's — both return `INVALID_OTP`.
+
+The Shopping wallet remains non-withdrawable regardless: the OTP gate is an extra layer over that
+rule, never a way around it.
 
 ### JWT secret
 

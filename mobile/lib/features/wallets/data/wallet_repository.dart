@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import '../../auth/data/auth_repository.dart' show OtpChallenge;
 
 class Wallet {
   const Wallet({
@@ -117,12 +118,33 @@ class WalletRepository {
         'idempotencyKey': idempotencyKey,
       });
 
+  /// Sends the code that confirms a specific withdrawal.
+  ///
+  /// The code is bound to this exact amount and destination, so it cannot approve a different
+  /// transfer. Changing either after requesting it invalidates the code.
+  Future<OtpChallenge> requestWithdrawalOtp(double amount, {String? destination}) async {
+    final data = await _api.post('/wallet/withdraw/request-otp', body: {
+      'amount': amount,
+      'currency': null,
+      'destination': destination,
+    });
+    return OtpChallenge.fromJson(data as Map<String, dynamic>);
+  }
+
   /// Withdrawals draw on the Main wallet only; the server rejects any attempt on shopping credit.
-  Future<void> withdraw(double amount, String idempotencyKey, {String? destination}) =>
+  ///
+  /// [otpCode] is required whenever withdrawal confirmation is enabled on the server.
+  Future<void> withdraw(
+    double amount,
+    String idempotencyKey, {
+    String? destination,
+    String? otpCode,
+  }) =>
       _api.post('/wallet/withdraw', body: {
         'amount': amount,
         'currency': null,
         'idempotencyKey': idempotencyKey,
         'destination': destination,
+        'otpCode': otpCode,
       });
 }

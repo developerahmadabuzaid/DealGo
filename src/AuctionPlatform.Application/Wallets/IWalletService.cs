@@ -27,6 +27,17 @@ public interface IWalletService
 
     Task<WalletOperationResult> DepositAsync(Guid userId, DepositRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Sends the one-time code that authorises a specific withdrawal. The code is bound to the
+    /// amount, currency and destination, so it cannot approve a different transfer.
+    /// </summary>
+    Task<Identity.OtpChallengeDto> RequestWithdrawalOtpAsync(
+        Guid userId, RequestWithdrawalOtpRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Withdraws from the Main wallet. Requires a matching one-time code when withdrawal OTP is
+    /// enabled; shopping credit is never withdrawable regardless.
+    /// </summary>
     Task<WalletOperationResult> WithdrawAsync(Guid userId, WithdrawRequest request, CancellationToken ct = default);
 
     Task<ShoppingCreditSummaryDto> GetShoppingCreditSummaryAsync(string currency, CancellationToken ct = default);

@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
@@ -30,6 +31,7 @@ public static class DependencyInjection
         services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
         services.Configure<FirebaseOptions>(configuration.GetSection(FirebaseOptions.SectionName));
         services.Configure<PaymentOptions>(configuration.GetSection(PaymentOptions.SectionName));
+        services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
 
         AddPersistence(services, configuration);
         AddIdentity(services);
@@ -83,6 +85,8 @@ public static class DependencyInjection
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();
 
+        services.AddScoped<IOtpService, OtpService>();
+
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserAdminService, UserAdminService>();
     }
@@ -123,6 +127,12 @@ public static class DependencyInjection
     {
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
+
+        // Swap this for a real SMS/email provider in production; the interface is the seam.
+        services.AddSingleton<IOtpSender>(sp => new LoggingOtpSender(
+            sp.GetRequiredService<ILocalizationService>(),
+            sp.GetRequiredService<ILogger<LoggingOtpSender>>(),
+            logCode: !sp.GetRequiredService<IHostEnvironment>().IsProduction()));
 
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<INumberGenerator, NumberGenerator>();

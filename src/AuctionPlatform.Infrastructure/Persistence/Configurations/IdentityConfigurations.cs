@@ -104,3 +104,33 @@ public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         b.HasIndex(a => a.ActorUserId);
     }
 }
+
+public sealed class OtpCodeConfiguration : IEntityTypeConfiguration<OtpCode>
+{
+    public void Configure(EntityTypeBuilder<OtpCode> b)
+    {
+        b.ToTable("OtpCodes");
+        b.HasKey(o => o.Id);
+
+        b.Property(o => o.Destination).HasMaxLength(256).IsRequired();
+        b.Property(o => o.CodeHash).HasMaxLength(128).IsRequired();
+        b.Property(o => o.OperationBinding).HasMaxLength(128);
+        b.Property(o => o.InvalidatedReason).HasMaxLength(256);
+        b.Property(o => o.IpAddress).HasMaxLength(64);
+        b.Property(o => o.UserAgent).HasMaxLength(512);
+
+        // Verification looks up the newest code for a destination and purpose.
+        b.HasIndex(o => new { o.Destination, o.Purpose, o.CreatedAt });
+
+        // Rate limiting counts recent requests per destination.
+        b.HasIndex(o => new { o.Destination, o.CreatedAt });
+
+        b.HasIndex(o => o.UserId);
+        b.HasIndex(o => o.ExpiresAt);
+
+        b.HasOne(o => o.User)
+            .WithMany()
+            .HasForeignKey(o => o.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

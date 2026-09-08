@@ -45,7 +45,20 @@ public sealed class WalletTransactionQuery : PagedQuery
 
 public sealed record DepositRequest(decimal Amount, string? Currency, string? Provider, string IdempotencyKey);
 
-public sealed record WithdrawRequest(decimal Amount, string? Currency, string IdempotencyKey, string? Destination);
+/// <summary>
+/// A withdrawal. <paramref name="OtpCode"/> is required whenever
+/// <c>Auction:RequireOtpForWithdrawal</c> is on, and the code must have been issued for this exact
+/// amount, currency and destination.
+/// </summary>
+public sealed record WithdrawRequest(
+    decimal Amount,
+    string? Currency,
+    string IdempotencyKey,
+    string? Destination,
+    string? OtpCode = null);
+
+/// <summary>Ask for the code that confirms a specific withdrawal.</summary>
+public sealed record RequestWithdrawalOtpRequest(decimal Amount, string? Currency, string? Destination);
 
 public sealed record AdminCreditRequest(
     decimal Amount,

@@ -31,7 +31,13 @@ Everything is overridable by environment variable using `__` for nesting.
 | `ConnectionStrings:Postgres` | `ConnectionStrings__Postgres` | |
 | `Jwt:Secret` | `Jwt__Secret` | **Required in Production**, ≥ 32 chars |
 | `Jwt:AccessTokenMinutes` | `Jwt__AccessTokenMinutes` | default 15 |
-| `Jwt:RefreshTokenDays` | `Jwt__RefreshTokenDays` | default 30 |
+| `Jwt:RefreshTokenDays` | `Jwt__RefreshTokenDays` | **0 = session lasts until sign-out** (default) |
+| `Otp:ValidForSeconds` | `Otp__ValidForSeconds` | default 300 |
+| `Otp:MaxAttempts` | `Otp__MaxAttempts` | default 5 |
+| `Otp:ResendCooldownSeconds` | `Otp__ResendCooldownSeconds` | default 60 |
+| `Otp:MaxRequestsPerHour` | `Otp__MaxRequestsPerHour` | default 10 |
+| `Otp:ExposeCodeInDevelopment` | `Otp__ExposeCodeInDevelopment` | ignored in Production |
+| `Auction:RequireOtpForWithdrawal` | `Auction__RequireOtpForWithdrawal` | default true |
 | `Redis:Enabled` | `Redis__Enabled` | `false` uses in-process fallbacks |
 | `Redis:ConnectionString` | `Redis__ConnectionString` | |
 | `Payments:WebhookSecret` | `Payments__WebhookSecret` | required for webhooks |
@@ -54,6 +60,10 @@ Database__AutoMigrate=false           apply the migration script in your release
 Cors__AllowedOrigins        real origins only
 HTTPS terminated at the proxy, with HSTS
 ```
+
+**Before going live, replace `IOtpSender`.** The shipped `LoggingOtpSender` writes the message to
+the log instead of sending it; in Production it logs an error and delivers nothing, so sign-in by
+code and withdrawal confirmation will not work until a real SMS or email provider is wired in.
 
 The API refuses to start in Production without a proper JWT secret — a deliberate hard failure
 rather than silently signing tokens with a guessable key.

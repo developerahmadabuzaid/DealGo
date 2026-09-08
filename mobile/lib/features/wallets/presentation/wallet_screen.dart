@@ -8,6 +8,8 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets.dart';
+import '../../../shared/otp_input.dart';
+import '../../auth/data/auth_repository.dart' show OtpChallenge;
 import '../data/wallet_repository.dart';
 
 /// The two balances, shown as two separate cards.
@@ -90,7 +92,7 @@ class _MainWalletCard extends ConsumerWidget {
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: () => _amountSheet(context, ref, deposit: true),
+                    onPressed: () => _depositSheet(context, ref),
                     icon: const Icon(Icons.add_rounded),
                     label: Text(t.deposit),
                   ),
@@ -98,7 +100,11 @@ class _MainWalletCard extends ConsumerWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _amountSheet(context, ref, deposit: false),
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => WithdrawSheet(wallet: wallet),
+                    ),
                     icon: const Icon(Icons.arrow_outward_rounded),
                     label: Text(t.withdraw),
                   ),
@@ -111,7 +117,7 @@ class _MainWalletCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _amountSheet(BuildContext context, WidgetRef ref, {required bool deposit}) async {
+  Future<void> _depositSheet(BuildContext context, WidgetRef ref) async {
     final t = AppStrings.of(context);
     final controller = TextEditingController();
 
@@ -125,8 +131,7 @@ class _MainWalletCard extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(deposit ? t.deposit : t.withdraw,
-                style: Theme.of(sheetContext).textTheme.titleLarge),
+            Text(t.deposit, style: Theme.of(sheetContext).textTheme.titleLarge),
             const SizedBox(height: 16),
             TextField(
               controller: controller,
@@ -142,16 +147,11 @@ class _MainWalletCard extends ConsumerWidget {
 
                 Navigator.of(sheetContext).pop();
 
-                final repo = ref.read(walletRepositoryProvider);
                 // The key makes a retried request safe if the response is lost in transit.
-                final key = '${deposit ? 'dep' : 'wd'}-${DateTime.now().microsecondsSinceEpoch}';
+                final key = 'dep-${DateTime.now().microsecondsSinceEpoch}';
 
                 try {
-                  if (deposit) {
-                    await repo.deposit(amount, key);
-                  } else {
-                    await repo.withdraw(amount, key);
-                  }
+                  await ref.read(walletRepositoryProvider).deposit(amount, key);
                   ref.invalidate(walletsProvider);
                 } on ApiException catch (e) {
                   if (context.mounted) {
@@ -165,6 +165,178 @@ class _MainWalletCard extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Withdrawal, in two steps: enter the amount, then confirm with a code sent to the account's
+/// phone or email.
+///
+/// The server binds the code to this exact amount and destination, so a code obtained for a small
+/// transfer cannot approve a larger one, or one to a different account.
+class WithdrawSheet extends ConsumerStatefulWidget {
+  const WithdrawSheet({super.key, required this.wallet});
+
+  final Wallet wallet;
+
+  @override
+  ConsumerState<WithdrawSheet> createState() => _WithdrawSheetState();
+}
+
+class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
+  final _amount = TextEditingController();
+  final _destination = TextEditingController();
+
+  OtpChallenge? _challenge;
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _destination.dispose();
+    super.dispose();
+  }
+
+  double? get _parsedAmount => double.tryParse(_amount.text.trim());
+
+  Future<void> _requestCode() async {
+    final amount = _parsedAmount;
+    if (amount == null || amount <= 0) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      final challenge = await ref.read(walletRepositoryProvider).requestWithdrawalOtp(
+            amount,
+            destination: _destination.text.trim().isEmpty ? null : _destination.text.trim(),
+          );
+      setState(() => _challenge = challenge);
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _confirm(String code) async {
+    final amount = _parsedAmount;
+    if (amount == null) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      await ref.read(walletRepositoryProvider).withdraw(
+            amount,
+            'wd-${DateTime.now().microsecondsSinceEpoch}',
+            destination: _destination.text.trim().isEmpty ? null : _destination.text.trim(),
+            otpCode: code,
+          );
+
+      ref.invalidate(walletsProvider);
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppStrings.of(context).withdrawalSent)),
+        );
+      }
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppStrings.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(_challenge == null ? t.withdraw : t.confirmWithdrawal,
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Text(t.withdrawalNeedsCode, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 16),
+
+          if (_challenge == null) ...[
+            TextField(
+              controller: _amount,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: t.amount,
+                suffixText: widget.wallet.currency,
+                helperText:
+                    '${t.available}: ${Fmt.money(widget.wallet.balance, widget.wallet.currency, locale: locale)}',
+              ),
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _destination,
+              decoration: InputDecoration(labelText: t.withdrawalDestination),
+            ),
+
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+
+            const SizedBox(height: 18),
+            FilledButton(
+              onPressed: _busy ||
+                      _parsedAmount == null ||
+                      _parsedAmount! <= 0 ||
+                      _parsedAmount! > widget.wallet.balance
+                  ? null
+                  : _requestCode,
+              child: _busy
+                  ? const SizedBox(
+                      height: 20, width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text(t.sendCode),
+            ),
+          ] else ...[
+            // Restate exactly what the code authorises, so confirming is an informed act.
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                t.withdrawalSummary(
+                  Fmt.money(_parsedAmount, widget.wallet.currency, locale: locale),
+                  _destination.text.trim().isEmpty ? '-' : _destination.text.trim(),
+                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 18),
+            OtpInput(
+              challenge: _challenge!,
+              busy: _busy,
+              error: _error,
+              onSubmit: _confirm,
+              onResend: _requestCode,
+            ),
+          ],
+        ],
       ),
     );
   }
