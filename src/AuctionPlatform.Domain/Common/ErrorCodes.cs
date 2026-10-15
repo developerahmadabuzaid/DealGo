@@ -24,6 +24,7 @@ public static class ErrorCodes
 
     // Bidding
     public const string BidNotAllowed = "BID_NOT_ALLOWED";
+    public const string ConsecutiveBidNotAllowed = "CONSECUTIVE_BID_NOT_ALLOWED";
     public const string TargetAlreadyReached = "TARGET_ALREADY_REACHED";
     public const string DuplicateRequest = "DUPLICATE_REQUEST";
     public const string RateLimited = "RATE_LIMITED";

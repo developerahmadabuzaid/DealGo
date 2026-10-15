@@ -45,7 +45,11 @@ class LiveAuctionState {
       isConnected &&
       !isBidding &&
       (snapshot?.isLive ?? false) &&
-      !(snapshot?.targetReached ?? false);
+      !(snapshot?.targetReached ?? false) &&
+      !waitingForOtherBidder;
+
+  /// The user placed the latest bid, and nobody bids twice in a row.
+  bool get waitingForOtherBidder => snapshot?.lastBidIsMine ?? false;
 
   Duration get remaining {
     final endsAt = snapshot?.endsAt;
@@ -191,9 +195,16 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
       case 'BidPlaced':
       case 'AuctionPriceChanged':
         final price = (event.payload['newPrice'] ?? event.payload['currentPrice']) as num?;
+        // Only BidPlaced names the bidder; it is what unlocks the button for the previous one.
+        final bidder = event.payload['participantId'] as String?;
         if (price != null) {
           state = state.copyWith(
-            snapshot: _withPrice(snapshot, price.toDouble()),
+            snapshot: snapshot.copyWith(
+              currentPrice: price.toDouble(),
+              targetReached: price >= snapshot.targetPrice,
+              progress: _progress(snapshot, price.toDouble()),
+              lastBidParticipantId: bidder,
+            ),
             lastBidFlash: price.toDouble(),
           );
         }
@@ -201,7 +212,9 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
 
       case 'AuctionParticipantCountChanged':
         final count = event.payload['participantCount'] as int?;
-        if (count != null) state = state.copyWith(snapshot: _withCount(snapshot, count));
+        if (count != null) {
+          state = state.copyWith(snapshot: snapshot.copyWith(participantCount: count));
+        }
         // The registration bar on the page is drawn from the detail.
         _ref.invalidate(auctionDetailProvider(auctionId));
         break;
@@ -212,7 +225,7 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
           final entries = raw
               .map((e) => LeaderboardEntry.fromJson(Map<String, dynamic>.from(e as Map)))
               .toList();
-          state = state.copyWith(snapshot: _withLeaderboard(snapshot, entries));
+          state = state.copyWith(snapshot: snapshot.copyWith(leaderboard: entries));
         }
         break;
 
@@ -238,40 +251,6 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
         break;
     }
   }
-
-  AuctionSnapshot _withPrice(AuctionSnapshot s, double price) => AuctionSnapshot(
-        id: s.id, status: s.status, currentPrice: price, startingPrice: s.startingPrice,
-        targetPrice: s.targetPrice, finalPhasePrice: s.finalPhasePrice,
-        bidIncrement: s.bidIncrement, currency: s.currency,
-        participantCount: s.participantCount, requiredParticipants: s.requiredParticipants,
-        remainingSeconds: s.remainingSeconds, endsAt: s.endsAt,
-        targetReached: price >= s.targetPrice, progress: _progress(s, price),
-        myRank: s.myRank, myHighestPrice: s.myHighestPrice, leaderboard: s.leaderboard,
-        lastSequenceNumber: s.lastSequenceNumber, serverTime: s.serverTime,
-      );
-
-  AuctionSnapshot _withCount(AuctionSnapshot s, int count) => AuctionSnapshot(
-        id: s.id, status: s.status, currentPrice: s.currentPrice, startingPrice: s.startingPrice,
-        targetPrice: s.targetPrice, finalPhasePrice: s.finalPhasePrice,
-        bidIncrement: s.bidIncrement, currency: s.currency,
-        participantCount: count, requiredParticipants: s.requiredParticipants,
-        remainingSeconds: s.remainingSeconds, endsAt: s.endsAt,
-        targetReached: s.targetReached, progress: s.progress,
-        myRank: s.myRank, myHighestPrice: s.myHighestPrice, leaderboard: s.leaderboard,
-        lastSequenceNumber: s.lastSequenceNumber, serverTime: s.serverTime,
-      );
-
-  AuctionSnapshot _withLeaderboard(AuctionSnapshot s, List<LeaderboardEntry> board) =>
-      AuctionSnapshot(
-        id: s.id, status: s.status, currentPrice: s.currentPrice, startingPrice: s.startingPrice,
-        targetPrice: s.targetPrice, finalPhasePrice: s.finalPhasePrice,
-        bidIncrement: s.bidIncrement, currency: s.currency,
-        participantCount: s.participantCount, requiredParticipants: s.requiredParticipants,
-        remainingSeconds: s.remainingSeconds, endsAt: s.endsAt,
-        targetReached: s.targetReached, progress: s.progress,
-        myRank: s.myRank, myHighestPrice: s.myHighestPrice, leaderboard: board,
-        lastSequenceNumber: s.lastSequenceNumber, serverTime: s.serverTime,
-      );
 
   double _progress(AuctionSnapshot s, double price) {
     final span = s.targetPrice - s.startingPrice;
@@ -314,7 +293,8 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
       // These mean the world moved on; pull the truth rather than showing a stale screen.
       if (e.code == ErrorCodes.auctionFinished ||
           e.code == ErrorCodes.targetAlreadyReached ||
-          e.code == ErrorCodes.auctionNotActive) {
+          e.code == ErrorCodes.auctionNotActive ||
+          e.code == ErrorCodes.consecutiveBidNotAllowed) {
         await resync();
       }
       return null;

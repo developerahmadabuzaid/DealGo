@@ -206,6 +206,16 @@ public sealed class AuctionService : IAuctionService
         int? myRank = me is { BidCount: > 0 } ? await ComputeRankAsync(auctionId, me, ct) : null;
         var leaderboard = await GetLeaderboardAsync(auctionId, userId, 10, ct);
 
+        // Who bid last, so a client can switch the bid button off for that participant until
+        // someone else bids. The server enforces the rule either way.
+        Guid? lastBidParticipantId = auction.LastSequenceNumber > 0
+            ? await _db.Bids
+                .AsNoTracking()
+                .Where(b => b.AuctionId == auctionId && b.SequenceNumber == auction.LastSequenceNumber)
+                .Select(b => (Guid?)b.ParticipantId)
+                .FirstOrDefaultAsync(ct)
+            : null;
+
         return new AuctionSnapshotDto(
             auction.Id, auction.Status, auction.CurrentPrice, auction.StartingPrice,
             auction.TargetPrice, auction.FinalPhasePrice, auction.BidIncrement, auction.Currency,
@@ -213,7 +223,7 @@ public sealed class AuctionService : IAuctionService
             auction.RemainingSeconds, auction.EndsAt, auction.TargetReached,
             AuctionRules.Progress(auction.StartingPrice, auction.CurrentPrice, auction.TargetPrice),
             myRank, me?.HighestPrice, leaderboard, auction.LastSequenceNumber,
-            _clock.UtcNow);
+            _clock.UtcNow, me?.Id, lastBidParticipantId);
     }
 
     public async Task<IReadOnlyList<LeaderboardEntryDto>> GetLeaderboardAsync(

@@ -144,6 +144,7 @@ never used.
   status must be LIVE or FINAL_PHASE   → AUCTION_NOT_ACTIVE / AUCTION_FINISHED
   TargetReached must be false          → TARGET_ALREADY_REACHED
   now < EndsAt                         → AUCTION_FINISHED
+  the latest bid is not this participant's → CONSECUTIVE_BID_NOT_ALLOWED
 
   previousPrice = auction.CurrentPrice
   newPrice      = min(previousPrice + BidIncrement, TargetPrice)
@@ -188,6 +189,14 @@ each bid's `PreviousPrice` chains onto the last bid's `NewPrice` with no lost up
 
 **Retries are free.** `UNIQUE(AuctionId, ParticipantId, IdempotencyKey)` means a repeated request —
 sequential or concurrent — returns the original bid rather than creating a second one.
+
+**Nobody bids twice in a row.** After a bid, someone else must bid before the same participant may
+bid again. The check reads the bid at `LastSequenceNumber` under the auction's row lock, so even a
+burst of taps from one person serialises and only the first is accepted; the rest get
+`CONSECUTIVE_BID_NOT_ALLOWED` (409). The snapshot carries `myParticipantId` and
+`lastBidParticipantId`, and `BidPlaced` carries `participantId`, so the app switches the bid button
+off for the last bidder and back on the moment someone else bids. Verified in
+`ConsecutiveBidTests`.
 
 **A completion failure never looks like a bid failure.** The bid is committed before completion
 runs; if completion throws, it is logged and the completion worker retries. Telling the bidder

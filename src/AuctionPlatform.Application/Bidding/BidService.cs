@@ -182,6 +182,24 @@ public sealed class BidService : IBidService
             .FirstOrDefaultAsync(p => p.Id == participantId, ct)
             ?? throw new DomainException(ErrorCodes.ParticipantNotFound, "Participant not found.");
 
+        // No one bids twice in a row: after a bid, someone else has to bid before the same
+        // participant may bid again. Read under the auction's row lock, so two quick taps from one
+        // person queue behind each other and the second sees the first.
+        if (auction.LastSequenceNumber > 0)
+        {
+            var lastBidder = await _db.Bids
+                .Where(b => b.AuctionId == auction.Id && b.SequenceNumber == auction.LastSequenceNumber)
+                .Select(b => (Guid?)b.ParticipantId)
+                .FirstOrDefaultAsync(ct);
+
+            if (lastBidder == participant.Id)
+            {
+                throw new DomainException(
+                    ErrorCodes.ConsecutiveBidNotAllowed,
+                    "You placed the last bid. Wait for another participant to bid first.");
+            }
+        }
+
         var previousPrice = auction.CurrentPrice;
         var newPrice = AuctionRules.NextPrice(previousPrice, auction.BidIncrement, auction.TargetPrice);
         var reachedTarget = AuctionRules.ReachesTarget(newPrice, auction.TargetPrice);

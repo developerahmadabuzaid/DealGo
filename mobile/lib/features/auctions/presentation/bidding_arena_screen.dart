@@ -597,7 +597,9 @@ class _Stage extends StatelessWidget {
                 ? t.arenaConnecting
                 : s.targetReached
                     ? t.arenaTargetReached
-                    : t.arenaNextPrice(Fmt.money(next, s.currency, locale: locale)),
+                    : live.waitingForOtherBidder
+                        ? t.waitForOtherBidder
+                        : t.arenaNextPrice(Fmt.money(next, s.currency, locale: locale)),
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
           ),

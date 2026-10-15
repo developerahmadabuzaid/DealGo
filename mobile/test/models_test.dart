@@ -49,6 +49,21 @@ void main() {
       expect(s.isFinalPhase, isTrue);
     });
 
+    test('knows when the user placed the last bid', () {
+      final mine = AuctionSnapshot.fromJson({
+        ...snapshotJson(),
+        'myParticipantId': 'me',
+        'lastBidParticipantId': 'me',
+      });
+      expect(mine.lastBidIsMine, isTrue);
+
+      // Someone else bids: the BidPlaced event names them, and the user may bid again.
+      expect(mine.copyWith(lastBidParticipantId: 'someone-else').lastBidIsMine, isFalse);
+
+      // A spectator who has not joined is never "the last bidder".
+      expect(AuctionSnapshot.fromJson(snapshotJson()).lastBidIsMine, isFalse);
+    });
+
     test('treats Live and FinalPhase as biddable and nothing else', () {
       expect(AuctionSnapshot.fromJson(snapshotJson(status: 'Live')).isLive, isTrue);
       expect(AuctionSnapshot.fromJson(snapshotJson(status: 'FinalPhase')).isLive, isTrue);

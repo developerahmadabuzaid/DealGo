@@ -761,6 +761,14 @@ class _BidBar extends ConsumerWidget {
               ),
               const SizedBox(height: AppTheme.space2),
 
+              if (state.waitingForOtherBidder) ...[
+                Text(t.waitForOtherBidder,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: accent, fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: AppTheme.space1),
+              ],
+
               // The increment moves the price; it is not a charge. Saying so prevents the most
               // common misunderstanding of this auction format.
               Text(t.bidIncrementNote,

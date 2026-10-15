@@ -35,7 +35,7 @@ INVALID_AUCTION_STATE      INVALID_AUCTION_CONFIGURATION
 
 PARTICIPANT_NOT_FOUND      ALREADY_JOINED            ENTRY_PAYMENT_REQUIRED
 BID_NOT_ALLOWED            TARGET_ALREADY_REACHED    DUPLICATE_REQUEST
-RATE_LIMITED
+RATE_LIMITED               CONSECUTIVE_BID_NOT_ALLOWED
 
 INSUFFICIENT_BALANCE       INSUFFICIENT_SHOPPING_CREDIT
 SHOPPING_WALLET_OPERATION_NOT_ALLOWED
@@ -169,11 +169,17 @@ returns `OTP_REQUEST_TOO_SOON`.
   "myHighestPrice": 2340.00,
   "leaderboard": [],
   "lastSequenceNumber": 69,
-  "serverTime": "2026-09-07T16:01:48Z"
+  "serverTime": "2026-09-07T16:01:48Z",
+  "myParticipantId": "8c1f…",
+  "lastBidParticipantId": "8c1f…"
 }
 ```
 
 `serverTime` lets the client render a countdown without trusting the device clock.
+
+Nobody may bid twice in a row. When `lastBidParticipantId` equals `myParticipantId` the caller
+placed the latest bid, and a bid from them returns `CONSECUTIVE_BID_NOT_ALLOWED` (409) until
+someone else bids. `myParticipantId` is null for a caller who has not joined.
 
 ### Placing a bid
 

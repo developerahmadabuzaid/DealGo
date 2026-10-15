@@ -195,6 +195,8 @@ class AppStrings {
   String get arenaInWinners => _t('ضمن الفائزين', 'In the winning four');
   String get arenaOutOfWinners => _t('خارج المراكز الأربعة', 'Outside the top four');
   String get arenaConnecting => _t('جارٍ الاتصال بالمزاد…', 'Connecting to the auction…');
+  String get waitForOtherBidder => _t('أنت صاحب آخر مزايدة — انتظر حتى يزايد غيرك',
+      'You placed the last bid — wait for someone else to bid');
   String get arenaTargetReached => _t('وصل السعر إلى الهدف', 'The target price is reached');
   String get arenaEnded => _t('انتهى المزاد', 'The auction has ended');
   String get arenaSeeResults => _t('عرض النتائج', 'See the results');
@@ -402,6 +404,7 @@ class AppStrings {
     'ALREADY_JOINED': 'أنت مشترك في هذا المزاد بالفعل.',
     'ENTRY_PAYMENT_REQUIRED': 'يجب دفع رسوم الاشتراك أولاً.',
     'BID_NOT_ALLOWED': 'لا يمكن المزايدة الآن.',
+    'CONSECUTIVE_BID_NOT_ALLOWED': 'أنت صاحب آخر مزايدة. انتظر حتى يزايد غيرك.',
     'TARGET_ALREADY_REACHED': 'تم الوصول إلى السعر المستهدف.',
     'DUPLICATE_REQUEST': 'تم تنفيذ هذا الطلب من قبل.',
     'RATE_LIMITED': 'محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.',

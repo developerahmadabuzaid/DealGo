@@ -81,7 +81,6 @@
   background: var(--surface);
 }
 .legal .contact-card span { color: var(--text-2); }
-.legal [data-site] { direction: ltr; unicode-bidi: isolate; }
 
 .legal-foot {
   display: flex;

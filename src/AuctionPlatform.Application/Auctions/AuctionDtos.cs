@@ -103,7 +103,9 @@ public sealed record AuctionSnapshotDto(
     decimal? MyHighestPrice,
     IReadOnlyList<LeaderboardEntryDto> Leaderboard,
     long LastSequenceNumber,
-    DateTime ServerTime);
+    DateTime ServerTime,
+    Guid? MyParticipantId = null,
+    Guid? LastBidParticipantId = null);
 
 public sealed record LeaderboardEntryDto(
     int Rank,

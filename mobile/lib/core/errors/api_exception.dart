@@ -55,6 +55,7 @@ class ErrorCodes {
   static const entryPaymentRequired = 'ENTRY_PAYMENT_REQUIRED';
 
   static const bidNotAllowed = 'BID_NOT_ALLOWED';
+  static const consecutiveBidNotAllowed = 'CONSECUTIVE_BID_NOT_ALLOWED';
   static const targetAlreadyReached = 'TARGET_ALREADY_REACHED';
   static const duplicateRequest = 'DUPLICATE_REQUEST';
   static const rateLimited = 'RATE_LIMITED';

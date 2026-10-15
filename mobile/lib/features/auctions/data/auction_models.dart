@@ -297,6 +297,8 @@ class AuctionSnapshot {
     required this.leaderboard,
     required this.lastSequenceNumber,
     required this.serverTime,
+    this.myParticipantId,
+    this.lastBidParticipantId,
   });
 
   final String id;
@@ -319,7 +321,41 @@ class AuctionSnapshot {
   final int lastSequenceNumber;
   final DateTime serverTime;
 
+  /// This user's participant id in the auction, when they have joined it.
+  final String? myParticipantId;
+
+  /// Who placed the latest bid. Nobody may bid twice in a row, so while this is the user the bid
+  /// button stays off until someone else bids.
+  final String? lastBidParticipantId;
+
   bool get isLive => status == 'Live' || status == 'FinalPhase';
+
+  bool get lastBidIsMine =>
+      myParticipantId != null && lastBidParticipantId == myParticipantId;
+
+  AuctionSnapshot copyWith({
+    double? currentPrice,
+    bool? targetReached,
+    double? progress,
+    int? participantCount,
+    List<LeaderboardEntry>? leaderboard,
+    String? lastBidParticipantId,
+  }) =>
+      AuctionSnapshot(
+        id: id, status: status, currentPrice: currentPrice ?? this.currentPrice,
+        startingPrice: startingPrice, targetPrice: targetPrice,
+        finalPhasePrice: finalPhasePrice, bidIncrement: bidIncrement, currency: currency,
+        participantCount: participantCount ?? this.participantCount,
+        requiredParticipants: requiredParticipants,
+        remainingSeconds: remainingSeconds, endsAt: endsAt,
+        targetReached: targetReached ?? this.targetReached,
+        progress: progress ?? this.progress,
+        myRank: myRank, myHighestPrice: myHighestPrice,
+        leaderboard: leaderboard ?? this.leaderboard,
+        lastSequenceNumber: lastSequenceNumber, serverTime: serverTime,
+        myParticipantId: myParticipantId,
+        lastBidParticipantId: lastBidParticipantId ?? this.lastBidParticipantId,
+      );
   bool get isFinalPhase => status == 'FinalPhase';
 
   factory AuctionSnapshot.fromJson(Map<String, dynamic> j) => AuctionSnapshot(
@@ -344,6 +380,8 @@ class AuctionSnapshot {
             .toList(),
         lastSequenceNumber: (j['lastSequenceNumber'] as num?)?.toInt() ?? 0,
         serverTime: _date(j['serverTime']) ?? DateTime.now().toUtc(),
+        myParticipantId: j['myParticipantId'] as String?,
+        lastBidParticipantId: j['lastBidParticipantId'] as String?,
       );
 }
 

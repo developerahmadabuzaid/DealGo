@@ -124,6 +124,7 @@ public sealed class ExceptionHandlingMiddleware
         ErrorCodes.AlreadyJoined or ErrorCodes.DuplicateRequest or ErrorCodes.Conflict
             or ErrorCodes.TargetAlreadyReached or ErrorCodes.EmailAlreadyRegistered
             or ErrorCodes.DuplicateSku or ErrorCodes.AuctionFull
+            or ErrorCodes.ConsecutiveBidNotAllowed
             => StatusCodes.Status409Conflict,
 
         ErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,
