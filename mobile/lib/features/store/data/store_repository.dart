@@ -8,18 +8,30 @@ class StoreCategory {
     required this.name,
     required this.imageUrl,
     required this.productCount,
+    this.parentId,
+    this.parentName,
   });
 
   final String id;
   final String name;
   final String? imageUrl;
+
+  /// For a main department, its own products and its sub-departments'.
   final int productCount;
+
+  /// The main department this one sits under; null for a main department. Two levels only.
+  final String? parentId;
+  final String? parentName;
+
+  bool get isMain => parentId == null;
 
   factory StoreCategory.fromJson(Map<String, dynamic> j) => StoreCategory(
         id: j['id'] as String,
         name: j['name'] as String? ?? '',
         imageUrl: j['imageUrl'] as String?,
         productCount: j['productCount'] as int? ?? 0,
+        parentId: j['parentId'] as String?,
+        parentName: j['parentName'] as String?,
       );
 }
 
@@ -30,11 +42,13 @@ class StoreProduct {
     required this.sku,
     required this.categoryName,
     required this.price,
+    required this.compareAtPrice,
     required this.currency,
     required this.imageUrl,
     required this.availableQuantity,
     required this.inStock,
     required this.acceptsShoppingCredit,
+    required this.paymentMode,
     required this.isFeatured,
   });
 
@@ -43,12 +57,30 @@ class StoreProduct {
   final String sku;
   final String? categoryName;
   final double price;
+
+  /// What the item costs without the offer, when there is one.
+  final double? compareAtPrice;
+
   final String currency;
   final String? imageUrl;
   final int availableQuantity;
   final bool inStock;
   final bool acceptsShoppingCredit;
+
+  /// `ShoppingWallet`, `MainWallet` or `Both` — the server decides which wallets may pay.
+  final String paymentMode;
+
   final bool isFeatured;
+
+  /// Derived rather than sent as its own flag, so it can never disagree with [paymentMode].
+  bool get acceptsMainWallet => paymentMode == 'MainWallet' || paymentMode == 'Both';
+
+  /// An offer is the gap between the two prices, never a number of its own.
+  bool get isOnOffer => compareAtPrice != null && compareAtPrice! > price;
+
+  /// Whole percent off, rounded down; zero when there is no offer.
+  int get discountPercent =>
+      isOnOffer ? ((compareAtPrice! - price) / compareAtPrice! * 100).floor() : 0;
 
   factory StoreProduct.fromJson(Map<String, dynamic> j) => StoreProduct(
         id: j['id'] as String,
@@ -56,11 +88,13 @@ class StoreProduct {
         sku: j['sku'] as String? ?? '',
         categoryName: j['categoryName'] as String?,
         price: _num(j['price']),
+        compareAtPrice: (j['compareAtPrice'] as num?)?.toDouble(),
         currency: j['currency'] as String? ?? 'USD',
         imageUrl: j['primaryImageUrl'] as String?,
         availableQuantity: j['availableQuantity'] as int? ?? 0,
         inStock: j['inStock'] as bool? ?? false,
         acceptsShoppingCredit: j['acceptsShoppingCredit'] as bool? ?? false,
+        paymentMode: j['paymentMode'] as String? ?? 'ShoppingWallet',
         isFeatured: j['isFeatured'] as bool? ?? false,
       );
 }
@@ -72,21 +106,34 @@ class StoreProductDetail extends StoreProduct {
     required super.sku,
     required super.categoryName,
     required super.price,
+    required super.compareAtPrice,
     required super.currency,
     required super.imageUrl,
     required super.availableQuantity,
     required super.inStock,
     required super.acceptsShoppingCredit,
+    required super.paymentMode,
     required super.isFeatured,
     required this.description,
-    required this.acceptsMainWallet,
     required this.requiresShipping,
     required this.shippingFee,
     required this.images,
+    this.categoryId,
+    this.parentCategoryName,
   });
 
+  /// The department it sits in, for the "similar products" row under it.
+  final String? categoryId;
+
+  /// The main department above [categoryId], when that is a sub-department.
+  final String? parentCategoryName;
+
+  /// "كوابل شحن › كوابل شحن سيارة", or just the department's name.
+  String? get categoryPath => categoryName == null || categoryName!.isEmpty
+      ? null
+      : (parentCategoryName == null ? categoryName : '$parentCategoryName › $categoryName');
+
   final String? description;
-  final bool acceptsMainWallet;
   final bool requiresShipping;
   final double shippingFee;
   final List<String> images;
@@ -102,17 +149,20 @@ class StoreProductDetail extends StoreProduct {
       sku: j['sku'] as String? ?? '',
       categoryName: j['categoryName'] as String?,
       price: _num(j['price']),
+      compareAtPrice: (j['compareAtPrice'] as num?)?.toDouble(),
       currency: j['currency'] as String? ?? 'USD',
       imageUrl: images.isNotEmpty ? images.first : null,
       availableQuantity: j['availableQuantity'] as int? ?? 0,
       inStock: j['inStock'] as bool? ?? false,
       acceptsShoppingCredit: j['acceptsShoppingCredit'] as bool? ?? false,
+      paymentMode: j['paymentMode'] as String? ?? 'ShoppingWallet',
       isFeatured: j['isFeatured'] as bool? ?? false,
       description: j['description'] as String?,
-      acceptsMainWallet: j['acceptsMainWallet'] as bool? ?? false,
       requiresShipping: j['requiresShipping'] as bool? ?? false,
       shippingFee: _num(j['shippingFee']),
       images: images,
+      categoryId: j['categoryId'] as String?,
+      parentCategoryName: j['parentCategoryName'] as String?,
     );
   }
 }
@@ -124,6 +174,7 @@ class StoreHome {
     required this.newArrivals,
     required this.popular,
     required this.creditEligible,
+    required this.offers,
     required this.shoppingCreditBalance,
     required this.currency,
   });
@@ -133,6 +184,10 @@ class StoreHome {
   final List<StoreProduct> newArrivals;
   final List<StoreProduct> popular;
   final List<StoreProduct> creditEligible;
+
+  /// Items with a real discount, the biggest saving first.
+  final List<StoreProduct> offers;
+
   final double shoppingCreditBalance;
   final String currency;
 
@@ -147,6 +202,7 @@ class StoreHome {
         newArrivals: _products(j['newArrivals']),
         popular: _products(j['popular']),
         creditEligible: _products(j['shoppingCreditEligible']),
+        offers: _products(j['offers']),
         shoppingCreditBalance: _num(j['shoppingCreditBalance']),
         currency: j['currency'] as String? ?? 'USD',
       );
@@ -284,6 +340,8 @@ class StoreRepository {
     String? search,
     String? categoryId,
     bool? shoppingCreditOnly,
+    bool onOfferOnly = false,
+    String? sortBy,
     int page = 1,
     int pageSize = 20,
   }) async {
@@ -291,6 +349,8 @@ class StoreRepository {
       'search': search,
       'categoryId': categoryId,
       'paymentMode': shoppingCreditOnly == true ? 'ShoppingWallet' : null,
+      'onOfferOnly': onOfferOnly ? true : null,
+      'sortBy': sortBy,
       'page': page,
       'pageSize': pageSize,
     });

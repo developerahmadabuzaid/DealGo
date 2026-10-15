@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IIS configuration for a shared host (SmarterASP.NET).
+
+  In-process rather than out-of-process: the host's own ".Net Core" pool mode is built for
+  it, and it is also what dotnet publish emits by default. Out-of-process runs the application
+  as a separate dotnet.exe child and proxies to it, which is one more moving part to break on
+  a machine whose ANCM version is not ours to choose.
+
+  stdoutLogEnabled is the only way to read a startup failure on shared hosting, where the console
+  is not ours to see. It is never rotated, so turn it off once the application starts cleanly.
+-->
+<configuration>
+  <location path="." inheritInChildApplications="false">
+    <system.webServer>
+      <handlers>
+        <add name="aspNetCore" path="*" verb="*" modules="AspNetCoreModuleV2" resourceType="Unspecified" />
+      </handlers>
+
+      <aspNetCore processPath="dotnet"
+                  arguments=".\AuctionPlatform.Api.dll"
+                  hostingModel="inprocess"
+                  stdoutLogEnabled="true"
+                  stdoutLogFile=".\logs\stdout">
+        <!--
+          Secrets live here rather than in appsettings.json, so that the folder uploaded to the
+          host is the only place they exist and the source tree stays free of them. This file is
+          uploaded but is not in version control.
+
+          Workstation garbage collection rather than server collection. Server GC assumes it owns
+          the machine and holds hundreds of megabytes per core before collecting; on a pool capped
+          at 256 MB the collector waits for room that never comes and IIS kills the worker for
+          exceeding its quota. Workstation GC collects eagerly and keeps the footprint small.
+        -->
+        <environmentVariables>
+          <environmentVariable name="ASPNETCORE_ENVIRONMENT" value="Production" />
+          <environmentVariable name="DOTNET_gcServer" value="0" />
+          <environmentVariable name="ConnectionStrings__Postgres" value="__CONNECTION_STRING__" />
+          <environmentVariable name="Jwt__Secret" value="__JWT_SECRET__" />
+          <environmentVariable name="Tawked__ApiKey" value="__TAWKED_API_KEY__" />
+          <environmentVariable name="Payments__WebhookSecret" value="__PAYMENT_WEBHOOK_SECRET__" />
+          <environmentVariable name="Bootstrap__SuperAdminEmail" value="__BOOTSTRAP_ADMIN_EMAIL__" />
+        </environmentVariables>
+      </aspNetCore>
+    </system.webServer>
+  </location>
+</configuration>

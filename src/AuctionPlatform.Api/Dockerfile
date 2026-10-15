@@ -25,9 +25,11 @@ RUN apt-get update \
 
 COPY --from=build /app/publish .
 
-# The image already provides a non-root "app" user (UID 1654). The API is stateless, so it needs
-# nothing beyond write access to its own log directory.
-RUN mkdir -p /app/logs && chown -R $APP_UID:$APP_UID /app/logs
+# The image already provides a non-root "app" user (UID 1654). It needs write access to its log
+# directory and to the uploads folder, which docker-compose mounts as a volume. Creating the
+# folder here and giving it to that user is what makes the mounted volume writable: Docker copies
+# these permissions onto an empty named volume when it first mounts it.
+RUN mkdir -p /app/logs /app/wwwroot/uploads     && chown -R $APP_UID:$APP_UID /app/logs /app/wwwroot/uploads
 USER $APP_UID
 
 ENV ASPNETCORE_HTTP_PORTS=8080

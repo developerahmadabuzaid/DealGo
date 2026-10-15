@@ -5,10 +5,11 @@ namespace AuctionPlatform.Application.Auctions;
 
 public sealed record AuctionPrizeDto(
     Guid Id,
-    Guid ProductId,
+    Guid? ProductId,
     int Rank,
     string ProductName,
     string? ImageUrl,
+    string? Description,
     decimal OriginalPrice,
     string Currency);
 
@@ -30,7 +31,9 @@ public sealed record AuctionListItemDto(
     AuctionStatus Status,
     DateTime? ScheduledStartAt,
     DateTime? ActualStartedAt,
-    int? RemainingSeconds);
+    int? RemainingSeconds,
+    string? CoverImageUrl,
+    bool IsFeatured);
 
 /// <summary>
 /// Full auction detail. Fields prefixed My* are resolved from the caller's participation and are
@@ -73,7 +76,9 @@ public sealed record AuctionDetailDto(
     int? MyRank,
     decimal? MyHighestPrice,
     int? MyBidCount,
-    DateTime ServerTime);
+    DateTime ServerTime,
+    string? CoverImageUrl,
+    bool IsFeatured);
 
 /// <summary>
 /// The authoritative state a reconnecting client resynchronises against. Clients never
@@ -159,13 +164,21 @@ public sealed class AuctionListQuery : PagedQuery
 
     /// <summary>Convenience filter: live, upcoming, completed.</summary>
     public string? Group { get; set; }
+
+    /// <summary>Only the auctions an administrator picked for the front page.</summary>
+    public bool? Featured { get; set; }
 }
 
+/// <summary>
+/// A new auction and the four prizes that belong to it.
+///
+/// There is no OriginalPrice field: the auction is worth what its first prize is worth, so that
+/// figure is taken from the rank 1 prize. Letting an administrator type it separately allowed an
+/// auction to advertise one value while awarding another.
+/// </summary>
 public sealed record CreateAuctionRequest(
     string Title,
     string? Description,
-    Guid MainProductId,
-    decimal OriginalPrice,
     decimal StartingPrice,
     decimal? TargetPercentage,
     decimal? FinalPhasePercentage,
@@ -176,14 +189,23 @@ public sealed record CreateAuctionRequest(
     int? StartDelayAfterParticipantsSeconds,
     int? DurationSeconds,
     ExpirationPolicy? ExpirationPolicy,
-    IReadOnlyList<AuctionPrizeRequest> Prizes);
+    IReadOnlyList<AuctionPrizeRequest> Prizes,
+    string? CoverImageUrl = null);
 
-public sealed record AuctionPrizeRequest(Guid ProductId, int Rank);
+/// <summary>
+/// One prize, described in full. Prizes belong to their auction: two auctions may award the same
+/// thing and still hold their own name, price and picture for it.
+/// </summary>
+public sealed record AuctionPrizeRequest(
+    int Rank,
+    string Name,
+    decimal Price,
+    string? ImageUrl,
+    string? Description);
 
 public sealed record UpdateAuctionRequest(
     string? Title,
     string? Description,
-    decimal? OriginalPrice,
     decimal? StartingPrice,
     decimal? TargetPercentage,
     decimal? FinalPhasePercentage,
@@ -193,10 +215,15 @@ public sealed record UpdateAuctionRequest(
     int? StartDelayAfterParticipantsSeconds,
     int? DurationSeconds,
     ExpirationPolicy? ExpirationPolicy,
-    IReadOnlyList<AuctionPrizeRequest>? Prizes);
+    IReadOnlyList<AuctionPrizeRequest>? Prizes,
+    // Null leaves the picture as it is; an empty string removes it.
+    string? CoverImageUrl = null);
 
 public sealed record UpdateScheduleRequest(DateTime ScheduledStartAt, string? Reason);
 
 public sealed record PlaceBidRequest(string IdempotencyKey);
 
 public sealed record JoinAuctionRequest(string? IdempotencyKey);
+
+/// <summary>An administrator adding a user to an auction, at an entry fee of their choosing.</summary>
+public sealed record AddParticipantRequest(Guid UserId, decimal EntryFee);

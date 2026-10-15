@@ -47,6 +47,10 @@ public static class ErrorCodes
     public const string InvalidOrderState = "INVALID_ORDER_STATE";
     public const string OrderAmountOutOfRange = "ORDER_AMOUNT_OUT_OF_RANGE";
     public const string CategoryNotFound = "CATEGORY_NOT_FOUND";
+
+    /// <summary>Departments go two levels deep: main, then sub. Never a third.</summary>
+    public const string CategoryTooDeep = "CATEGORY_TOO_DEEP";
+    public const string CategoryHasSubcategories = "CATEGORY_HAS_SUBCATEGORIES";
     public const string DuplicateSku = "DUPLICATE_SKU";
 
     // Prizes
@@ -68,10 +72,15 @@ public static class ErrorCodes
     public const string OtpTooManyAttempts = "OTP_TOO_MANY_ATTEMPTS";
     public const string OtpRequestTooSoon = "OTP_REQUEST_TOO_SOON";
     public const string OtpDestinationInvalid = "OTP_DESTINATION_INVALID";
+    public const string PhoneNumberInvalid = "PHONE_NUMBER_INVALID";
+    public const string PhoneNumberTaken = "PHONE_NUMBER_TAKEN";
 
     // Generic
     public const string ValidationFailed = "VALIDATION_FAILED";
     public const string NotFound = "NOT_FOUND";
     public const string Conflict = "CONFLICT";
     public const string InternalError = "INTERNAL_ERROR";
+
+    /// <summary>The platform is up but something it depends on — the database — is not answering.</summary>
+    public const string ServiceUnavailable = "SERVICE_UNAVAILABLE";
 }

@@ -21,9 +21,16 @@ public sealed class AuctionService : IAuctionService
     }
 
     public async Task<PagedResult<AuctionListItemDto>> ListAsync(
-        AuctionListQuery query, Guid? userId, CancellationToken ct = default)
+        AuctionListQuery query, Guid? userId, bool includeDrafts = false, CancellationToken ct = default)
     {
-        var q = _db.Auctions.AsNoTracking().Where(a => a.Status != AuctionStatus.Draft);
+        var q = _db.Auctions.AsNoTracking();
+
+        // A draft is not public. It is, however, the whole point of the admin list: an auction is
+        // created as a draft and has to be found again before it can be published.
+        if (!includeDrafts)
+        {
+            q = q.Where(a => a.Status != AuctionStatus.Draft);
+        }
 
         if (query.Status.HasValue)
         {
@@ -32,6 +39,9 @@ public sealed class AuctionService : IAuctionService
 
         q = query.Group?.ToLowerInvariant() switch
         {
+            // Only ever reachable from the admin console, which is the only caller that asks for
+            // drafts at all; a public request filtered to "draft" still matches nothing.
+            "draft" => q.Where(a => a.Status == AuctionStatus.Draft),
             "live" => q.Where(a => a.Status == AuctionStatus.Live || a.Status == AuctionStatus.FinalPhase),
             "upcoming" => q.Where(a =>
                 a.Status == AuctionStatus.RegistrationOpen ||
@@ -47,6 +57,29 @@ public sealed class AuctionService : IAuctionService
             _ => q
         };
 
+        if (query.Featured == true)
+        {
+            /*
+             * Featured *and* still open.
+             *
+             * The flag alone is not enough. An auction finishes on a background worker's clock, not
+             * on an administrator's, so between the last bid and anybody noticing there is always a
+             * window where a finished auction still carries the mark. Filtering here means the row
+             * empties itself the second the auction ends, and no stale flag can ever put a closed
+             * door on the front page.
+             *
+             * Written out rather than calling AuctionStateMachine.CanBeFeatured because this has to
+             * reach the database as SQL, and EF cannot translate a method call.
+             */
+            q = q.Where(a => a.IsFeatured && (
+                a.Status == AuctionStatus.RegistrationOpen ||
+                a.Status == AuctionStatus.WaitingForParticipants ||
+                a.Status == AuctionStatus.Ready ||
+                a.Status == AuctionStatus.WaitingForStart ||
+                a.Status == AuctionStatus.Live ||
+                a.Status == AuctionStatus.FinalPhase));
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim().ToLowerInvariant();
@@ -56,14 +89,24 @@ public sealed class AuctionService : IAuctionService
 
         var total = await q.LongCountAsync(ct);
 
-        var rows = await q
-            .OrderByDescending(a => a.CreatedAt)
+        /*
+         * The featured row is the one list an administrator arranges by hand, so it is the one
+         * list that is not simply newest first. Everything never dragged sits at zero and falls
+         * back to newest first, which is what an auction featured a moment ago expects.
+         */
+        var ordered = query.Featured == true
+            ? q.OrderBy(a => a.FeaturedOrder).ThenByDescending(a => a.CreatedAt)
+            : q.OrderByDescending(a => a.CreatedAt);
+
+        var rows = await ordered
             .Skip(query.Skip)
             .Take(query.PageSize)
             .Select(a => new
             {
                 a.Id, a.AuctionNumber, a.Title, a.MainProductNameSnapshot,
-                MainImage = a.MainProduct != null ? a.MainProduct.PrimaryImageUrl : null,
+                MainImage = a.MainImageSnapshot,
+                a.CoverImageUrl,
+                a.IsFeatured,
                 a.OriginalPrice, a.StartingPrice, a.CurrentPrice, a.TargetPrice,
                 a.EntryFee, a.Currency, a.ParticipantCount, a.RequiredParticipants,
                 a.Status, a.ScheduledStartAt, a.ActualStartedAt, a.DurationSeconds
@@ -77,7 +120,8 @@ public sealed class AuctionService : IAuctionService
             a.OriginalPrice, a.StartingPrice, a.CurrentPrice, a.TargetPrice,
             a.EntryFee, a.Currency, a.ParticipantCount, a.RequiredParticipants,
             a.Status, a.ScheduledStartAt, a.ActualStartedAt,
-            RemainingSeconds(a.ActualStartedAt, a.DurationSeconds, a.Status, now))).ToList();
+            RemainingSeconds(a.ActualStartedAt, a.DurationSeconds, a.Status, now),
+            a.CoverImageUrl, a.IsFeatured)).ToList();
 
         return PagedResult<AuctionListItemDto>.Create(items, query.Page, query.PageSize, total);
     }
@@ -93,7 +137,6 @@ public sealed class AuctionService : IAuctionService
     {
         var auction = await _db.Auctions
             .AsNoTracking()
-            .Include(a => a.MainProduct)
             .FirstOrDefaultAsync(a => a.Id == auctionId, ct)
             ?? throw new DomainException(ErrorCodes.AuctionNotFound, "Auction not found.");
 
@@ -103,7 +146,7 @@ public sealed class AuctionService : IAuctionService
             .OrderBy(p => p.Rank)
             .Select(p => new AuctionPrizeDto(
                 p.Id, p.ProductId, p.Rank, p.ProductNameSnapshot,
-                p.ProductImageSnapshot, p.OriginalPrice, auction.Currency))
+                p.ProductImageSnapshot, p.Description, p.OriginalPrice, auction.Currency))
             .ToListAsync(ct);
 
         AuctionParticipant? me = null;
@@ -122,7 +165,7 @@ public sealed class AuctionService : IAuctionService
 
         return new AuctionDetailDto(
             auction.Id, auction.AuctionNumber, auction.Title, auction.Description,
-            auction.MainProductNameSnapshot, auction.MainProduct?.PrimaryImageUrl,
+            auction.MainProductNameSnapshot, auction.MainImageSnapshot,
             auction.OriginalPrice, auction.StartingPrice, auction.CurrentPrice,
             auction.TargetPercentage, auction.TargetPrice,
             auction.FinalPhasePercentage, auction.FinalPhasePrice,
@@ -136,7 +179,9 @@ public sealed class AuctionService : IAuctionService
             AuctionRules.Progress(auction.StartingPrice, auction.CurrentPrice, auction.TargetPrice),
             prizes,
             me is not null, myRank, me?.HighestPrice, me?.BidCount,
-            _clock.UtcNow);
+            _clock.UtcNow,
+            auction.CoverImageUrl,
+            auction.IsFeatured);
     }
 
     /// <summary>
@@ -176,11 +221,21 @@ public sealed class AuctionService : IAuctionService
     {
         take = take is < 1 or > 100 ? 10 : take;
 
+        /*
+         * Everyone who is in the auction, not only those who have already bid.
+         *
+         * Ranking by highest price alone hid the room until somebody moved: a participant watching
+         * the first minute saw an empty board and no sign of the people they are bidding against.
+         * Those who have bid come first, in price order; the rest follow in the order they joined,
+         * with nothing claimed about a price they have not offered.
+         */
         var rows = await _db.AuctionParticipants
             .AsNoTracking()
-            .Where(p => p.AuctionId == auctionId && p.BidCount > 0)
-            .OrderByDescending(p => p.HighestPrice)
+            .Where(p => p.AuctionId == auctionId)
+            .OrderByDescending(p => p.BidCount > 0)
+            .ThenByDescending(p => p.HighestPrice)
             .ThenBy(p => p.HighestPriceAt)
+            .ThenBy(p => p.JoinedAt)
             .Take(take)
             .Select(p => new
             {

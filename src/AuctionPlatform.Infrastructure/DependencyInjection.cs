@@ -5,6 +5,7 @@ using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Identity;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Prizes;
+using AuctionPlatform.Application.Site;
 using AuctionPlatform.Application.Store;
 using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Entities;
@@ -32,6 +33,7 @@ public static class DependencyInjection
         services.Configure<FirebaseOptions>(configuration.GetSection(FirebaseOptions.SectionName));
         services.Configure<PaymentOptions>(configuration.GetSection(PaymentOptions.SectionName));
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
+        services.Configure<TawkedOptions>(configuration.GetSection(TawkedOptions.SectionName));
 
         AddPersistence(services, configuration);
         AddIdentity(services);
@@ -76,7 +78,9 @@ public static class DependencyInjection
                 options.Password.RequireUppercase = false;
                 options.Password.RequireNonAlphanumeric = false;
 
-                options.User.RequireUniqueEmail = true;
+                // Accounts created by phone sign-in have no email, and Identity rejects a missing
+                // email while this is on. Registration checks for a duplicate email itself.
+                options.User.RequireUniqueEmail = false;
 
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
                 options.Lockout.MaxFailedAccessAttempts = 10;
@@ -128,7 +132,19 @@ public static class DependencyInjection
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
 
-        // Swap this for a real SMS/email provider in production; the interface is the seam.
+        /*
+         * One-time codes.
+         *
+         * Tawked issues, delivers and checks the code for a Saudi mobile number. It is always
+         * registered, and answers IsEnabled false when no key is configured, so the decision lives
+         * in one place instead of in a nullable dependency.
+         *
+         * IOtpSender is what remains for a code we generate ourselves — an email destination,
+         * which Tawked does not serve. Its only implementation still writes to the log rather than
+         * sending anything, so email delivery is not solved by this and must not be relied on.
+         */
+        services.AddHttpClient<ITawkedVerifyClient, TawkedVerifyClient>();
+
         services.AddSingleton<IOtpSender>(sp => new LoggingOtpSender(
             sp.GetRequiredService<ILocalizationService>(),
             sp.GetRequiredService<ILogger<LoggingOtpSender>>(),
@@ -155,6 +171,8 @@ public static class DependencyInjection
         services.AddScoped<StoreOrderService>();
         services.AddScoped<IStoreOrderService>(sp => sp.GetRequiredService<StoreOrderService>());
         services.AddScoped<IStoreAdminService, StoreAdminService>();
+        services.AddScoped<ISiteContentService, SiteContentService>();
+        services.AddScoped<IAppAdService, AppAdService>();
 
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IPaymentWebhookService, PaymentWebhookService>();

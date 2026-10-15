@@ -11,7 +11,13 @@ public sealed record StoreCategoryDto(
     string? ImageUrl,
     int DisplayOrder,
     StoreCategoryStatus Status,
-    int ProductCount);
+
+    /// <summary>For a main department, its own products and those of its sub-departments.</summary>
+    int ProductCount,
+
+    /// <summary>The main department this one sits under; null for a main department.</summary>
+    Guid? ParentId = null,
+    string? ParentName = null);
 
 public sealed record StoreProductImageDto(Guid Id, string Url, string? ThumbnailUrl, bool IsPrimary, int DisplayOrder);
 
@@ -23,6 +29,9 @@ public sealed record StoreProductListItemDto(
     Guid? CategoryId,
     string? CategoryName,
     decimal Price,
+
+    /// <summary>The price before the offer, when there is one.</summary>
+    decimal? CompareAtPrice,
     string Currency,
     string? PrimaryImageUrl,
     int AvailableQuantity,
@@ -30,7 +39,24 @@ public sealed record StoreProductListItemDto(
     StoreProductStatus Status,
     StorePaymentMode PaymentMode,
     bool AcceptsShoppingCredit,
-    bool IsFeatured);
+    bool IsFeatured)
+{
+    public bool IsOnOffer => StoreDiscount.Applies(Price, CompareAtPrice);
+    public int DiscountPercentage => StoreDiscount.Percentage(Price, CompareAtPrice);
+}
+
+/// <summary>
+/// An offer is the difference between the price and the price before it, never a number of its
+/// own, so the badge and the two prices can never disagree.
+/// </summary>
+public static class StoreDiscount
+{
+    public static bool Applies(decimal price, decimal? compareAt) => compareAt is { } was && was > price;
+
+    /// <summary>Whole percent off, rounded down; zero when there is no offer.</summary>
+    public static int Percentage(decimal price, decimal? compareAt) =>
+        Applies(price, compareAt) ? (int)Math.Floor((compareAt!.Value - price) / compareAt.Value * 100m) : 0;
+}
 
 public sealed record StoreProductDetailDto(
     Guid Id,
@@ -41,6 +67,7 @@ public sealed record StoreProductDetailDto(
     Guid? CategoryId,
     string? CategoryName,
     decimal Price,
+    decimal? CompareAtPrice,
     string Currency,
     int StockQuantity,
     int ReservedQuantity,
@@ -56,7 +83,15 @@ public sealed record StoreProductDetailDto(
     decimal ShippingFee,
     IReadOnlyList<StoreProductImageDto> Images,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+
+    /// <summary>The main department above the product's own, for the "main › sub" path.</summary>
+    Guid? ParentCategoryId = null,
+    string? ParentCategoryName = null)
+{
+    public bool IsOnOffer => StoreDiscount.Applies(Price, CompareAtPrice);
+    public int DiscountPercentage => StoreDiscount.Percentage(Price, CompareAtPrice);
+}
 
 public sealed class StoreProductQuery : PagedQuery
 {
@@ -65,6 +100,9 @@ public sealed class StoreProductQuery : PagedQuery
     public decimal? MaxPrice { get; set; }
     public bool? InStockOnly { get; set; }
     public bool? FeaturedOnly { get; set; }
+
+    /// <summary>Only items whose price is below their price before the offer.</summary>
+    public bool? OnOfferOnly { get; set; }
     public StorePaymentMode? PaymentMode { get; set; }
 
     /// <summary>Admin-only filter; public queries always see the public visibility set.</summary>
@@ -79,6 +117,9 @@ public sealed record StoreHomeDto(
     IReadOnlyList<StoreProductListItemDto> NewArrivals,
     IReadOnlyList<StoreProductListItemDto> Popular,
     IReadOnlyList<StoreProductListItemDto> ShoppingCreditEligible,
+
+    /// <summary>Items with a real discount, the biggest saving first.</summary>
+    IReadOnlyList<StoreProductListItemDto> Offers,
     decimal ShoppingCreditBalance,
     string Currency);
 
@@ -89,6 +130,7 @@ public sealed record CreateStoreProductRequest(
     Guid? CategoryId,
     string Sku,
     decimal Price,
+    decimal? CompareAtPrice,
     string? Currency,
     int StockQuantity,
     StoreProductStatus? Status,
@@ -108,6 +150,7 @@ public sealed record UpdateStoreProductRequest(
     Guid? CategoryId,
     string? Sku,
     decimal? Price,
+    decimal? CompareAtPrice,
     StorePaymentMode? PaymentMode,
     bool? IsFeatured,
     bool? RequiresShipping,
@@ -115,12 +158,19 @@ public sealed record UpdateStoreProductRequest(
     int? LowStockThreshold,
     IReadOnlyList<StoreProductImageRequest>? Images);
 
+/// <param name="ParentId">The main department to sit under; null makes a main department.</param>
 public sealed record CreateStoreCategoryRequest(
-    string Name, string? Slug, string? Description, string? ImageUrl, int? DisplayOrder);
+    string Name, string? Slug, string? Description, string? ImageUrl, int? DisplayOrder,
+    Guid? ParentId = null);
 
+/// <param name="ParentId">
+/// Null leaves the parent as it is. <see cref="Guid.Empty"/> makes it a main department.
+/// Any other id moves it under that main department.
+/// </param>
 public sealed record UpdateStoreCategoryRequest(
     string? Name, string? Slug, string? Description, string? ImageUrl,
-    int? DisplayOrder, StoreCategoryStatus? Status);
+    int? DisplayOrder, StoreCategoryStatus? Status,
+    Guid? ParentId = null);
 
 public sealed record AdjustInventoryRequest(int Delta, string Reason, InventoryTransactionType? Type);
 

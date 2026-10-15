@@ -2,19 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/api_exception.dart';
+import '../../../core/format/saudi_phone.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/brand.dart';
+import '../../../shared/legal_links.dart';
+import '../../../shared/widgets.dart';
 import '../../../shared/otp_input.dart';
 import '../data/auth_repository.dart' show OtpChallenge;
 
-/// How the user is signing in.
-enum _Mode { otp, password, register }
-
-/// Sign-in and registration.
+/// Sign-in by phone number and a one-time code.
 ///
-/// A one-time code is the default: it needs no password, and proving control of the phone or email
-/// is the same evidence a password reset would rely on anyway. Password sign-in and registration
-/// remain available.
+/// This is also sign-up: the server creates an account the first time a new number is verified,
+/// and the app then asks for the user's name on the complete-profile screen.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -23,25 +24,14 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-
-  final _destination = TextEditingController();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  final _name = TextEditingController();
   final _phone = TextEditingController();
 
-  _Mode _mode = _Mode.otp;
   OtpChallenge? _challenge;
   String? _error;
   bool _busy = false;
 
   @override
   void dispose() {
-    _destination.dispose();
-    _email.dispose();
-    _password.dispose();
-    _name.dispose();
     _phone.dispose();
     super.dispose();
   }
@@ -50,9 +40,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   // ------------------------------------------------------------------ actions
 
+  /// The number in canonical +9665XXXXXXXX form, which is what gets sent and verified.
+  String? get _canonicalPhone => SaudiPhone.normalise(_phone.text);
+
   Future<void> _sendCode() async {
-    final destination = _destination.text.trim();
-    if (destination.isEmpty) return;
+    if (_phone.text.trim().isEmpty) return;
+
+    final phone = _canonicalPhone;
+    if (phone == null) {
+      setState(() => _error = AppStrings.of(context).invalidSaudiPhone);
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -62,11 +60,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final challenge = await ref
           .read(authControllerProvider.notifier)
-          .requestLoginOtp(destination, _language);
+          .requestLoginOtp(phone, _language);
 
       setState(() => _challenge = challenge);
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.displayMessage);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -81,82 +79,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       await ref
           .read(authControllerProvider.notifier)
-          .signInWithOtp(_destination.text.trim(), code);
+          .signInWithOtp(_canonicalPhone!, code);
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.displayMessage);
     } catch (_) {
       setState(() => _error = AppStrings.of(context).somethingWentWrong);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
-
-  Future<void> _submitPassword() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    try {
-      final auth = ref.read(authControllerProvider.notifier);
-
-      if (_mode == _Mode.register) {
-        await auth.register(
-          fullName: _name.text.trim(),
-          email: _email.text.trim(),
-          password: _password.text,
-          phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-          language: _language,
-        );
-      } else {
-        await auth.signIn(_email.text.trim(), _password.text);
-      }
-    } on ApiException catch (e) {
-      setState(() => _error = e.details.isNotEmpty ? e.details.join('\n') : e.message);
-    } catch (_) {
-      setState(() => _error = AppStrings.of(context).somethingWentWrong);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  void _switchMode(_Mode mode) => setState(() {
-        _mode = mode;
-        _challenge = null;
-        _error = null;
-      });
 
   // ------------------------------------------------------------------ build
 
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
-    final theme = Theme.of(context);
 
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppTheme.space6),
             child: ConstrainedBox(
+              // Caps the form on a laptop or tablet: a full-width login field looks unfinished.
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.gavel_rounded, size: 56, color: theme.colorScheme.primary),
-                  const SizedBox(height: 16),
-                  Text(t.appName,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 28),
+                  // The app signs its own name here rather than showing a stand-in icon.
+                  Center(
+                      child: DealGoLockup(
+                    markHeight: 46,
+                    fontSize: 28,
+                    tagline: t.tagline,
+                  )),
+                  const SizedBox(height: AppTheme.space6),
 
-                  if (_mode == _Mode.otp)
-                    _challenge == null ? _destinationStep(t) : _codeStep(t)
-                  else
-                    _passwordForm(t),
+                  SurfaceCard(
+                    padding: const EdgeInsets.all(AppTheme.space5),
+                    child: _challenge == null ? _phoneStep(t) : _codeStep(t),
+                  ),
                 ],
               ),
             ),
@@ -166,19 +128,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _destinationStep(AppStrings t) {
+  Widget _phoneStep(AppStrings t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text(t.phoneSignInHint,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 16),
         TextField(
-          controller: _destination,
+          controller: _phone,
           enabled: !_busy,
           decoration: InputDecoration(
-            labelText: t.emailOrPhone,
-            prefixIcon: const Icon(Icons.alternate_email_rounded),
+            labelText: t.mobileNumber,
+            hintText: SaudiPhone.hint,
+            hintTextDirection: TextDirection.ltr,
+            prefixIcon: const Icon(Icons.phone_iphone_rounded),
+            // At the end of the field, which in Arabic is its left edge, so it reads
+            // "+966 5X XXX XXXX" left to right just as the number is written.
+            suffixIcon: const _CountryCode(),
           ),
-          keyboardType: TextInputType.emailAddress,
+          keyboardType: TextInputType.phone,
+          inputFormatters: const [SaudiPhoneInputFormatter()],
+          autofillHints: const [AutofillHints.telephoneNumberNational],
+          // Phone numbers read left to right even in the Arabic layout.
+          textDirection: TextDirection.ltr,
           textInputAction: TextInputAction.done,
+          onChanged: (_) {
+            if (_error != null) setState(() => _error = null);
+          },
           onSubmitted: (_) => _sendCode(),
         ),
         if (_error != null) ...[
@@ -196,11 +174,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : Text(t.sendCode),
         ),
-        const SizedBox(height: 10),
-        TextButton(
-          onPressed: _busy ? null : () => _switchMode(_Mode.password),
-          child: Text(t.signInWithPassword),
-        ),
+        const SizedBox(height: 16),
+        const LegalConsentText(),
       ],
     );
   }
@@ -224,84 +199,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     _challenge = null;
                     _error = null;
                   }),
-          child: Text('${t.changeDestination} · ${t.emailOrPhone}'),
+          child: Text('${t.changeDestination} · ${t.phone}'),
         ),
       ],
     );
   }
+}
 
-  Widget _passwordForm(AppStrings t) {
-    final registering = _mode == _Mode.register;
+/// The fixed Saudi country code beside the number field.
+class _CountryCode extends StatelessWidget {
+  const _CountryCode();
 
-    return Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 12, start: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (registering) ...[
-            TextFormField(
-              controller: _name,
-              decoration: InputDecoration(labelText: t.fullName),
-              textInputAction: TextInputAction.next,
-              validator: (v) => (v == null || v.trim().isEmpty) ? '—' : null,
+          Container(width: 1, height: 24, color: theme.colorScheme.outlineVariant),
+          const SizedBox(width: 10),
+          Text(
+            SaudiPhone.countryCode,
+            textDirection: TextDirection.ltr,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
-            const SizedBox(height: 12),
-          ],
-
-          TextFormField(
-            controller: _email,
-            decoration: InputDecoration(labelText: t.email),
-            keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next,
-            autofillHints: const [AutofillHints.email],
-            validator: (v) => (v == null || !v.contains('@')) ? '—' : null,
-          ),
-          const SizedBox(height: 12),
-
-          TextFormField(
-            controller: _password,
-            decoration: InputDecoration(labelText: t.password),
-            obscureText: true,
-            textInputAction: TextInputAction.done,
-            onFieldSubmitted: (_) => _submitPassword(),
-            validator: (v) => (v == null || v.length < 8) ? '—' : null,
-          ),
-
-          if (registering) ...[
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _phone,
-              decoration: InputDecoration(labelText: t.phone),
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-
-          if (_error != null) ...[
-            const SizedBox(height: 14),
-            Text(_error!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ],
-
-          const SizedBox(height: 22),
-          FilledButton(
-            onPressed: _busy ? null : _submitPassword,
-            child: _busy
-                ? const SizedBox(
-                    height: 20, width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text(registering ? t.register : t.login),
-          ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: _busy
-                ? null
-                : () => _switchMode(registering ? _Mode.password : _Mode.register),
-            child: Text(registering ? t.haveAccount : t.noAccount),
-          ),
-          TextButton(
-            onPressed: _busy ? null : () => _switchMode(_Mode.otp),
-            child: Text(t.signInWithCode),
           ),
         ],
       ),

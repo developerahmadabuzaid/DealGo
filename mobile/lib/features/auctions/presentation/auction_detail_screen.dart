@@ -10,8 +10,11 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
 import '../../../core/realtime/auction_hub_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/auto_refresh.dart';
+import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
+import 'bidding_arena_screen.dart';
 import 'live_auction_controller.dart';
 
 /// One auction, in whichever of its phases it happens to be.
@@ -29,6 +32,18 @@ class AuctionDetailScreen extends ConsumerStatefulWidget {
 
 class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
   Timer? _tick;
+
+  /// The arena opens by itself once per visit, the first time a joined auction is seen live.
+  /// Closing it leaves the user on this page; the button here opens it again.
+  bool _arenaShown = false;
+  bool _arenaOpen = false;
+
+  Future<void> _openArena(String title) async {
+    if (_arenaOpen || !mounted) return;
+    _arenaOpen = true;
+    await BiddingArenaScreen.open(context, auctionId: widget.auctionId, title: title);
+    _arenaOpen = false;
+  }
 
   @override
   void initState() {
@@ -53,6 +68,11 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
 
     ref.listen(liveAuctionProvider(widget.auctionId), (prev, next) {
       if (next.rankMessage != null && next.rankMessage != prev?.rankMessage) {
+        // The arena says this in its own way; a snackbar would cover its bid button.
+        if (_arenaOpen) {
+          ref.read(liveAuctionProvider(widget.auctionId).notifier).clearRankMessage();
+          return;
+        }
         final message = next.rankMessage == 'inTopFour' ? t.inTopFour : t.lostFourthPlace;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
@@ -66,31 +86,41 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
       }
     });
 
-    return detailAsync.when(
+    final page = detailAsync.when(
+      // A refresh that fails keeps the page on screen rather than swapping in an error.
+      skipError: true,
       loading: () => Scaffold(
-        appBar: AppBar(),
+        appBar: const BrandAppBar(),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => Scaffold(
-        appBar: AppBar(),
+        appBar: const BrandAppBar(),
         body: ErrorView(
-          message: e is ApiException ? e.message : e.toString(),
+          message: e is ApiException ? e.displayMessage : e.toString(),
           onRetry: () => ref.invalidate(auctionDetailProvider(widget.auctionId)),
         ),
       ),
       data: (detail) {
         final snapshot = live.snapshot;
         final isLive = snapshot?.isLive ?? detail.isLive;
+        final canEnterArena = isLive && snapshot != null && detail.hasJoined;
+
+        if (canEnterArena && !_arenaShown) {
+          _arenaShown = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _openArena(detail.title));
+        }
 
         return Scaffold(
           backgroundColor: (snapshot?.isFinalPhase ?? false)
               ? AppTheme.urgentDeep.withValues(alpha: 0.05)
               : null,
-          appBar: AppBar(
-            title: Text(detail.auctionNumber),
+          appBar: BrandAppBar(
+            // The number now sits on the image, so the bar carries the name — which is what
+            // tells you which auction you are looking at once the image scrolls away.
+            title: Text(detail.title, maxLines: 1, overflow: TextOverflow.ellipsis),
             actions: [
               if (isLive) _ConnectionIndicator(status: live.hubStatus),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppTheme.space2),
             ],
           ),
           body: RefreshIndicator(
@@ -99,30 +129,84 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
               await ref.read(liveAuctionProvider(widget.auctionId).notifier).resync();
             },
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+              padding: const EdgeInsets.fromLTRB(
+                  AppTheme.space4, AppTheme.space4, AppTheme.space4, 140),
               children: [
                 if (live.error != null)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.only(bottom: AppTheme.space3),
                     child: _Banner(
                       text: live.error!,
                       color: Theme.of(context).colorScheme.errorContainer,
                     ),
                   ),
 
-                RemoteImage(detail.mainImageUrl, height: 190, width: double.infinity),
-                const SizedBox(height: 14),
+                // The product, with its number set on the image rather than stacked above the
+                // title, so the eye reaches the name without stepping over an id first.
+                Stack(
+                  children: [
+                    // The auction's own picture; the first prize's picture when it has none.
+                    RemoteImage(detail.imageUrl,
+                        height: 210, width: double.infinity, radius: AppTheme.radiusLg),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                          gradient: const LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Color(0x73000000), Color(0x00000000)],
+                            stops: [0, 0.5],
+                          ),
+                        ),
+                      ),
+                    ),
+                    PositionedDirectional(
+                      bottom: AppTheme.space3,
+                      start: AppTheme.space3,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                        ),
+                        child: LtrText(
+                          detail.auctionNumber,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.space4),
 
-                Text(detail.title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
+                Text(detail.title, style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 3),
                 Text(detail.mainProductName,
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        )),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: AppTheme.space5),
+
+                if (canEnterArena) ...[
+                  FilledButton.icon(
+                    onPressed: () => _openArena(detail.title),
+                    icon: const Icon(Icons.bolt_rounded),
+                    label: Text(t.enterArena),
+                    style: FilledButton.styleFrom(
+                      backgroundColor:
+                          snapshot.isFinalPhase ? AppTheme.finalPhase : AppTheme.accent,
+                      minimumSize: const Size.fromHeight(54),
+                    ),
+                  ),
+                  const SizedBox(height: AppTheme.space4),
+                ],
 
                 if (detail.acceptsRegistration)
                   _RegistrationPanel(detail: detail)
@@ -134,7 +218,7 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
                   _ResultsPanel(detail: detail),
 
                 const SizedBox(height: 22),
-                _PrizeList(detail: detail),
+                _PrizeList(detail: detail, livePrice: snapshot?.currentPrice),
 
                 if (snapshot != null && snapshot.leaderboard.isNotEmpty) ...[
                   const SizedBox(height: 22),
@@ -148,6 +232,14 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
               : null,
         );
       },
+    );
+
+    // The page refreshes itself, so a change of state — enough people joined, the start time set,
+    // the auction started or ended — shows up without the user pulling down. Bids still arrive
+    // instantly over the live connection.
+    return AutoRefresh(
+      onRefresh: () => ref.invalidate(auctionDetailProvider(widget.auctionId)),
+      child: page,
     );
   }
 }
@@ -217,7 +309,7 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: AppTheme.urgentDeep),
+          SnackBar(content: Text(e.displayMessage), backgroundColor: AppTheme.urgentDeep),
         );
       }
     } finally {
@@ -237,19 +329,12 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('${d.participantCount} / ${d.requiredParticipants}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold)),
-                Text(t.participantsRemaining(d.participantsRemaining)),
-              ],
-            ),
+            // How full the auction is, as a bar only: the app does not show participant numbers.
+            Text(t.participantsFilling,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             TargetProgressBar(
+                height: 10,
                 progress: d.requiredParticipants == 0
                     ? 0
                     : d.participantCount / d.requiredParticipants),
@@ -261,10 +346,12 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
                     child: Stat(
                         label: t.originalPrice,
                         value: Fmt.money(d.originalPrice, d.currency, locale: locale))),
+                const SizedBox(width: AppTheme.space2),
                 Expanded(
                     child: Stat(
                         label: t.targetPrice,
                         value: Fmt.money(d.targetPrice, d.currency, locale: locale))),
+                const SizedBox(width: AppTheme.space2),
                 Expanded(
                     child: Stat(
                         label: t.entryFee,
@@ -313,7 +400,7 @@ class _WaitingPanel extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Text(t.countdownComplete(detail.participantCount, detail.requiredParticipants),
+            Text(t.participantsComplete,
                 style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.success)),
             const SizedBox(height: 18),
             Text(t.auctionStartsIn,
@@ -352,108 +439,190 @@ class _LivePanel extends StatelessWidget {
     final locale = Localizations.localeOf(context).languageCode;
     final urgent = snapshot.isFinalPhase;
 
-    return Card(
-      color: urgent ? AppTheme.urgentDeep.withValues(alpha: 0.08) : null,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (urgent) ...[
-              Center(
-                child: Text('🔥 ${t.finalPhase}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                        color: AppTheme.urgentDeep, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 14),
+    final accent = urgent ? AppTheme.finalPhase : AppTheme.live;
+
+    return SurfaceCard(
+      accent: accent,
+      padding: const EdgeInsets.all(AppTheme.space5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Question one the user has: is this live, and how close is the end?
+          Center(
+            child: urgent
+                ? StatusPill(t.finalPhase,
+                    color: AppTheme.finalPhase,
+                    icon: Icons.local_fire_department_rounded,
+                    filled: true,
+                    pulse: true)
+                : StatusPill(t.liveAuctions,
+                    color: AppTheme.live, icon: Icons.circle, filled: true, pulse: true),
+          ),
+
+          const SizedBox(height: AppTheme.space5),
+
+          // Question two: what does it cost right now? This is the largest thing on the screen.
+          PriceDisplay(
+            label: t.currentPrice,
+            amount: Fmt.money(snapshot.currentPrice, snapshot.currency, locale: locale),
+            color: accent,
+            animate: true,
+            size: 40,
+          ),
+
+          const SizedBox(height: AppTheme.space5),
+
+          // Question three: how long is left?
+          _Countdown(remaining: state.remaining, urgent: urgent, label: t.remaining),
+
+          const SizedBox(height: AppTheme.space5),
+
+          TargetProgressBar(progress: snapshot.progress, urgent: urgent, height: 10),
+          const SizedBox(height: AppTheme.space2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(Fmt.money(snapshot.startingPrice, snapshot.currency, locale: locale),
+                  style: theme.textTheme.bodySmall),
+              Text('${t.progressToTarget} ${Fmt.percent(snapshot.progress)}',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(fontWeight: FontWeight.w700, color: accent)),
+              Text(Fmt.money(snapshot.targetPrice, snapshot.currency, locale: locale),
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
             ],
+          ),
 
-            // The countdown is always visible during the final phase.
-            Center(
-              child: Column(
-                children: [
-                  Text(t.remaining, style: theme.textTheme.bodySmall),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 250),
-                    style: theme.textTheme.displaySmall!.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: urgent ? AppTheme.urgentDeep : theme.colorScheme.onSurface,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                    child: Text(Fmt.duration(state.remaining)),
-                  ),
-                ],
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppTheme.space5),
+            child: Divider(height: 1),
+          ),
+
+          Row(
+            children: [
+              Expanded(
+                child: Stat(
+                  label: t.yourRank,
+                  value: snapshot.myRank == null ? '—' : '#${snapshot.myRank}',
+                  valueColor: (snapshot.myRank ?? 99) <= 4 ? AppTheme.success : null,
+                  align: CrossAxisAlignment.center,
+                  ltrValue: true,
+                ),
               ),
-            ),
-
-            const SizedBox(height: 20),
-
-            Center(
-              child: Column(
-                children: [
-                  Text(t.currentPrice, style: theme.textTheme.bodySmall),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    transitionBuilder: (child, animation) =>
-                        ScaleTransition(scale: animation, child: child),
-                    child: Text(
-                      Fmt.money(snapshot.currentPrice, snapshot.currency, locale: locale),
-                      key: ValueKey(snapshot.currentPrice),
-                      style: theme.textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: urgent ? AppTheme.urgent : theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: AppTheme.space2),
+              Expanded(
+                child: Stat(
+                  label: t.yourHighest,
+                  value: Fmt.money(snapshot.myHighestPrice ?? 0, snapshot.currency, locale: locale),
+                  align: CrossAxisAlignment.center,
+                ),
               ),
-            ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-            const SizedBox(height: 16),
-            TargetProgressBar(progress: snapshot.progress, urgent: urgent),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(Fmt.money(snapshot.startingPrice, snapshot.currency, locale: locale),
-                    style: theme.textTheme.bodySmall),
-                Text('${t.progressToTarget} ${Fmt.percent(snapshot.progress)}',
-                    style: theme.textTheme.bodySmall),
-                Text(Fmt.money(snapshot.targetPrice, snapshot.currency, locale: locale),
-                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
-              ],
-            ),
+/// The countdown, split into labelled hour / minute / second blocks.
+///
+/// Each unit sits in its own box so the eye can read one number rather than parse a string, and
+/// the separators do not drift as the digits change. Always left-to-right, even in Arabic: a
+/// clock is not a sentence, and mirroring it would put the seconds where the hours belong.
+class _Countdown extends StatelessWidget {
+  const _Countdown({required this.remaining, required this.urgent, required this.label});
 
-            const Divider(height: 30),
+  final Duration remaining;
+  final bool urgent;
+  final String label;
 
-            Row(
-              children: [
-                Expanded(
-                  child: Stat(
-                    label: t.yourRank,
-                    value: snapshot.myRank == null ? '—' : '#${snapshot.myRank}',
-                    valueColor: (snapshot.myRank ?? 99) <= 4 ? AppTheme.success : null,
-                    align: CrossAxisAlignment.center,
-                  ),
-                ),
-                Expanded(
-                  child: Stat(
-                    label: t.yourHighest,
-                    value: Fmt.money(snapshot.myHighestPrice ?? 0, snapshot.currency, locale: locale),
-                    align: CrossAxisAlignment.center,
-                  ),
-                ),
-                Expanded(
-                  child: Stat(
-                    label: t.participants,
-                    value: Fmt.number(snapshot.participantCount),
-                    align: CrossAxisAlignment.center,
-                  ),
-                ),
-              ],
-            ),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = remaining.isNegative ? Duration.zero : remaining;
+
+    final hours = d.inHours;
+    final parts = <(String, String)>[
+      if (hours > 0) (hours.toString().padLeft(2, '0'), 'H'),
+      (d.inMinutes.remainder(60).toString().padLeft(2, '0'), 'M'),
+      (d.inSeconds.remainder(60).toString().padLeft(2, '0'), 'S'),
+    ];
+
+    // Under a minute the clock itself turns red, whatever phase the auction is in.
+    final color = urgent || d.inSeconds <= 60
+        ? AppTheme.finalPhase
+        : theme.colorScheme.onSurface;
+
+    return Column(
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(fontSize: 11, letterSpacing: 0.8),
         ),
+        const SizedBox(height: AppTheme.space2),
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < parts.length; i++) ...[
+                if (i > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: Text(':',
+                        style: theme.textTheme.headlineMedium
+                            ?.copyWith(color: color.withValues(alpha: 0.4), height: 1)),
+                  ),
+                _TimeBlock(value: parts[i].$1, unit: parts[i].$2, color: color),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimeBlock extends StatelessWidget {
+  const _TimeBlock({required this.value, required this.unit, required this.color});
+
+  final String value;
+  final String unit;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontSize: 27,
+              height: 1,
+              color: color,
+              fontFeatures: AppTheme.numeric,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            unit,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontSize: 9.5,
+              letterSpacing: 1,
+              color: color.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -474,49 +643,131 @@ class _BidBar extends ConsumerWidget {
     final locale = Localizations.localeOf(context).languageCode;
     final urgent = snapshot.isFinalPhase;
 
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.dividerColor)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!state.isConnected)
+    final accent = urgent ? AppTheme.finalPhase : AppTheme.live;
+
+    // What the price becomes if this bid lands. Shown so the button is never a leap of faith.
+    final nextPrice = snapshot.currentPrice + snapshot.bidIncrement;
+    final cappedNext = nextPrice > snapshot.targetPrice ? snapshot.targetPrice : nextPrice;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(top: BorderSide(color: theme.colorScheme.outline)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.07),
+            blurRadius: 20,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppTheme.space4, AppTheme.space3, AppTheme.space4, AppTheme.space3),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!state.isConnected)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: AppTheme.space2),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.space3, vertical: AppTheme.space2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.wifi_off_rounded,
+                          size: 14, color: theme.colorScheme.onErrorContainer),
+                      const SizedBox(width: AppTheme.space2),
+                      Flexible(
+                        child: Text(
+                          state.hubStatus == HubStatus.connecting
+                              ? t.connectionLost
+                              : t.bidsNeedConnection,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onErrorContainer),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Current price and what it becomes, side by side, directly above the button.
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  state.hubStatus == HubStatus.connecting ? t.connectionLost : t.bidsNeedConnection,
-                  style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
-                  textAlign: TextAlign.center,
+                padding: const EdgeInsets.only(bottom: AppTheme.space3),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Stat(
+                        label: t.currentPrice,
+                        value: Fmt.money(snapshot.currentPrice, snapshot.currency, locale: locale),
+                      ),
+                    ),
+                    const SizedBox(width: AppTheme.space2),
+                    Icon(Icons.arrow_forward_rounded,
+                        size: 17, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: AppTheme.space2),
+                    Expanded(
+                      child: Stat(
+                        label: t.yourNextBid,
+                        value: Fmt.money(cappedNext, snapshot.currency, locale: locale),
+                        valueColor: accent,
+                        align: CrossAxisAlignment.end,
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
-            FilledButton(
-              onPressed: state.canBid
-                  ? () => ref.read(liveAuctionProvider(auctionId).notifier).placeBid()
-                  : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: urgent ? AppTheme.urgentDeep : null,
-                minimumSize: const Size.fromHeight(56),
+              FilledButton(
+                onPressed: state.canBid
+                    ? () => ref.read(liveAuctionProvider(auctionId).notifier).placeBid()
+                    : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(58),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  ),
+                ),
+                child: state.isBidding
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.gavel_rounded, size: 19),
+                          const SizedBox(width: AppTheme.space2),
+                          Text(
+                            t.bidButton(Fmt.money(
+                                snapshot.bidIncrement, snapshot.currency, locale: locale)),
+                            style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
               ),
-              child: state.isBidding
-                  ? const SizedBox(
-                      height: 22, width: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(
-                      t.bidButton(Fmt.money(snapshot.bidIncrement, snapshot.currency, locale: locale)),
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
-            ),
-            const SizedBox(height: 6),
-            // The increment moves the price; it is not a charge. Saying so prevents the most
-            // common misunderstanding of this auction format.
-            Text(t.bidIncrementNote,
-                style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
-          ],
+              const SizedBox(height: AppTheme.space2),
+
+              // The increment moves the price; it is not a charge. Saying so prevents the most
+              // common misunderstanding of this auction format.
+              Text(t.bidIncrementNote,
+                  style: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
+                  textAlign: TextAlign.center),
+            ],
+          ),
         ),
       ),
     );
@@ -605,7 +856,7 @@ class _ResultsPanel extends ConsumerWidget {
             ...winners.map((w) => Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
-                    leading: CircleAvatar(child: Text('#${w.rank}')),
+                    leading: CircleAvatar(child: LtrText('#${w.rank}')),
                     title: Text(w.prizeName),
                     subtitle: Text(
                         '${w.displayName} · ${Fmt.money(w.highestPrice, w.currency, locale: locale)}'),
@@ -621,30 +872,99 @@ class _ResultsPanel extends ConsumerWidget {
 }
 
 class _PrizeList extends StatelessWidget {
-  const _PrizeList({required this.detail});
+  const _PrizeList({required this.detail, this.livePrice});
 
   final AuctionDetail detail;
+
+  /// The price pushed over the live connection, newer than the one in [detail].
+  final double? livePrice;
 
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
-    final locale = Localizations.localeOf(context).languageCode;
+    final theme = Theme.of(context);
+
+    // Once the auction is over its closing price sets the discount exactly. Before that, the most a
+    // winner can pay is at the target price, where the auction stops.
+    final exact = detail.isComplete;
+    final auctionPrice = exact ? (livePrice ?? detail.currentPrice) : detail.targetPrice;
+    final discount = discountAt(auctionPrice, detail.originalPrice);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('${t.prizes} (${detail.prizes.length})',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text(t.discountAppliesToAll, style: theme.textTheme.bodySmall),
         const SizedBox(height: 10),
-        ...detail.prizes.map((p) => Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: RemoteImage(p.imageUrl, height: 46, width: 46, radius: 8),
-                title: Text(p.productName),
-                subtitle: Text('#${p.rank}'),
-                trailing: Text(Fmt.money(p.originalPrice, p.currency, locale: locale),
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-              ),
+        for (final p in detail.prizes)
+          Padding(
+              padding: const EdgeInsets.only(bottom: AppTheme.space3),
+              child: SurfaceCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(AppTheme.radiusLg),
+                      ),
+                      child: Stack(
+                        children: [
+                          RemoteImage(
+                            p.imageUrl,
+                            height: 170,
+                            width: double.infinity,
+                            radius: 0,
+                          ),
+                          PositionedDirectional(
+                            top: 12,
+                            start: 12,
+                            child: StatusPill(
+                              t.prizeRank(p.rank),
+                              color: AppTheme.gold,
+                              icon: Icons.emoji_events_rounded,
+                              filled: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                        padding: const EdgeInsets.all(AppTheme.space4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.productName,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (p.description != null && p.description!.trim().isNotEmpty) ...[
+                              const SizedBox(height: AppTheme.space2),
+                              Text(
+                                p.description!,
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            ],
+                            const SizedBox(height: AppTheme.space3),
+                            PrizePriceBox(
+                              fullPrice: p.originalPrice,
+                              price: prizePriceAt(
+                                p.originalPrice,
+                                auctionPrice,
+                                detail.originalPrice,
+                              ),
+                              discount: discount,
+                              currency: p.currency,
+                              exact: exact,
+                            ),
+                          ],
+                        )),
+                  ],
+                ),
             )),
       ],
     );

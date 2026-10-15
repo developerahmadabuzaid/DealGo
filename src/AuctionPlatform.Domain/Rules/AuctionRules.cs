@@ -78,8 +78,8 @@ public static class AuctionRules
         if (string.IsNullOrWhiteSpace(auction.Title))
             errors.Add("Title is required.");
 
-        if (auction.MainProductId == Guid.Empty)
-            errors.Add("A main product is required.");
+        if (string.IsNullOrWhiteSpace(auction.MainProductNameSnapshot))
+            errors.Add("The rank 1 prize must have a name.");
 
         return errors;
     }
@@ -110,6 +110,24 @@ public static class AuctionRules
 
     public static bool EntersFinalPhase(decimal newPrice, decimal finalPhasePrice) =>
         newPrice >= finalPhasePrice;
+
+    /// <summary>
+    /// What a winner pays for a prize: the prize's own price with the auction's discount applied.
+    ///
+    /// The discount is set by where the auction price finished against the auction's value, and
+    /// the same fraction applies to every prize, not only the first. An auction that closed at
+    /// 2500 on a 5000 value is a 50% discount, so a 1200 fourth prize costs its winner 600.
+    /// A missing or non-positive value leaves the prize at full price rather than dividing by it.
+    /// </summary>
+    public static decimal PrizePaymentAmount(decimal prizePrice, decimal finalPrice, decimal auctionValue)
+    {
+        if (auctionValue <= 0 || finalPrice <= 0) return Money.Round(prizePrice);
+
+        var fraction = finalPrice / auctionValue;
+        if (fraction > 1m) fraction = 1m;
+
+        return Money.Round(prizePrice * fraction);
+    }
 
     /// <summary>Progress from the starting price toward the target, clamped to 0..1.</summary>
     public static decimal Progress(decimal startingPrice, decimal currentPrice, decimal targetPrice)

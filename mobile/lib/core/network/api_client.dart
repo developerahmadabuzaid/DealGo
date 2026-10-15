@@ -41,7 +41,21 @@ class ApiClient {
     handler.next(options);
   }
 
-  Future<String?> currentAccessToken() async => (await _tokenStore.read())?.accessToken;
+  /// A token the server will still accept, refreshed first when it is expired or about to be.
+  ///
+  /// The live connection uses this. Unlike an HTTP call it never gets a second try after a 401 —
+  /// the WebSocket handshake is simply refused — so handing it a token that expired while the app
+  /// sat open left bidding switched off until the app was restarted.
+  Future<String?> currentAccessToken() async {
+    final tokens = await _tokenStore.read();
+    if (tokens == null) return null;
+
+    final soon = DateTime.now().toUtc().add(const Duration(seconds: 60));
+    if (tokens.accessTokenExpiresAt.isAfter(soon)) return tokens.accessToken;
+
+    if (!await _refresh()) return null;
+    return (await _tokenStore.read())?.accessToken;
+  }
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _send(() => _dio.get(path, queryParameters: _clean(query)));
@@ -77,7 +91,13 @@ class ApiClient {
       throw ApiException.network();
     }
 
-    if (response.statusCode == 401 && allowRefresh) {
+    // A 401 from signing in (wrong email or password, a wrong code) is an answer, not an expired
+    // session: there is nothing to refresh, and the server's own message says what went wrong.
+    // Treating it as expiry told people with a mistyped password that their session had ended.
+    final path = response.requestOptions.path;
+    final isSignIn = path.startsWith('/auth/') && path != '/auth/change-password';
+
+    if (response.statusCode == 401 && allowRefresh && !isSignIn) {
       if (await _refresh()) {
         return _send(request, allowRefresh: false);
       }

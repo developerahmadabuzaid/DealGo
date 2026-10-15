@@ -53,13 +53,16 @@ public static class Permissions
     public const string ReportsRead = "Reports.Read";
     public const string AuditRead = "Audit.Read";
 
+    /// <summary>Editing the public landing page. Separate because it is publishing, not operations.</summary>
+    public const string SiteManage = "Site.Manage";
+
     public static readonly string[] All =
     {
         AuctionRead, AuctionCreate, AuctionUpdate, AuctionStart, AuctionCancel,
         StoreRead, StoreCreateProduct, StoreUpdateProduct, StoreDeleteProduct,
         StoreManageInventory, StoreManageOrders, StoreManageSettings,
         WalletRead, WalletAdjust, WalletRefund,
-        UserRead, UserManage, ReportsRead, AuditRead
+        UserRead, UserManage, ReportsRead, AuditRead, SiteManage
     };
 
     /// <summary>Default permission grant per role. SUPER_ADMIN implicitly holds everything.</summary>
@@ -76,7 +79,9 @@ public static class Permissions
             [Roles.StoreManager] = new[]
             {
                 StoreRead, StoreCreateProduct, StoreUpdateProduct, StoreDeleteProduct,
-                StoreManageInventory, StoreManageOrders, ReportsRead
+                StoreManageInventory, StoreManageOrders, ReportsRead,
+                // The store manager already writes the product copy customers read.
+                SiteManage
             },
             [Roles.Finance] = new[]
             {

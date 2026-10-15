@@ -24,7 +24,10 @@ public sealed record PrizeClaimDto(
     DateTime? PaymentDeadlineAt,
     DateTime? PaidAt,
     DateTime? ClaimedAt,
-    DateTime? FulfilledAt);
+    DateTime? FulfilledAt,
+    // The prize's full price, before the auction discount that gives PaymentAmount.
+    decimal PrizeOriginalPrice,
+    string? PrizeDescription);
 
 public sealed record MyWinDto(
     Guid AuctionId,
@@ -126,7 +129,9 @@ public sealed class PrizeClaimService : IPrizeClaimService
             c.Prize != null ? c.Prize.ProductNameSnapshot : string.Empty,
             c.Prize != null ? c.Prize.ProductImageSnapshot : null,
             c.PaymentAmount, c.Currency, c.Status,
-            c.CreatedAt, c.PaymentDeadlineAt, c.PaidAt, c.ClaimedAt, c.FulfilledAt);
+            c.CreatedAt, c.PaymentDeadlineAt, c.PaidAt, c.ClaimedAt, c.FulfilledAt,
+            c.Prize != null ? c.Prize.OriginalPrice : c.PaymentAmount,
+            c.Prize != null ? c.Prize.Description : null);
 
     public async Task<PrizeClaimDto> GetClaimAsync(Guid userId, Guid claimId, CancellationToken ct = default)
     {

@@ -37,6 +37,22 @@ only money a participant pays to take part.
 
 `AuctionRules.NextPrice` clamps to the target, so a bid can never overshoot it.
 
+### Every prize gets the auction's discount
+
+Where the price finishes against the auction's value is the discount, and it applies to all four
+prizes, not only the first. Each winner's prize claim is for their own prize's price times that
+fraction (`AuctionRules.PrizePaymentAmount`):
+
+```text
+Value 5000, closed at 2500        →  50% discount
+Rank 1 prize 5000                 →  winner pays 2500
+Rank 4 prize 1200                 →  winner pays 600
+Closed at 2000 (time ran out)     →  60% discount, rank 4 pays 480
+```
+
+The app shows the same figures before an auction ends, as "at most" amounts worked out from the
+target price, since the auction stops there and can only end lower.
+
 ## Publish validation
 
 `AuctionRules.ValidateForPublish` returns *all* violations at once so the admin UI can show them

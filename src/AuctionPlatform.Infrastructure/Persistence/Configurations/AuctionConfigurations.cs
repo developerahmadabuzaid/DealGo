@@ -18,6 +18,10 @@ public sealed class AuctionConfiguration : IEntityTypeConfiguration<Domain.Entit
         b.Property(a => a.Title).HasMaxLength(256).IsRequired();
         b.Property(a => a.Description).HasMaxLength(4000);
         b.Property(a => a.MainProductNameSnapshot).HasMaxLength(256);
+        b.Property(a => a.MainImageSnapshot).HasMaxLength(1024);
+        b.Property(a => a.CoverImageUrl).HasMaxLength(1024);
+        // The front page asks for these on every visit, in this order.
+        b.HasIndex(a => new { a.IsFeatured, a.FeaturedOrder });
         b.Property(a => a.Currency).HasMaxLength(3).IsRequired();
 
         // Optimistic concurrency on top of the explicit row locks the bid engine takes.
@@ -43,8 +47,9 @@ public sealed class AuctionPrizeConfiguration : IEntityTypeConfiguration<Auction
         b.ToTable("AuctionPrizes");
         b.HasKey(p => p.Id);
 
-        b.Property(p => p.ProductNameSnapshot).HasMaxLength(256);
+        b.Property(p => p.ProductNameSnapshot).HasMaxLength(256).IsRequired();
         b.Property(p => p.ProductImageSnapshot).HasMaxLength(1024);
+        b.Property(p => p.Description).HasMaxLength(2000);
 
         // Exactly one prize per rank on an auction.
         b.HasIndex(p => new { p.AuctionId, p.Rank }).IsUnique();

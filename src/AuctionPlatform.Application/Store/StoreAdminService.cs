@@ -97,7 +97,12 @@ public sealed class StoreAdminService : IStoreAdminService
         var q = _db.StoreProducts.AsNoTracking().AsQueryable();
 
         if (query.Status.HasValue) q = q.Where(p => p.Status == query.Status.Value);
-        if (query.CategoryId.HasValue) q = q.Where(p => p.CategoryId == query.CategoryId.Value);
+        if (query.CategoryId.HasValue)
+        {
+            var categoryId = query.CategoryId.Value;
+            q = q.Where(p => p.CategoryId == categoryId ||
+                             (p.Category != null && p.Category.ParentId == categoryId));
+        }
         if (query.MinPrice.HasValue) q = q.Where(p => p.Price >= query.MinPrice.Value);
         if (query.MaxPrice.HasValue) q = q.Where(p => p.Price <= query.MaxPrice.Value);
         if (query.FeaturedOnly == true) q = q.Where(p => p.IsFeatured);
@@ -155,6 +160,7 @@ public sealed class StoreAdminService : IStoreAdminService
             CategoryId = request.CategoryId,
             Sku = request.Sku,
             Price = Money.Round(request.Price),
+            CompareAtPrice = OfferPrice(request.CompareAtPrice, request.Price),
             Currency = request.Currency ?? settings.DefaultCurrency,
             StockQuantity = request.StockQuantity,
             LowStockThreshold = request.LowStockThreshold ?? settings.LowStockThreshold,
@@ -217,6 +223,13 @@ public sealed class StoreAdminService : IStoreAdminService
 
         // Changing the price never rewrites existing orders: those hold their own snapshots.
         if (request.Price.HasValue) product.Price = Money.Round(request.Price.Value);
+
+        // Sent together or apart, the pair is always checked against the price that will apply.
+        if (request.CompareAtPrice.HasValue || request.Price.HasValue)
+        {
+            product.CompareAtPrice =
+                OfferPrice(request.CompareAtPrice ?? product.CompareAtPrice, product.Price);
+        }
 
         if (request.PaymentMode.HasValue) product.PaymentMode = request.PaymentMode.Value;
         if (request.IsFeatured.HasValue) product.IsFeatured = request.IsFeatured.Value;
@@ -319,7 +332,7 @@ public sealed class StoreAdminService : IStoreAdminService
     private async Task<StoreProduct> LoadProductAsync(Guid productId, CancellationToken ct) =>
         await _db.StoreProducts
             .Include(p => p.Images)
-            .Include(p => p.Category)
+            .Include(p => p.Category).ThenInclude(c => c!.Parent)
             .FirstOrDefaultAsync(p => p.Id == productId, ct)
         ?? throw new DomainException(ErrorCodes.ProductNotFound, "Product not found.");
 
@@ -331,14 +344,49 @@ public sealed class StoreAdminService : IStoreAdminService
             .OrderBy(c => c.DisplayOrder).ThenBy(c => c.Name)
             .Select(c => new StoreCategoryDto(
                 c.Id, c.Name, c.Slug, c.Description, c.ImageUrl, c.DisplayOrder, c.Status,
-                c.Products.Count))
+                c.Products.Count, c.ParentId, c.Parent != null ? c.Parent.Name : null))
             .ToListAsync(ct);
+
+    /*
+     * Departments go two levels deep and no further: a main department, and sub-departments
+     * under it. So the parent must itself be a main department, and a department that already
+     * has sub-departments cannot be moved under another one.
+     */
+    private async Task<StoreCategory> CheckParentAsync(Guid? categoryId, Guid parentId, CancellationToken ct)
+    {
+        if (categoryId == parentId)
+        {
+            throw new DomainException(ErrorCodes.CategoryTooDeep, "A department cannot sit under itself.");
+        }
+
+        var parent = await _db.StoreCategories.FirstOrDefaultAsync(c => c.Id == parentId, ct)
+            ?? throw new DomainException(ErrorCodes.CategoryNotFound, "Main department not found.");
+
+        if (parent.ParentId is not null)
+        {
+            throw new DomainException(ErrorCodes.CategoryTooDeep,
+                "Only two levels are allowed: choose a main department as the parent.");
+        }
+
+        if (categoryId.HasValue && await _db.StoreCategories.AnyAsync(c => c.ParentId == categoryId, ct))
+        {
+            throw new DomainException(ErrorCodes.CategoryTooDeep,
+                "This department has sub-departments of its own, so it cannot become a sub-department.");
+        }
+
+        return parent;
+    }
 
     public async Task<StoreCategoryDto> CreateCategoryAsync(
         CreateStoreCategoryRequest request, CancellationToken ct = default)
     {
+        var parent = request.ParentId is { } pid && pid != Guid.Empty
+            ? await CheckParentAsync(null, pid, ct)
+            : null;
+
         var category = new StoreCategory
         {
+            ParentId = parent?.Id,
             Name = request.Name,
             Slug = Slugify(request.Slug ?? request.Name),
             Description = request.Description,
@@ -357,7 +405,7 @@ public sealed class StoreAdminService : IStoreAdminService
             null, new { category.Name }, ct: ct);
 
         return new StoreCategoryDto(category.Id, category.Name, category.Slug, category.Description,
-            category.ImageUrl, category.DisplayOrder, category.Status, 0);
+            category.ImageUrl, category.DisplayOrder, category.Status, 0, parent?.Id, parent?.Name);
     }
 
     public async Task<StoreCategoryDto> UpdateCategoryAsync(
@@ -375,6 +423,15 @@ public sealed class StoreAdminService : IStoreAdminService
         if (request.DisplayOrder.HasValue) category.DisplayOrder = request.DisplayOrder.Value;
         if (request.Status.HasValue) category.Status = request.Status.Value;
 
+        if (request.ParentId == Guid.Empty)
+        {
+            category.ParentId = null;
+        }
+        else if (request.ParentId is { } parentId && parentId != category.ParentId)
+        {
+            category.ParentId = (await CheckParentAsync(categoryId, parentId, ct)).Id;
+        }
+
         category.UpdatedAt = _clock.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -384,15 +441,25 @@ public sealed class StoreAdminService : IStoreAdminService
             before, new { category.Name, category.Status }, ct: ct);
 
         var count = await _db.StoreProducts.CountAsync(p => p.CategoryId == categoryId, ct);
+        var parentName = category.ParentId is { } pid2
+            ? await _db.StoreCategories.Where(c => c.Id == pid2).Select(c => c.Name).FirstOrDefaultAsync(ct)
+            : null;
 
         return new StoreCategoryDto(category.Id, category.Name, category.Slug, category.Description,
-            category.ImageUrl, category.DisplayOrder, category.Status, count);
+            category.ImageUrl, category.DisplayOrder, category.Status, count, category.ParentId, parentName);
     }
 
     public async Task DeleteCategoryAsync(Guid categoryId, CancellationToken ct = default)
     {
         var category = await _db.StoreCategories.FirstOrDefaultAsync(c => c.Id == categoryId, ct)
             ?? throw new DomainException(ErrorCodes.CategoryNotFound, "Category not found.");
+
+        // Sub-departments are moved or deleted first, so none is left without its main department.
+        if (await _db.StoreCategories.AnyAsync(c => c.ParentId == categoryId, ct))
+        {
+            throw new DomainException(ErrorCodes.CategoryHasSubcategories,
+                "Move or delete this department's sub-departments first.");
+        }
 
         var hasProducts = await _db.StoreProducts.AnyAsync(p => p.CategoryId == categoryId, ct);
 
@@ -420,7 +487,12 @@ public sealed class StoreAdminService : IStoreAdminService
     {
         var q = _db.StoreProducts.AsNoTracking().Where(p => p.Status != StoreProductStatus.Archived);
 
-        if (query.CategoryId.HasValue) q = q.Where(p => p.CategoryId == query.CategoryId.Value);
+        if (query.CategoryId.HasValue)
+        {
+            var categoryId = query.CategoryId.Value;
+            q = q.Where(p => p.CategoryId == categoryId ||
+                             (p.Category != null && p.Category.ParentId == categoryId));
+        }
         if (query.LowStockOnly == true)
             q = q.Where(p => p.StockQuantity <= p.LowStockThreshold);
 
@@ -744,6 +816,26 @@ public sealed class StoreAdminService : IStoreAdminService
         s.ShippingEnabled, s.DefaultShippingFee, s.MinimumOrderAmount, s.MaximumOrderAmount,
         s.ShoppingCreditExpirationEnabled, s.ShoppingCreditExpirationDays,
         s.RefundPolicy, s.LowStockThreshold);
+
+    /// <summary>
+    /// The price before an offer. Zero or less clears the offer; anything not above the price
+    /// itself is refused, because that would show a discount the buyer is not getting.
+    /// </summary>
+    private static decimal? OfferPrice(decimal? compareAt, decimal price)
+    {
+        if (compareAt is not { } was || was <= 0m) return null;
+
+        was = Money.Round(was);
+
+        if (was <= Money.Round(price))
+        {
+            throw new DomainException(
+                ErrorCodes.ValidationFailed,
+                "The price before the offer must be higher than the price.");
+        }
+
+        return was;
+    }
 
     private Task InvalidateCatalogCacheAsync(CancellationToken ct) =>
         _cache.RemoveByPrefixAsync("store:", ct);

@@ -51,6 +51,9 @@ public static class NotificationKeys
     public const string AuctionCancelledTitle = "notification.auction_cancelled.title";
     public const string AuctionCancelledBody = "notification.auction_cancelled.body";
 
+    public const string EntryFeeRefundedTitle = "notification.entry_fee_refunded.title";
+    public const string EntryFeeRefundedBody = "notification.entry_fee_refunded.body";
+
     public const string LowStockTitle = "notification.low_stock.title";
     public const string LowStockBody = "notification.low_stock.body";
 }

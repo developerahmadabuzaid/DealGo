@@ -1,8 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Required by the release build.
+
+        Flutter's template grants INTERNET only in the debug and profile manifests, for hot
+        reload. A release APK therefore ships with no network access at all: every request fails
+        before it leaves the device, which the app reports as "no connection to the server".
+        The app cannot do anything without the API, so the permission belongs here.
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
-        android:label="mobile"
+        android:label="DealGo"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"

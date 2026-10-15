@@ -1,4 +1,9 @@
 <Solution>
+<Folder Name="/Solution Items/">
+  <File Path="docker-compose.yml" />
+  <File Path=".env.example" />
+  <File Path="README.md" />
+</Folder>
   <Folder Name="/src/">
     <Project Path="src/AuctionPlatform.Api/AuctionPlatform.Api.csproj" />
     <Project Path="src/AuctionPlatform.Application/AuctionPlatform.Application.csproj" />

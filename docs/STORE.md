@@ -26,6 +26,18 @@ carry stock, prizes are *awarded* and do not.
 Archived products stay resolvable for historical orders — a product referenced by an order is
 archived, never deleted. Only a product that has never sold is physically removed.
 
+### Offers
+
+A product may carry a `CompareAtPrice`: what it costs without the offer. The discount is always
+derived from the pair — `(CompareAtPrice - Price) / CompareAtPrice`, rounded down to whole percent
+— and never stored on its own, so the badge can never disagree with the prices beside it. An offer
+exists only while `CompareAtPrice > Price`; anything else is refused when saving and reported as no
+offer when reading.
+
+`GET /store/products?onOfferOnly=true&sortBy=discount` lists them, and `GET /store/home` returns an
+`offers` list with the biggest saving first. The app shows them in an offers section per category
+and for the store as a whole.
+
 ### Payment mode
 
 Each product declares which wallets it accepts:
@@ -72,7 +84,7 @@ quantities. `POST /store/checkout/quote` returns exactly what checkout will char
 ```json
 {
   "subtotal": 35.00, "discount": 0.00, "shippingFee": 0.00, "tax": 0.00, "total": 35.00,
-  "currency": "USD",
+  "currency": "SAR",
   "availableBalance": 40.00, "remainingAfterPurchase": 5.00, "canAfford": true
 }
 ```

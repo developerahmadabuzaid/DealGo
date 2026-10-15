@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0d">
+
+  <!--
+    The title and description are placeholders, replaced from the API on load.
+
+    A crawler that does not run scripts sees these; one that does sees whatever the administrator
+    wrote in the console. Leaving them empty would hand the first group nothing at all.
+  -->
+  <title>DealGo — صفقتك جاهزة</title>
+  <meta name="description" content="منصة مزادات إلكترونية: شارك في المزاد، زايد، واحصل على المنتج بأفضل سعر.">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="DealGo">
+  <meta property="og:description" content="زايد… واربح">
+
+  <link rel="icon" href="/brand/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">تخطَّ إلى المحتوى</a>
+
+  <header class="topbar" id="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="#top" aria-label="DealGo">
+        <span class="brand-mark" id="brandMark"></span>
+        <span class="brand-word"><b>Deal</b><i>Go</i></span>
+      </a>
+
+      <nav class="topnav" id="topnav" aria-label="روابط الصفحة"></nav>
+
+      <div class="topbar-actions">
+        <a class="btn btn-solid sm" id="topCta" href="#download">حمّل التطبيق</a>
+        <button class="menu-btn" id="menuBtn" type="button" aria-expanded="false" aria-controls="topnav">
+          <span></span><span></span><span></span>
+          <em class="sr">القائمة</em>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Every section is written by site.js from the API. Nothing below is hard-coded copy. -->
+    <div id="page" class="loading" aria-busy="true">
+      <div class="wrap boot">
+        <div class="skel skel-pill"></div>
+        <div class="skel skel-title"></div>
+        <div class="skel skel-line"></div>
+        <div class="skel skel-line short"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer" id="footer"></footer>
+
+  <script src="/site.js"></script>
+</body>
+</html>

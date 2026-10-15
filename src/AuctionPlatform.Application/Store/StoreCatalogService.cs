@@ -52,6 +52,14 @@ public sealed class StoreCatalogService : IStoreCatalogService
             .Select(Projection)
             .ToListAsync(ct);
 
+        // Only a real discount counts: the price must be below the price before the offer.
+        var offers = await PublicProducts()
+            .Where(p => p.CompareAtPrice != null && p.CompareAtPrice > p.Price)
+            .OrderByDescending(p => (p.CompareAtPrice!.Value - p.Price) / p.CompareAtPrice.Value)
+            .Take(12)
+            .Select(Projection)
+            .ToListAsync(ct);
+
         var creditBalance = 0m;
         var currency = Money.DefaultCurrency;
 
@@ -62,7 +70,8 @@ public sealed class StoreCatalogService : IStoreCatalogService
             currency = wallets.Currency;
         }
 
-        return new StoreHomeDto(categories, featured, newArrivals, popular, creditEligible, creditBalance, currency);
+        return new StoreHomeDto(
+            categories, featured, newArrivals, popular, creditEligible, offers, creditBalance, currency);
     }
 
     private IQueryable<StoreProduct> PublicProducts() =>
@@ -75,7 +84,7 @@ public sealed class StoreCatalogService : IStoreCatalogService
         p => new StoreProductListItemDto(
             p.Id, p.Name, p.Slug, p.Sku, p.CategoryId,
             p.Category != null ? p.Category.Name : null,
-            p.Price, p.Currency,
+            p.Price, p.CompareAtPrice, p.Currency,
             p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault(),
             p.StockQuantity - p.ReservedQuantity,
             p.StockQuantity - p.ReservedQuantity > 0,
@@ -88,10 +97,16 @@ public sealed class StoreCatalogService : IStoreCatalogService
     {
         var q = PublicProducts();
 
-        if (query.CategoryId.HasValue) q = q.Where(p => p.CategoryId == query.CategoryId.Value);
+        // A main department shows its own products and every sub-department's.
+        if (query.CategoryId.HasValue)
+        {
+            var id = query.CategoryId.Value;
+            q = q.Where(p => p.CategoryId == id || (p.Category != null && p.Category.ParentId == id));
+        }
         if (query.MinPrice.HasValue) q = q.Where(p => p.Price >= query.MinPrice.Value);
         if (query.MaxPrice.HasValue) q = q.Where(p => p.Price <= query.MaxPrice.Value);
         if (query.FeaturedOnly == true) q = q.Where(p => p.IsFeatured);
+        if (query.OnOfferOnly == true) q = q.Where(p => p.CompareAtPrice != null && p.CompareAtPrice > p.Price);
         if (query.InStockOnly == true) q = q.Where(p => p.StockQuantity - p.ReservedQuantity > 0);
         if (query.PaymentMode.HasValue)
         {
@@ -112,6 +127,10 @@ public sealed class StoreCatalogService : IStoreCatalogService
             "price" => query.SortDescending ? q.OrderByDescending(p => p.Price) : q.OrderBy(p => p.Price),
             "name" => query.SortDescending ? q.OrderByDescending(p => p.Name) : q.OrderBy(p => p.Name),
             "popular" => q.OrderByDescending(p => p.SoldQuantity),
+            "discount" => q.OrderByDescending(p =>
+                p.CompareAtPrice != null && p.CompareAtPrice > p.Price
+                    ? (p.CompareAtPrice.Value - p.Price) / p.CompareAtPrice.Value
+                    : 0),
             _ => q.OrderByDescending(p => p.CreatedAt)
         };
 
@@ -126,7 +145,7 @@ public sealed class StoreCatalogService : IStoreCatalogService
         var product = await _db.StoreProducts
             .AsNoTracking()
             .Include(p => p.Images)
-            .Include(p => p.Category)
+            .Include(p => p.Category).ThenInclude(c => c!.Parent)
             .FirstOrDefaultAsync(p => p.Id == productId, ct)
             ?? throw new DomainException(ErrorCodes.ProductNotFound, "Product not found.");
 
@@ -140,7 +159,7 @@ public sealed class StoreCatalogService : IStoreCatalogService
 
     internal static StoreProductDetailDto MapDetail(StoreProduct p) => new(
         p.Id, p.Name, p.Slug, p.Description, p.Sku, p.CategoryId, p.Category?.Name,
-        p.Price, p.Currency, p.StockQuantity, p.ReservedQuantity, p.AvailableQuantity,
+        p.Price, p.CompareAtPrice, p.Currency, p.StockQuantity, p.ReservedQuantity, p.AvailableQuantity,
         p.SoldQuantity, p.AvailableQuantity > 0, p.Status, p.PaymentMode,
         p.PaymentMode is StorePaymentMode.ShoppingWallet or StorePaymentMode.Both,
         p.PaymentMode is StorePaymentMode.MainWallet or StorePaymentMode.Both,
@@ -148,7 +167,8 @@ public sealed class StoreCatalogService : IStoreCatalogService
         p.Images.OrderBy(i => i.DisplayOrder)
             .Select(i => new StoreProductImageDto(i.Id, i.Url, i.ThumbnailUrl, i.IsPrimary, i.DisplayOrder))
             .ToList(),
-        p.CreatedAt, p.UpdatedAt);
+        p.CreatedAt, p.UpdatedAt,
+        p.Category?.ParentId, p.Category?.Parent?.Name);
 
     public async Task<IReadOnlyList<StoreCategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
     {
@@ -157,13 +177,22 @@ public sealed class StoreCatalogService : IStoreCatalogService
         var cached = await _cache.GetAsync<List<StoreCategoryDto>>(cacheKey, ct);
         if (cached is not null) return cached;
 
+        // Both levels in one list; a sub-department carries its parent's id. One whose main
+        // department is hidden is hidden with it.
         var categories = await _db.StoreCategories
             .AsNoTracking()
-            .Where(c => c.Status == StoreCategoryStatus.Active)
+            .Where(c => c.Status == StoreCategoryStatus.Active &&
+                        (c.ParentId == null || c.Parent!.Status == StoreCategoryStatus.Active))
             .OrderBy(c => c.DisplayOrder).ThenBy(c => c.Name)
             .Select(c => new StoreCategoryDto(
                 c.Id, c.Name, c.Slug, c.Description, c.ImageUrl, c.DisplayOrder, c.Status,
-                c.Products.Count(p => p.Status == StoreProductStatus.Active)))
+                c.Products.Count(p => p.Status == StoreProductStatus.Active) +
+                c.Children
+                    .Where(ch => ch.Status == StoreCategoryStatus.Active)
+                    .SelectMany(ch => ch.Products)
+                    .Count(p => p.Status == StoreProductStatus.Active),
+                c.ParentId,
+                c.Parent != null ? c.Parent.Name : null))
             .ToListAsync(ct);
 
         // Categories are read-heavy and change rarely, so this is one of the few safe caches.
@@ -178,7 +207,13 @@ public sealed class StoreCatalogService : IStoreCatalogService
             .Where(c => c.Id == categoryId)
             .Select(c => new StoreCategoryDto(
                 c.Id, c.Name, c.Slug, c.Description, c.ImageUrl, c.DisplayOrder, c.Status,
-                c.Products.Count(p => p.Status == StoreProductStatus.Active)))
+                c.Products.Count(p => p.Status == StoreProductStatus.Active) +
+                c.Children
+                    .Where(ch => ch.Status == StoreCategoryStatus.Active)
+                    .SelectMany(ch => ch.Products)
+                    .Count(p => p.Status == StoreProductStatus.Active),
+                c.ParentId,
+                c.Parent != null ? c.Parent.Name : null))
             .FirstOrDefaultAsync(ct);
 
         return category ?? throw new DomainException(ErrorCodes.CategoryNotFound, "Category not found.");

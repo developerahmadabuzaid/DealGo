@@ -37,9 +37,21 @@ public sealed class UserAdminService : IUserAdminService
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim().ToLowerInvariant();
+
+            /*
+             * Numbers are stored as +9665XXXXXXXX, but nobody types them that way: they type
+             * 05XXXXXXXX. Searching the digits without the local leading zero matches the stored
+             * form whichever way the number was typed, and an empty result for "0500000001" no
+             * longer means "no such user".
+             */
+            var digits = new string(term.Where(char.IsAsciiDigit).ToArray());
+            if (digits.StartsWith('0')) digits = digits.TrimStart('0');
+            var phone = digits.Length >= 4 ? digits : null;
+
             q = q.Where(u => u.FullName.ToLower().Contains(term) ||
                              (u.Email != null && u.Email.ToLower().Contains(term)) ||
-                             (u.PhoneNumber != null && u.PhoneNumber.Contains(term)));
+                             (u.PhoneNumber != null && u.PhoneNumber.Contains(term)) ||
+                             (phone != null && u.PhoneNumber != null && u.PhoneNumber.Contains(phone)));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Role))

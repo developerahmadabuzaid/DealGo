@@ -1,3 +1,5 @@
+import 'package:mobile/core/localization/app_strings.dart';
+
 /// The error envelope every endpoint returns: `{ code, message, details }`.
 ///
 /// The UI branches on [code], never on the message text, so wording can change without
@@ -28,6 +30,10 @@ class ApiException implements Exception {
         code: ErrorCodes.networkError,
         message: 'No connection to the server.',
       );
+
+  /// What the user should read. [message] is the server's English text, kept for logs and
+  /// for any code that has no Arabic wording yet.
+  String get displayMessage => AppStrings.arabicError(code) ?? message;
 
   @override
   String toString() => '$code: $message';

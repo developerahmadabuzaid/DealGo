@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's own page ground, so the launch window matches the first frame. -->
+    <color name="launch_background">#F7F8FC</color>
+    <!-- Behind the app icon's mark. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

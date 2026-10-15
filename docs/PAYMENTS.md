@@ -84,7 +84,7 @@ Expected payload:
   "status": "succeeded",
   "userId": "…",
   "amount": 100.00,
-  "currency": "USD"
+  "currency": "SAR"
 }
 ```
 
@@ -125,4 +125,4 @@ the database, floating point nowhere.
 ## Currency
 
 Every amount is stored with its currency, and wallet movements verify the currencies match
-(`CURRENCY_MISMATCH` otherwise). USD is the configured default, not a hard-coded assumption.
+(`CURRENCY_MISMATCH` otherwise). SAR is the configured default, not a hard-coded assumption.

@@ -1,3 +1,4 @@
+using AuctionPlatform.Application.Bidding;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Realtime;
@@ -25,6 +26,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
     private readonly INotificationService _notifications;
     private readonly IAuditService _audit;
     private readonly ICurrentUserService _currentUser;
+    private readonly IAuctionCompletionService _completion;
     private readonly AuctionOptions _options;
     private readonly ILogger<AuctionAdminService> _logger;
 
@@ -37,6 +39,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
         INotificationService notifications,
         IAuditService audit,
         ICurrentUserService currentUser,
+        IAuctionCompletionService completion,
         IOptions<AuctionOptions> options,
         ILogger<AuctionAdminService> logger)
     {
@@ -48,6 +51,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
         _notifications = notifications;
         _audit = audit;
         _currentUser = currentUser;
+        _completion = completion;
         _options = options.Value;
         _logger = logger;
     }
@@ -57,8 +61,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
         var now = _clock.UtcNow;
         var currency = request.Currency ?? _options.DefaultCurrency;
 
-        var mainProduct = await _db.Products.FirstOrDefaultAsync(p => p.Id == request.MainProductId, ct)
-            ?? throw new DomainException(ErrorCodes.ProductNotFound, "The main product was not found.");
+        var main = RequireMainPrize(request.Prizes);
 
         var targetPercentage = request.TargetPercentage ?? _options.DefaultTargetPercentage;
         var finalPhasePercentage = request.FinalPhasePercentage ?? _options.DefaultFinalPhasePercentage;
@@ -68,9 +71,11 @@ public sealed class AuctionAdminService : IAuctionAdminService
             AuctionNumber = await _numbers.NextAuctionNumberAsync(ct),
             Title = request.Title,
             Description = request.Description,
-            MainProductId = request.MainProductId,
-            MainProductNameSnapshot = mainProduct.Name,
-            OriginalPrice = Money.Round(request.OriginalPrice),
+            MainProductNameSnapshot = main.Name.Trim(),
+            MainImageSnapshot = Blank(main.ImageUrl),
+            CoverImageUrl = Blank(request.CoverImageUrl),
+            // The auction is worth what its first prize is worth.
+            OriginalPrice = Money.Round(main.Price),
             StartingPrice = Money.Round(request.StartingPrice),
             CurrentPrice = Money.Round(request.StartingPrice),
             TargetPercentage = targetPercentage,
@@ -115,38 +120,173 @@ public sealed class AuctionAdminService : IAuctionAdminService
         return await _reader.GetAsync(auction.Id, null, ct);
     }
 
+    private static string? Blank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// The rank 1 prize, which is the item being bid on and the source of the auction's value.
+    /// </summary>
+    private static AuctionPrizeRequest RequireMainPrize(IReadOnlyList<AuctionPrizeRequest>? prizes)
+    {
+        var main = prizes?.FirstOrDefault(p => p.Rank == 1)
+            ?? throw new DomainException(
+                ErrorCodes.InvalidAuctionConfiguration, "A rank 1 prize is required.");
+
+        if (string.IsNullOrWhiteSpace(main.Name))
+        {
+            throw new DomainException(
+                ErrorCodes.InvalidAuctionConfiguration, "The rank 1 prize must have a name.");
+        }
+
+        if (main.Price <= 0)
+        {
+            throw new DomainException(
+                ErrorCodes.InvalidAuctionConfiguration,
+                "The rank 1 prize price must be greater than zero; it sets the auction's value.");
+        }
+
+        return main;
+    }
+
+    /// <summary>
+    /// Replaces the auction's prizes with the ones supplied.
+    ///
+    /// Each prize carries its own name, price and picture, so nothing is looked up from a shared
+    /// catalog and no later edit elsewhere can change what this auction awards. Ranks must be
+    /// unique, which the unique index on (AuctionId, Rank) also enforces.
+    /// </summary>
     private async Task AttachPrizesAsync(
         Auction auction, IReadOnlyList<AuctionPrizeRequest>? prizes, CancellationToken ct)
     {
         if (prizes is null) return;
 
+        var duplicateRank = prizes.GroupBy(p => p.Rank).FirstOrDefault(g => g.Count() > 1);
+        if (duplicateRank is not null)
+        {
+            throw new DomainException(
+                ErrorCodes.InvalidAuctionConfiguration,
+                $"Rank {duplicateRank.Key} was given to more than one prize.");
+        }
+
         var existing = await _db.AuctionPrizes.Where(p => p.AuctionId == auction.Id).ToListAsync(ct);
         _db.AuctionPrizes.RemoveRange(existing);
 
-        var productIds = prizes.Select(p => p.ProductId).Distinct().ToList();
-        var products = await _db.Products
-            .Where(p => productIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, ct);
-
         foreach (var prize in prizes)
         {
-            if (!products.TryGetValue(prize.ProductId, out var product))
+            if (string.IsNullOrWhiteSpace(prize.Name))
             {
                 throw new DomainException(
-                    ErrorCodes.ProductNotFound, $"Prize product {prize.ProductId} was not found.");
+                    ErrorCodes.InvalidAuctionConfiguration,
+                    $"The prize at rank {prize.Rank} must have a name.");
+            }
+
+            if (prize.Price < 0)
+            {
+                throw new DomainException(
+                    ErrorCodes.InvalidAuctionConfiguration,
+                    $"The prize at rank {prize.Rank} cannot have a negative price.");
             }
 
             _db.AuctionPrizes.Add(new AuctionPrize
             {
                 AuctionId = auction.Id,
-                ProductId = product.Id,
                 Rank = prize.Rank,
-                OriginalPrice = product.Price,
-                ProductNameSnapshot = product.Name,
-                ProductImageSnapshot = product.PrimaryImageUrl,
+                OriginalPrice = Money.Round(prize.Price),
+                ProductNameSnapshot = prize.Name.Trim(),
+                ProductImageSnapshot = Blank(prize.ImageUrl),
+                Description = Blank(prize.Description),
                 CreatedAt = _clock.UtcNow
             });
         }
+
+        // The auction's own headline follows its first prize, so the two can never disagree.
+        var main = prizes.FirstOrDefault(p => p.Rank == 1);
+        if (main is not null)
+        {
+            auction.MainProductNameSnapshot = main.Name.Trim();
+            auction.MainImageSnapshot = Blank(main.ImageUrl);
+            auction.OriginalPrice = Money.Round(main.Price);
+        }
+    }
+
+    public async Task<AuctionDetailDto> SetFeaturedAsync(
+        Guid auctionId, bool featured, CancellationToken ct = default)
+    {
+        var auction = await GetTrackedAsync(auctionId, ct);
+
+        // Taking one *out* is always allowed — that is how a mistake is undone, whatever state the
+        // auction has reached since.
+        if (featured && !AuctionStateMachine.CanBeFeatured(auction.Status))
+        {
+            throw new DomainException(
+                ErrorCodes.InvalidAuctionState,
+                $"Only an auction open to join or running can be featured (this one is {auction.Status}).");
+        }
+
+        if (auction.IsFeatured != featured)
+        {
+            auction.IsFeatured = featured;
+            auction.UpdatedAt = _clock.UtcNow;
+            await _db.SaveChangesAsync(ct);
+
+            await _audit.LogAsync(AuditActionType.AuctionUpdated, nameof(Auction), auction.Id,
+                new { IsFeatured = !featured }, new { IsFeatured = featured }, ct: ct);
+        }
+
+        return await _reader.GetAsync(auctionId, null, ct);
+    }
+
+    public async Task ReorderFeaturedAsync(IReadOnlyList<Guid> auctionIds, CancellationToken ct = default)
+    {
+        if (auctionIds is null || auctionIds.Count == 0)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "No auctions were given to arrange.");
+        }
+
+        var ordered = auctionIds.Distinct().ToList();
+
+        if (ordered.Count != auctionIds.Count)
+        {
+            throw new DomainException(
+                ErrorCodes.ValidationFailed, "The same auction was listed more than once.");
+        }
+
+        await using var tx = await _db.BeginTransactionAsync(ct);
+
+        var auctions = await _db.Auctions.Where(a => ordered.Contains(a.Id)).ToListAsync(ct);
+
+        if (auctions.Count != ordered.Count)
+        {
+            throw new DomainException(
+                ErrorCodes.AuctionNotFound, "One of the auctions no longer exists.");
+        }
+
+        for (var position = 0; position < ordered.Count; position++)
+        {
+            auctions.First(a => a.Id == ordered[position]).FeaturedOrder = position;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        /*
+         * Anything featured but not named goes behind the arranged ones.
+         *
+         * Without this, an auction featured from another browser tab while this arrangement was
+         * being dragged would keep its position of zero and jump to the front of a row somebody
+         * had just put in order. They all share one position here, and the query's newest-first
+         * tie-break settles the rest.
+         */
+        await _db.Auctions
+            .Where(a => a.IsFeatured && !ordered.Contains(a.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.FeaturedOrder, ordered.Count), ct);
+
+        await tx.CommitAsync(ct);
+
+        await _audit.LogAsync(
+            AuditActionType.AuctionUpdated, nameof(Auction), ordered[0],
+            null, new { FeaturedOrder = ordered }, ct: ct);
+
+        _logger.LogInformation("The featured row was rearranged: {Count} auctions.", ordered.Count);
     }
 
     public async Task<AuctionDetailDto> UpdateAsync(
@@ -165,7 +305,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
 
         if (request.Title is not null) auction.Title = request.Title;
         if (request.Description is not null) auction.Description = request.Description;
-        if (request.OriginalPrice.HasValue) auction.OriginalPrice = Money.Round(request.OriginalPrice.Value);
+        if (request.CoverImageUrl is not null) auction.CoverImageUrl = Blank(request.CoverImageUrl);
         if (request.StartingPrice.HasValue)
         {
             auction.StartingPrice = Money.Round(request.StartingPrice.Value);
@@ -181,14 +321,16 @@ public sealed class AuctionAdminService : IAuctionAdminService
         if (request.DurationSeconds.HasValue) auction.DurationSeconds = request.DurationSeconds.Value;
         if (request.ExpirationPolicy.HasValue) auction.ExpirationPolicy = request.ExpirationPolicy.Value;
 
-        auction.TargetPrice = AuctionRules.CalculateTargetPrice(auction.OriginalPrice, auction.TargetPercentage);
-        auction.FinalPhasePrice = AuctionRules.CalculateFinalPhasePrice(auction.OriginalPrice, auction.FinalPhasePercentage);
-        auction.UpdatedAt = _clock.UtcNow;
-
         if (request.Prizes is not null)
         {
             await AttachPrizesAsync(auction, request.Prizes, ct);
         }
+
+        // After the prizes, never before: replacing them can move OriginalPrice, and the price
+        // ladder has to be derived from the value that ends up stored.
+        auction.TargetPrice = AuctionRules.CalculateTargetPrice(auction.OriginalPrice, auction.TargetPercentage);
+        auction.FinalPhasePrice = AuctionRules.CalculateFinalPhasePrice(auction.OriginalPrice, auction.FinalPhasePercentage);
+        auction.UpdatedAt = _clock.UtcNow;
 
         _db.AuctionEvents.Add(new AuctionEvent
         {
@@ -430,6 +572,9 @@ public sealed class AuctionAdminService : IAuctionAdminService
         AuctionStateMachine.EnsureCanTransition(auction.Status, AuctionStatus.Cancelled);
 
         auction.Status = AuctionStatus.Cancelled;
+
+        // Called off for good, so it leaves the featured row with everything else that has ended.
+        auction.IsFeatured = false;
         auction.FinishedAt = _clock.UtcNow;
         auction.UpdatedAt = _clock.UtcNow;
 
@@ -449,6 +594,20 @@ public sealed class AuctionAdminService : IAuctionAdminService
             null, null, reason, ct);
 
         _logger.LogInformation("Auction {AuctionId} cancelled: {Reason}", auctionId, reason);
+
+        // Cancelling is the platform pulling the auction, so nobody should be out of pocket for it.
+        // Entry fees go back as cash. Failures are logged rather than thrown: the cancellation is
+        // already committed and must not be reported as failed, and the refund pass is idempotent
+        // so it can safely be run again.
+        try
+        {
+            await _completion.RefundCancelledAuctionAsync(auctionId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Auction {AuctionId} was cancelled but entry fee refunds did not complete.", auctionId);
+        }
 
         return await _reader.GetAsync(auctionId, null, ct);
     }

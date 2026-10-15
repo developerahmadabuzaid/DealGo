@@ -6,7 +6,10 @@ import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/auto_refresh.dart';
+import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
+import '../data/prize_repository.dart';
 
 /// Wins and prize claims.
 ///
@@ -21,12 +24,14 @@ class PrizesScreen extends ConsumerWidget {
     final claimsAsync = ref.watch(myClaimsProvider);
     final locale = Localizations.localeOf(context).languageCode;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(t.myWins)),
+    final page = Scaffold(
+      appBar: BrandAppBar(title: Text(t.myWins)),
       body: claimsAsync.when(
+        // A refresh that fails keeps the list on screen rather than swapping in an error.
+        skipError: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ErrorView(
-          message: e is ApiException ? e.message : e.toString(),
+          message: e is ApiException ? e.displayMessage : e.toString(),
           onRetry: () => ref.invalidate(myClaimsProvider),
         ),
         data: (paged) {
@@ -43,75 +48,114 @@ class PrizesScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               itemCount: paged.items.length,
               separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, i) {
-                final claim = paged.items[i];
-
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            RemoteImage(claim.prizeImageUrl, height: 56, width: 56, radius: 10),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(claim.prizeName,
-                                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                                  Text(claim.auctionTitle,
-                                      style: Theme.of(context).textTheme.bodySmall),
-                                ],
-                              ),
-                            ),
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: AppTheme.gold.withValues(alpha: 0.25),
-                              child: Text('#${claim.rank}',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-
-                        const Divider(height: 24),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Stat(
-                              label: t.prizeValue,
-                              value: Fmt.money(claim.paymentAmount, claim.currency, locale: locale),
-                            ),
-                            StatusPill(
-                              claim.status,
-                              color: claim.isPaid ? AppTheme.success : AppTheme.gold,
-                            ),
-                          ],
-                        ),
-
-                        if (claim.needsPayment) ...[
-                          const SizedBox(height: 14),
-                          if (claim.paymentDeadlineAt != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(
-                                '${t.paymentRequired} · ${Fmt.dateTime(claim.paymentDeadlineAt, locale: locale)}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                          _PayButton(claimId: claim.id, amount: claim.paymentAmount, currency: claim.currency),
-                        ],
-                      ],
-                    ),
-                  ),
-                );
-              },
+              itemBuilder: (context, i) =>
+                  _ClaimCard(claim: paged.items[i], locale: locale),
             ),
           );
         },
+      ),
+    );
+
+    return AutoRefresh(onRefresh: () => ref.invalidate(myClaimsProvider), child: page);
+  }
+}
+
+/// One won prize: its picture and details, then what it is worth against what the winner pays.
+class _ClaimCard extends StatelessWidget {
+  const _ClaimCard({required this.claim, required this.locale});
+
+  final PrizeClaim claim;
+  final String locale;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppStrings.of(context);
+    final theme = Theme.of(context);
+
+    return SurfaceCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppTheme.radiusLg),
+            ),
+            child: Stack(
+              children: [
+                RemoteImage(
+                  claim.prizeImageUrl,
+                  height: 170,
+                  width: double.infinity,
+                  radius: 0,
+                ),
+                PositionedDirectional(
+                  top: 12,
+                  start: 12,
+                  child: StatusPill(
+                    t.prizeRank(claim.rank),
+                    color: AppTheme.gold,
+                    icon: Icons.emoji_events_rounded,
+                    filled: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppTheme.space4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  claim.prizeName,
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(claim.auctionTitle, style: theme.textTheme.bodySmall),
+                if (claim.prizeDescription != null &&
+                    claim.prizeDescription!.trim().isNotEmpty) ...[
+                  const SizedBox(height: AppTheme.space2),
+                  Text(
+                    claim.prizeDescription!,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+                const SizedBox(height: AppTheme.space3),
+                PrizePriceBox(
+                  fullPrice: claim.prizeOriginalPrice > 0 ? claim.prizeOriginalPrice : null,
+                  price: claim.paymentAmount,
+                  discount: claim.discount,
+                  currency: claim.currency,
+                  exact: true,
+                ),
+                const SizedBox(height: AppTheme.space3),
+                Row(
+                  children: [
+                    StatusPill(
+                      t.claimStatus(claim.status),
+                      color: claim.isPaid ? AppTheme.success : AppTheme.gold,
+                    ),
+                    const Spacer(),
+                    if (claim.needsPayment && claim.paymentDeadlineAt != null)
+                      Flexible(
+                        child: Text(
+                          '${t.paymentRequired} · ${Fmt.dateTime(claim.paymentDeadlineAt, locale: locale)}',
+                          style: theme.textTheme.bodySmall,
+                          textAlign: TextAlign.end,
+                        ),
+                      ),
+                  ],
+                ),
+                if (claim.needsPayment) ...[
+                  const SizedBox(height: AppTheme.space3),
+                  _PayButton(
+                      claimId: claim.id, amount: claim.paymentAmount, currency: claim.currency),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -144,7 +188,7 @@ class _PayButtonState extends ConsumerState<_PayButton> {
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: AppTheme.urgentDeep),
+          SnackBar(content: Text(e.displayMessage), backgroundColor: AppTheme.urgentDeep),
         );
       }
     } finally {
@@ -178,11 +222,11 @@ class OrdersScreen extends ConsumerWidget {
     final ordersAsync = ref.watch(myOrdersProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(t.myOrders)),
+      appBar: BrandAppBar(title: Text(t.myOrders)),
       body: ordersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ErrorView(
-          message: e is ApiException ? e.message : e.toString(),
+          message: e is ApiException ? e.displayMessage : e.toString(),
           onRetry: () => ref.invalidate(myOrdersProvider),
         ),
         data: (paged) => paged.items.isEmpty
@@ -251,7 +295,7 @@ class OrdersScreen extends ConsumerWidget {
                                   } on ApiException catch (e) {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text(e.message)),
+                                        SnackBar(content: Text(e.displayMessage)),
                                       );
                                     }
                                   }

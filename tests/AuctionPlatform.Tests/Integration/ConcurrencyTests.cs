@@ -279,7 +279,7 @@ public class WalletConcurrencyTests
                     UserId = userId,
                     WalletType = WalletType.Shopping,
                     Amount = 25m,
-                    Currency = "USD",
+                    Currency = Money.DefaultCurrency,
                     TransactionType = WalletTransactionType.StorePurchase,
                     IdempotencyKey = $"spend-{i}"
                 });
@@ -328,7 +328,7 @@ public class WalletConcurrencyTests
                 UserId = userId,
                 WalletType = WalletType.Main,
                 Amount = 10m,
-                Currency = "USD",
+                Currency = Money.DefaultCurrency,
                 TransactionType = WalletTransactionType.Adjustment,
                 IdempotencyKey = $"move-{i}"
             };
@@ -381,7 +381,7 @@ public class WalletConcurrencyTests
                 UserId = userId,
                 WalletType = WalletType.Shopping,
                 Amount = 20m,
-                Currency = "USD",
+                Currency = Money.DefaultCurrency,
                 TransactionType = WalletTransactionType.ShoppingCredit,
                 CreditSource = ShoppingCreditSource.AuctionEntryFeeRefund,
                 IdempotencyKey = "one-and-only"

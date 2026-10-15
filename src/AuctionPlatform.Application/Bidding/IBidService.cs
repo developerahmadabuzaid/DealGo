@@ -26,4 +26,10 @@ public interface IAuctionCompletionService
 
     /// <summary>Applies the configured expiration policy to an auction whose duration elapsed.</summary>
     Task HandleExpiryAsync(Guid auctionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns every entry fee paid into a cancelled auction as cash in the Main wallet. Safe to
+    /// call repeatedly; each participant is refunded exactly once.
+    /// </summary>
+    Task RefundCancelledAuctionAsync(Guid auctionId, CancellationToken ct = default);
 }

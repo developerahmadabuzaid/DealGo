@@ -94,6 +94,14 @@ public sealed class ExceptionHandlingMiddleware
 
         OperationCanceledException => (499, ApiError.Create("REQUEST_CANCELLED", "The request was cancelled.")),
 
+        // The database is not answering — usually because it is still starting, or has been
+        // stopped. That is not the caller's mistake and it is not a bug in the request, so it is
+        // reported as a service that is temporarily away rather than as an internal failure.
+        _ when IsDatabaseUnreachable(exception) => (StatusCodes.Status503ServiceUnavailable,
+            ApiError.Create(
+                ErrorCodes.ServiceUnavailable,
+                "The service is temporarily unavailable. Please try again in a moment.")),
+
         _ => (StatusCodes.Status500InternalServerError, ApiError.Create(
             ErrorCodes.InternalError,
             _environment.IsDevelopment() ? exception.Message : "An unexpected error occurred."))
@@ -120,9 +128,36 @@ public sealed class ExceptionHandlingMiddleware
 
         ErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,
 
+        // Something the platform depends on is not answering — the database, or the provider that
+        // sends verification codes. A service that is briefly away is not a bad request, and a
+        // client that retries on 503 but gives up on 400 has to be able to tell them apart.
+        ErrorCodes.ServiceUnavailable => StatusCodes.Status503ServiceUnavailable,
+
         // Everything else is a well-formed request the platform's rules decline: 400.
         _ => StatusCodes.Status400BadRequest
     };
+
+    /// <summary>
+    /// True when the failure is "could not reach PostgreSQL" rather than anything about the data.
+    ///
+    /// Npgsql wraps this differently depending on where it happens — a broken socket, a pool that
+    /// cannot open a connection, or EF's transient-failure wrapper — so the whole chain is walked
+    /// rather than matching one type.
+    /// </summary>
+    private static bool IsDatabaseUnreachable(Exception exception)
+    {
+        for (var ex = exception; ex is not null; ex = ex.InnerException)
+        {
+            var name = ex.GetType().Name;
+
+            if (ex is System.Net.Sockets.SocketException) return true;
+            if (name is "NpgsqlException" or "PostgresException" &&
+                ex.InnerException is System.Net.Sockets.SocketException) return true;
+            if (name == "NpgsqlException" && ex.Message.Contains("Failed to connect")) return true;
+        }
+
+        return false;
+    }
 
     private static bool IsUniqueViolation(DbUpdateException ex) =>
         ex.InnerException?.GetType().Name == "PostgresException" &&

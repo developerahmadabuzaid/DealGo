@@ -25,5 +25,14 @@ public enum AuditActionType
     AuctionResumed = 19,
     UserRoleChanged = 20,
     StoreSettingsChanged = 21,
-    PrizeClaimAdjusted = 22
+    PrizeClaimAdjusted = 22,
+
+    /// <summary>Any edit to the public landing page's wording, cards, reviews or questions.</summary>
+    SiteContentChanged = 23,
+
+    /// <summary>An administrator put a user into an auction and charged them the entry fee.</summary>
+    ParticipantAddedByAdmin = 24,
+
+    /// <summary>An advertisement on the app's front page was added, changed or removed.</summary>
+    AppAdChanged = 25
 }

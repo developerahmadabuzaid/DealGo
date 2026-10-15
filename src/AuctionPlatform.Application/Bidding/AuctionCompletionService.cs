@@ -150,7 +150,8 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             };
 
             // Winning grants the right to the prize, not the prize itself: the winner still owes
-            // the prize value, tracked as a claim.
+            // the discounted prize price, tracked as a claim. The auction's discount applies to
+            // every prize alike.
             var claim = new PrizeClaim
             {
                 WinnerId = winner.Id,
@@ -158,7 +159,8 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 AuctionId = auctionId,
                 PrizeId = prize.Id,
                 Status = PrizeClaimStatus.PaymentRequired,
-                PaymentAmount = prize.OriginalPrice,
+                PaymentAmount = AuctionRules.PrizePaymentAmount(
+                    prize.OriginalPrice, auction.CurrentPrice, auction.OriginalPrice),
                 Currency = auction.Currency,
                 CreatedAt = now,
                 PaymentRequiredAt = now,
@@ -187,6 +189,9 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         auction.FinishedAt ??= now;
         auction.UpdatedAt = now;
 
+        // Nobody can join or bid on it now, so it leaves the front page's featured row.
+        auction.IsFeatured = false;
+
         _db.AuctionEvents.Add(new AuctionEvent
         {
             AuctionId = auctionId,
@@ -210,6 +215,93 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         return winnerDtos
             .Select(w => w with { DisplayName = BidService.MaskName(names.GetValueOrDefault(w.UserId)) })
             .ToList();
+    }
+
+    /// <summary>
+    /// Returns every entry fee paid into a cancelled auction, as cash in the Main wallet.
+    ///
+    /// A cancellation is the platform withdrawing the service, not a participant losing, so the
+    /// money goes back the way it arrived rather than becoming store-only credit. The auction's
+    /// own RefundDestinationWallet is deliberately ignored here: it describes how a *completed*
+    /// auction pays its losers.
+    ///
+    /// Shares the refund table with normal completion, so UNIQUE(AuctionId, ParticipantId) still
+    /// means each participant is paid exactly once however often this runs, and an auction that
+    /// already refunded its losers cannot be paid a second time by being cancelled afterwards.
+    /// </summary>
+    public async Task RefundCancelledAuctionAsync(Guid auctionId, CancellationToken ct = default)
+    {
+        await using var handle = await _locks.AcquireAsync(
+            $"auction:cancel-refund:{auctionId}", TimeSpan.FromMinutes(2), ct);
+
+        if (handle is null)
+        {
+            _logger.LogDebug(
+                "Cancellation refunds for auction {AuctionId} are already running elsewhere.", auctionId);
+            return;
+        }
+
+        var auction = await _db.Auctions.AsNoTracking().FirstOrDefaultAsync(a => a.Id == auctionId, ct);
+        if (auction is null) return;
+
+        if (auction.Status != AuctionStatus.Cancelled)
+        {
+            _logger.LogWarning(
+                "Refusing to refund auction {AuctionId}: status is {Status}, not Cancelled.",
+                auctionId, auction.Status);
+            return;
+        }
+
+        // Anyone who actually paid, whatever state the cancellation caught them in.
+        var candidates = await _db.AuctionParticipants
+            .AsNoTracking()
+            .Where(p => p.AuctionId == auctionId && p.EntryFeePaid > 0)
+            .Select(p => new { p.Id, p.UserId, p.EntryFeePaid, p.Currency })
+            .ToListAsync(ct);
+
+        var alreadyRefunded = (await _db.AuctionEntryFeeRefunds
+            .AsNoTracking()
+            .Where(r => r.AuctionId == auctionId)
+            .Select(r => r.ParticipantId)
+            .ToListAsync(ct))
+            .ToHashSet();
+
+        var paid = 0;
+
+        foreach (var candidate in candidates)
+        {
+            if (alreadyRefunded.Contains(candidate.Id)) continue;
+
+            try
+            {
+                await RefundOneAsync(
+                    auction, candidate.Id, candidate.UserId,
+                    candidate.EntryFeePaid, candidate.Currency,
+                    WalletType.Main, ct);
+
+                paid++;
+            }
+            catch (Exception ex)
+            {
+                // One failure must not strand everyone else; the next run picks this participant up.
+                _logger.LogError(ex,
+                    "Cancellation refund failed for participant {ParticipantId} in auction {AuctionId}.",
+                    candidate.Id, auctionId);
+            }
+        }
+
+        var tracked = await _db.Auctions.FirstOrDefaultAsync(a => a.Id == auctionId, ct);
+        if (tracked is { RefundsProcessed: false })
+        {
+            // Only the flag: a cancelled auction never advances to PrizeClaim.
+            tracked.RefundsProcessed = true;
+            tracked.UpdatedAt = _clock.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        _logger.LogInformation(
+            "Refunded {Count} entry fees to the Main wallet for cancelled auction {AuctionId}.",
+            paid, auctionId);
     }
 
     /// <summary>
@@ -257,7 +349,8 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             {
                 await RefundOneAsync(
                     auction, candidate.Id, candidate.UserId,
-                    candidate.EntryFeePaid, candidate.Currency, ct);
+                    candidate.EntryFeePaid, candidate.Currency,
+                    auction.RefundDestinationWallet, ct);
             }
             catch (Exception ex)
             {
@@ -272,7 +365,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
 
     private async Task RefundOneAsync(
         Domain.Entities.Auction auction, Guid participantId, Guid userId,
-        decimal entryFee, string currency, CancellationToken ct)
+        decimal entryFee, string currency, WalletType destination, CancellationToken ct)
     {
         var now = _clock.UtcNow;
 
@@ -288,7 +381,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             OriginalEntryFee = entryFee,
             RefundAmount = entryFee,
             Currency = currency,
-            DestinationWallet = auction.RefundDestinationWallet,
+            DestinationWallet = destination,
             Status = RefundStatus.Processing,
             AttemptCount = 1,
             CreatedAt = now
@@ -309,7 +402,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
 
         var settings = await _db.StoreSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         DateTime? expiresAt = null;
-        if (auction.RefundDestinationWallet == WalletType.Shopping &&
+        if (destination == WalletType.Shopping &&
             settings is { ShoppingCreditExpirationEnabled: true })
         {
             expiresAt = now.AddDays(settings.ShoppingCreditExpirationDays);
@@ -318,15 +411,18 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         var movement = new WalletMovement
         {
             UserId = userId,
-            WalletType = auction.RefundDestinationWallet,
+            WalletType = destination,
             Amount = entryFee,
             Currency = currency,
-            TransactionType = auction.RefundDestinationWallet == WalletType.Shopping
+            TransactionType = destination == WalletType.Shopping
                 ? WalletTransactionType.ShoppingCredit
                 : WalletTransactionType.Refund,
             ReferenceType = "Auction",
             ReferenceId = auction.Id,
-            CreditSource = ShoppingCreditSource.AuctionEntryFeeRefund,
+            // The credit source describes shopping credit only; cash refunds leave it unset.
+            CreditSource = destination == WalletType.Shopping
+                ? ShoppingCreditSource.AuctionEntryFeeRefund
+                : null,
             ExpiresAt = expiresAt,
             Description = $"Entry fee refund for auction {auction.AuctionNumber}",
             IdempotencyKey = $"refund:{auction.Id}:{participantId}"
@@ -340,8 +436,10 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         tracked.ProcessedAt = now;
 
         var participant = await _db.AuctionParticipants.FirstAsync(p => p.Id == participantId, ct);
-        if (participant.Status == ParticipantStatus.Lost)
+        if (participant.Status != ParticipantStatus.Won)
         {
+            // Covers both endings: a participant who lost, and one still Active when the auction
+            // was cancelled out from under them.
             participant.Status = ParticipantStatus.Refunded;
         }
 
@@ -349,7 +447,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         {
             AuctionId = auction.Id,
             UserId = userId,
-            EventType = auction.RefundDestinationWallet == WalletType.Shopping
+            EventType = destination == WalletType.Shopping
                 ? AuctionEventType.ShoppingCreditAdded
                 : AuctionEventType.EntryFeeRefunded,
             Timestamp = now,
@@ -359,22 +457,26 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
+        var isCredit = destination == WalletType.Shopping;
+
         await SafeNotifyAsync(async () =>
         {
-            if (auction.RefundDestinationWallet == WalletType.Shopping)
+            if (isCredit)
             {
                 await _realtime.ShoppingCreditAddedAsync(
                     userId, entryFee, result.BalanceAfter, currency, auction.Id, ct);
             }
 
+            // Store credit and withdrawable cash are different things to the recipient, so they
+            // are never announced with the same words.
             await _notifications.NotifyAsync(new NotificationRequest(userId, new NotificationTemplate(
-                NotificationType.ShoppingCreditAdded,
-                NotificationKeys.ShoppingCreditAddedTitle,
-                NotificationKeys.ShoppingCreditAddedBody,
+                isCredit ? NotificationType.ShoppingCreditAdded : NotificationType.EntryFeeRefunded,
+                isCredit ? NotificationKeys.ShoppingCreditAddedTitle : NotificationKeys.EntryFeeRefundedTitle,
+                isCredit ? NotificationKeys.ShoppingCreditAddedBody : NotificationKeys.EntryFeeRefundedBody,
                 new object[] { $"{entryFee:0.00} {currency}" },
                 new Dictionary<string, string>
                 {
-                    ["type"] = "SHOPPING_CREDIT_ADDED",
+                    ["type"] = isCredit ? "SHOPPING_CREDIT_ADDED" : "ENTRY_FEE_REFUNDED",
                     ["auctionId"] = auction.Id.ToString(),
                     ["amount"] = entryFee.ToString("0.00")
                 })), ct);
@@ -457,6 +559,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
 
         var now = _clock.UtcNow;
         bool shouldComplete;
+        var cancelled = false;
 
         await using (var tx = await _db.BeginTransactionAsync(ct))
         {
@@ -486,6 +589,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 case ExpirationPolicy.Cancel:
                     auction.Status = AuctionStatus.Cancelled;
                     auction.FinishedAt = now;
+                    auction.IsFeatured = false;
                     shouldComplete = false;
                     break;
 
@@ -501,6 +605,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 default:
                     auction.Status = AuctionStatus.Finished;
                     auction.FinishedAt = now;
+                    auction.IsFeatured = false;
                     shouldComplete = true;
                     break;
             }
@@ -525,6 +630,8 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             }
             else if (auction.Status == AuctionStatus.Cancelled)
             {
+                cancelled = true;
+
                 await SafeNotifyAsync(() => _realtime.AuctionCancelledAsync(
                     auctionId, "Duration expired", ct));
             }
@@ -533,6 +640,12 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         if (shouldComplete)
         {
             await CompleteAuctionAsync(auctionId, ct);
+        }
+        else if (cancelled)
+        {
+            // The Cancel expiration policy ends the auction the same way an administrator would,
+            // so it owes the participants their entry fees back in the same way.
+            await RefundCancelledAuctionAsync(auctionId, ct);
         }
     }
 

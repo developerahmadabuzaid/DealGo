@@ -1,46 +1,220 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
+    Replaced by the `--base-href` argument given to `flutter build`. The app is served from the
+    API at /app/, so that build passes --base-href=/app/.
   -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <!-- viewport-fit=cover lets the page reach under the notch on a phone. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="ديل جو — مزادات مباشرة ومتجر.">
 
-  <!-- iOS meta tags & icons -->
+  <!-- The bar above the page, in the brand colour. The app itself is light throughout. -->
+  <meta name="theme-color" content="#F26A1B">
+
+  <!-- Installed on the home screen -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="mobile">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="DealGo">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>mobile</title>
+  <title>DealGo</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- The app's code is the biggest thing the phone fetches. Starting it here, rather than when
+       the loader gets around to it, overlaps the download with the rest of the page. The engine
+       itself is not preloaded: which build it picks depends on the browser, and guessing wrong
+       would waste a couple of megabytes. -->
+  <link rel="preload" href="main.dart.js" as="script">
+
+  <style>
+    :root {
+      --bg: #F7F8FC;
+      --ink: #17191D;
+      --muted: #5C626C;
+      --brand: #F26A1B;
+      --track: #E2E8F0;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      overscroll-behavior: none;
+      font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+    }
+
+    /* What the phone shows while the app loads: the mark, the name, and a moving bar.
+       It fades out on the app's first frame. */
+    #splash {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+      z-index: 10;
+      transition: opacity 280ms ease;
+    }
+
+    #splash.gone {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .splash-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding: 0 24px;
+      text-align: center;
+    }
+
+    .splash-mark {
+      width: 108px;
+      height: 108px;
+      animation: rise 600ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .splash-name {
+      font-size: 27px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--ink);
+      direction: ltr;
+    }
+
+    .splash-name span { color: var(--brand); }
+
+    .splash-tagline {
+      margin-top: -12px;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+
+    /* An indeterminate bar: it says "working" without pretending to know how far along it is. */
+    .splash-bar {
+      width: 132px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--track);
+      overflow: hidden;
+    }
+
+    .splash-bar::after {
+      content: "";
+      display: block;
+      width: 45%;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--brand);
+      animation: slide 1.15s ease-in-out infinite;
+    }
+
+    @keyframes slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(340%); }
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px) scale(0.96); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .splash-mark { animation: none; }
+      .splash-bar::after { animation-duration: 3s; }
+    }
+
+    /* Offered only when the browser says the app can be installed. */
+    #install {
+      position: fixed;
+      inset-inline: 0;
+      bottom: calc(18px + env(safe-area-inset-bottom));
+      margin: 0 auto;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 20px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--brand);
+      color: #fff;
+      font: inherit;
+      font-size: 14.5px;
+      font-weight: 700;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+      cursor: pointer;
+      z-index: 20;
+    }
+
+    #install.show { display: inline-flex; }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <div id="splash">
+    <div class="splash-inner">
+      <img class="splash-mark" src="icons/Icon-192.png" alt="">
+      <div class="splash-name">Deal<span>Go</span></div>
+      <div class="splash-tagline">صفقتك جاهزة</div>
+      <div class="splash-bar"></div>
+    </div>
+  </div>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <button id="install" type="button">
+    <span>تثبيت التطبيق</span>
+  </button>
+
+  <script>
+    // The splash stays until the app has actually painted something.
+    window.addEventListener('flutter-first-frame', function () {
+      var splash = document.getElementById('splash');
+      if (!splash) return;
+      splash.classList.add('gone');
+      setTimeout(function () { splash.remove(); }, 400);
+    });
+
+    // Chrome and Edge let the page offer the install itself; the browser decides when.
+    var deferredPrompt = null;
+    var installButton = document.getElementById('install');
+
+    window.addEventListener('beforeinstallprompt', function (event) {
+      event.preventDefault();
+      deferredPrompt = event;
+      installButton.classList.add('show');
+    });
+
+    installButton.addEventListener('click', function () {
+      if (!deferredPrompt) return;
+      installButton.classList.remove('show');
+      deferredPrompt.prompt();
+      deferredPrompt = null;
+    });
+
+    window.addEventListener('appinstalled', function () {
+      deferredPrompt = null;
+      installButton.classList.remove('show');
+    });
+
+    // Our own worker keeps the app's files for offline starts; Flutter's own no longer caches
+    // anything. Registered after load so it never competes with the first paint.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function (error) {
+          console.warn('Service worker registration failed:', error);
+        });
+      });
+    }
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -6,19 +6,42 @@ import 'package:intl/intl.dart';
 class Fmt {
   const Fmt._();
 
+  /// What each currency is written as. The server sends the ISO code; only the label
+  /// changes here, never the amount.
+  static const _symbols = {
+    /*
+     * The Saudi Riyal sign.
+     *
+     * U+E900 is a private code point carried by the RiyalSign font that ships with the app, which
+     * the theme lists as a fallback. The sign is too new for system fonts; writing it this way
+     * keeps prices as ordinary text — searchable, selectable, and styled like everything else —
+     * instead of pictures pasted between the digits.
+     */
+    'SAR': '\ue900',
+    'AED': 'د.إ',
+    'KWD': 'د.ك',
+    'EGP': 'ج.م',
+    'USD': r'$',
+    'EUR': '€',
+  };
+
+  /// Digits stay Western even in Arabic. The amounts sit next to Latin-script codes and
+  /// server data, and mixing digit systems in one screen reads badly.
+  static String symbolFor(String currency) => _symbols[currency.toUpperCase()] ?? currency;
+
   static String money(num? value, String currency, {String locale = 'en'}) {
     if (value == null) return '—';
     final formatter = NumberFormat.currency(
-      locale: locale == 'ar' ? 'ar' : 'en_US',
+      locale: 'en_US',
       symbol: '',
       decimalDigits: 2,
     );
-    return '${formatter.format(value).trim()} $currency';
+    return '${formatter.format(value).trim()} ${symbolFor(currency)}';
   }
 
   static String compactMoney(num? value, String currency) {
     if (value == null) return '—';
-    return '${NumberFormat.compact().format(value)} $currency';
+    return '${NumberFormat.compact().format(value)} ${symbolFor(currency)}';
   }
 
   static String number(num? value) =>

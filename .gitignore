@@ -59,3 +59,13 @@ mobile/.idea/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---- built PWA ----
+# The Flutter web build served by the API at /app/; produced by scripts/build-pwa.
+src/AuctionPlatform.Api/wwwroot/app/
+
+# ---- local deployment secrets ----
+# Holds the live connection string, JWT signing key and Tawked key for the SmarterASP.NET
+# deployment. Read by deploy\smarterasp\publish-smarterasp.ps1 so a live key is typed once.
+# Never commit it.
+deploy/smarterasp/local-secrets.ps1

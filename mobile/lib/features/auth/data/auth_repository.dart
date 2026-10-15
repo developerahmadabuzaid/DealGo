@@ -72,29 +72,6 @@ class AuthRepository {
   final ApiClient _api;
   final TokenStore _tokens;
 
-  Future<UserProfile> register({
-    required String fullName,
-    required String email,
-    required String password,
-    String? phoneNumber,
-    String language = 'ar',
-  }) async {
-    final data = await _api.post('/auth/register', body: {
-      'fullName': fullName,
-      'email': email,
-      'password': password,
-      'phoneNumber': phoneNumber,
-      'language': language,
-    });
-
-    return _persist(data as Map<String, dynamic>);
-  }
-
-  Future<UserProfile> login(String email, String password) async {
-    final data = await _api.post('/auth/login', body: {'email': email, 'password': password});
-    return _persist(data as Map<String, dynamic>);
-  }
-
   Future<UserProfile> _persist(Map<String, dynamic> body) async {
     await _tokens.write(AuthTokens(
       accessToken: body['accessToken'] as String,

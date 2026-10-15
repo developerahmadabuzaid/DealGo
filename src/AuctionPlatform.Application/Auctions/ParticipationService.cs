@@ -22,6 +22,7 @@ public sealed class ParticipationService : IParticipationService
     private readonly IDateTimeProvider _clock;
     private readonly IAuctionRealtimeNotifier _realtime;
     private readonly INotificationService _notifications;
+    private readonly IAuditService _audit;
     private readonly ILogger<ParticipationService> _logger;
 
     public ParticipationService(
@@ -30,6 +31,7 @@ public sealed class ParticipationService : IParticipationService
         IDateTimeProvider clock,
         IAuctionRealtimeNotifier realtime,
         INotificationService notifications,
+        IAuditService audit,
         ILogger<ParticipationService> logger)
     {
         _db = db;
@@ -37,6 +39,7 @@ public sealed class ParticipationService : IParticipationService
         _clock = clock;
         _realtime = realtime;
         _notifications = notifications;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -66,8 +69,58 @@ public sealed class ParticipationService : IParticipationService
         return outcome.Participation;
     }
 
+    public async Task<MyParticipationDto> AddByAdminAsync(
+        Guid auctionId, AddParticipantRequest request, CancellationToken ct = default)
+    {
+        if (request.EntryFee < 0)
+        {
+            throw new DomainException(ErrorCodes.InvalidAmount, "The entry fee cannot be negative.");
+        }
+
+        var user = await _db.Users.AsNoTracking()
+            .Where(u => u.Id == request.UserId)
+            .Select(u => new { u.Id, u.IsActive })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new DomainException(ErrorCodes.NotFound, "User not found.");
+
+        if (!user.IsActive)
+        {
+            throw new DomainException(ErrorCodes.AccountDisabled, "This account is disabled.");
+        }
+
+        var existing = await GetMyParticipationAsync(auctionId, user.Id, ct);
+        if (existing is not null)
+        {
+            throw new DomainException(ErrorCodes.AlreadyJoined, "This user has already joined this auction.");
+        }
+
+        var now = _clock.UtcNow;
+        var fee = Money.Round(request.EntryFee);
+        JoinOutcome outcome;
+
+        try
+        {
+            // The same path a user takes to join, so the counter, the start schedule and the wallet
+            // charge behave identically. Only the fee differs.
+            outcome = await ExecuteJoinAsync(auctionId, user.Id, idempotencyKey: null, now, ct, fee);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            throw new DomainException(ErrorCodes.AlreadyJoined, "This user has already joined this auction.");
+        }
+
+        await _audit.LogAsync(AuditActionType.ParticipantAddedByAdmin, nameof(AuctionParticipant),
+            outcome.Participation.ParticipantId, null,
+            new { AuctionId = auctionId, UserId = user.Id, EntryFee = fee }, ct: ct);
+
+        await PublishJoinAsync(outcome, ct);
+
+        return outcome.Participation;
+    }
+
     private async Task<JoinOutcome> ExecuteJoinAsync(
-        Guid auctionId, Guid userId, string? idempotencyKey, DateTime now, CancellationToken ct)
+        Guid auctionId, Guid userId, string? idempotencyKey, DateTime now, CancellationToken ct,
+        decimal? entryFeeOverride = null)
     {
         await using var tx = await _db.BeginTransactionAsync(ct);
 
@@ -90,12 +143,16 @@ public sealed class ParticipationService : IParticipationService
             throw new DomainException(ErrorCodes.AuctionFull, "This auction already has all its participants.");
         }
 
+        // An administrator may set the fee for one participant; everyone else pays the auction's.
+        // Refunds read EntryFeePaid, so a participant always gets back exactly what they paid.
+        var entryFee = entryFeeOverride ?? auction.EntryFee;
+
         var participant = new AuctionParticipant
         {
             AuctionId = auctionId,
             UserId = userId,
             JoinedAt = now,
-            EntryFeePaid = auction.EntryFee,
+            EntryFeePaid = entryFee,
             Currency = auction.Currency,
             CurrentPrice = 0m,
             HighestPrice = 0m,
@@ -103,14 +160,14 @@ public sealed class ParticipationService : IParticipationService
         };
 
         // Charge the entry fee from the Main wallet. The Shopping wallet can never pay it.
-        if (auction.EntryFee > 0)
+        if (entryFee > 0)
         {
             var payment = new Payment
             {
                 UserId = userId,
                 AuctionId = auctionId,
                 PaymentType = PaymentType.EntryFee,
-                Amount = auction.EntryFee,
+                Amount = entryFee,
                 Currency = auction.Currency,
                 Provider = "WALLET",
                 Status = PaymentStatus.Pending,
@@ -123,7 +180,7 @@ public sealed class ParticipationService : IParticipationService
             {
                 UserId = userId,
                 WalletType = WalletType.Main,
-                Amount = auction.EntryFee,
+                Amount = entryFee,
                 Currency = auction.Currency,
                 TransactionType = WalletTransactionType.AuctionEntryFee,
                 ReferenceType = "Auction",

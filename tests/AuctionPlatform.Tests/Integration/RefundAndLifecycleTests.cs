@@ -1,4 +1,7 @@
+using AuctionPlatform.Application.Auctions;
 using AuctionPlatform.Application.Bidding;
+using AuctionPlatform.Application.Common;
+using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Enums;
 using AuctionPlatform.Infrastructure.Persistence;
 using FluentAssertions;
@@ -84,6 +87,17 @@ public class AuctionCompletionTests
         claims.Should().OnlyContain(c => c.Status == PrizeClaimStatus.PaymentRequired);
         claims.Should().OnlyContain(c => c.PaymentAmount > 0);
 
+        // The auction closed at 2500 on a 5000 value, so every prize, not only the first, is
+        // owed at half its price.
+        var prizePrices = await db2.AuctionPrizes.AsNoTracking()
+            .Where(p => p.AuctionId == auctionId)
+            .ToDictionaryAsync(p => p.Id, p => p.OriginalPrice);
+
+        foreach (var claim in claims)
+        {
+            claim.PaymentAmount.Should().Be(Money.Round(prizePrices[claim.PrizeId] / 2));
+        }
+
         foreach (var winner in winners)
         {
             var wallet = await db2.Wallets.AsNoTracking()
@@ -111,6 +125,160 @@ public class AuctionCompletionTests
             .ToListAsync();
 
         credits.Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// Prizes are entered against the auction, and the auction's value follows its first prize.
+    /// Nothing is read from the shared catalog, and the price ladder is derived from the stored
+    /// value rather than from anything the caller typed.
+    /// </summary>
+    [Fact]
+    public async Task Creating_an_auction_takes_its_value_and_picture_from_the_first_prize()
+    {
+        Guid auctionId;
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            var admin = scope.ServiceProvider.GetRequiredService<IAuctionAdminService>();
+
+            var created = await admin.CreateAsync(new CreateAuctionRequest(
+                Title: "مزاد الهاتف",
+                Description: null,
+                StartingPrice: 400m,
+                TargetPercentage: 50m,
+                FinalPhasePercentage: 40m,
+                BidIncrement: 20m,
+                EntryFee: 15m,
+                Currency: null,
+                RequiredParticipants: 100,
+                StartDelayAfterParticipantsSeconds: 60,
+                DurationSeconds: 180,
+                ExpirationPolicy: ExpirationPolicy.EndAndDistribute,
+                Prizes: new[]
+                {
+                    new AuctionPrizeRequest(1, "هاتف ذكي", 4000m, "https://example.test/phone.jpg", "أحدث إصدار"),
+                    new AuctionPrizeRequest(2, "ساعة ذكية", 1200m, null, null),
+                    new AuctionPrizeRequest(3, "سماعات", 600m, null, null),
+                    new AuctionPrizeRequest(4, "شاحن سريع", 150m, null, null),
+                }));
+
+            auctionId = created.Id;
+        }
+
+        await using var verify = _fixture.CreateScope();
+        var db = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var auction = await db.Auctions.AsNoTracking().FirstAsync(a => a.Id == auctionId);
+
+        auction.OriginalPrice.Should().Be(4000m, "the auction is worth what its first prize is worth");
+        auction.MainProductNameSnapshot.Should().Be("هاتف ذكي");
+        auction.MainImageSnapshot.Should().Be("https://example.test/phone.jpg");
+        auction.MainProductId.Should().BeNull("prizes no longer come from the shared catalog");
+
+        // 50% and 40% of the value that was actually stored.
+        auction.TargetPrice.Should().Be(2000m);
+        auction.FinalPhasePrice.Should().Be(1600m);
+
+        var prizes = await db.AuctionPrizes.AsNoTracking()
+            .Where(p => p.AuctionId == auctionId)
+            .OrderBy(p => p.Rank)
+            .ToListAsync();
+
+        prizes.Should().HaveCount(4);
+        prizes.Select(p => p.OriginalPrice).Should().Equal(4000m, 1200m, 600m, 150m);
+        prizes.Select(p => p.ProductNameSnapshot).Should().Equal("هاتف ذكي", "ساعة ذكية", "سماعات", "شاحن سريع");
+        prizes[0].Description.Should().Be("أحدث إصدار");
+        prizes.Should().OnlyContain(p => p.ProductId == null);
+    }
+
+    /// <summary>A prize with no name cannot define an auction, so creation is refused.</summary>
+    [Fact]
+    public async Task An_auction_is_refused_when_its_first_prize_has_no_name()
+    {
+        await using var scope = _fixture.CreateScope();
+        var admin = scope.ServiceProvider.GetRequiredService<IAuctionAdminService>();
+
+        var act = async () => await admin.CreateAsync(new CreateAuctionRequest(
+            Title: "مزاد بلا جائزة",
+            Description: null,
+            StartingPrice: 400m,
+            TargetPercentage: 50m,
+            FinalPhasePercentage: 40m,
+            BidIncrement: 20m,
+            EntryFee: 15m,
+            Currency: null,
+            RequiredParticipants: 100,
+            StartDelayAfterParticipantsSeconds: 60,
+            DurationSeconds: 180,
+            ExpirationPolicy: ExpirationPolicy.EndAndDistribute,
+            Prizes: new[] { new AuctionPrizeRequest(1, "   ", 4000m, null, null) }));
+
+        await act.Should().ThrowAsync<DomainException>();
+    }
+
+    /// <summary>
+    /// Cancelling an auction returns every entry fee as cash in the Main wallet, not as shopping
+    /// credit: the platform withdrew the service, so the money goes back the way it arrived.
+    /// Repeat runs must not pay anyone twice.
+    /// </summary>
+    [Fact]
+    public async Task Cancelling_an_auction_returns_every_entry_fee_to_the_main_wallet()
+    {
+        Guid auctionId;
+        var users = new List<Guid>();
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var auction = await TestData.CreateLiveAuctionAsync(db);
+            auctionId = auction.Id;
+
+            for (var i = 0; i < 5; i++)
+            {
+                var user = await TestData.CreateUserAsync(db, $"C{i}", mainBalance: 100m);
+                users.Add(user.Id);
+                await TestData.AddParticipantAsync(db, auctionId, user.Id);
+            }
+
+            auction.Status = AuctionStatus.Cancelled;
+            auction.FinishedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        // Twice, to prove the refund marker makes a second pass a no-op.
+        for (var i = 0; i < 2; i++)
+        {
+            await using var scope = _fixture.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<IAuctionCompletionService>()
+                .RefundCancelledAuctionAsync(auctionId);
+        }
+
+        await using var verify = _fixture.CreateScope();
+        var db2 = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        foreach (var userId in users)
+        {
+            var main = await db2.Wallets.AsNoTracking()
+                .FirstAsync(w => w.UserId == userId && w.WalletType == WalletType.Main);
+            var shopping = await db2.Wallets.AsNoTracking()
+                .FirstAsync(w => w.UserId == userId && w.WalletType == WalletType.Shopping);
+
+            main.Balance.Should().Be(120m, "the entry fee comes back as withdrawable cash");
+            shopping.Balance.Should().Be(0m, "a cancellation never issues store-only credit");
+        }
+
+        var refunds = await db2.AuctionEntryFeeRefunds.AsNoTracking()
+            .Where(r => r.AuctionId == auctionId)
+            .ToListAsync();
+
+        refunds.Should().HaveCount(5, "each participant is refunded exactly once");
+        refunds.Should().OnlyContain(r => r.DestinationWallet == WalletType.Main);
+        refunds.Should().OnlyContain(r => r.Status == RefundStatus.Completed);
+
+        var participants = await db2.AuctionParticipants.AsNoTracking()
+            .Where(p => p.AuctionId == auctionId).ToListAsync();
+
+        participants.Should().OnlyContain(p => p.Status == ParticipantStatus.Refunded);
     }
 
     /// <summary>

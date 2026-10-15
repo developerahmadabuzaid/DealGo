@@ -4,8 +4,10 @@ using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Identity;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Realtime;
+using AuctionPlatform.Application.Site;
 using AuctionPlatform.Application.Store;
 using AuctionPlatform.Application.Wallets;
+using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Entities;
 using AuctionPlatform.Domain.Enums;
 using AuctionPlatform.Infrastructure.Persistence;
@@ -64,14 +66,20 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
 
+        // The seeder creates roles and promotes accounts, which needs the identity stores.
+        services.AddIdentityCore<ApplicationUser>()
+            .AddRoles<ApplicationRole>()
+            .AddEntityFrameworkStores<ApplicationDbContext>();
+        services.AddScoped<DatabaseSeeder>();
+
         services.Configure<AuctionOptions>(o =>
         {
             // Rate limiting is a separate concern; these tests are about database correctness.
             o.BidRateLimitPerSecond = int.MaxValue;
             o.BidRateLimitPerMinute = int.MaxValue;
         });
-        services.Configure<JwtOptions>(_ => { });
-        services.Configure<OtpOptions>(_ => { });
+        services.Configure<JwtOptions>(o => o.Secret = "integration-test-signing-key-at-least-32-chars");
+        services.Configure<OtpOptions>(o => o.AllowSignUpOnLogin = true);
 
         // The tests run as Development, so the OTP service returns the code and the flow can be
         // exercised without an SMS or email provider.
@@ -81,6 +89,10 @@ public sealed class DatabaseFixture : IAsyncLifetime
             ApplicationName = "AuctionPlatform.Tests"
         });
         services.AddSingleton<IOtpSender, NoopOtpSender>();
+
+        // No provider here, so codes stay on our side and come back on the challenge, which is
+        // what these tests assert against. The provider path has its own unit tests.
+        services.AddSingleton<ITawkedVerifyClient, DisabledTawkedClient>();
 
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
@@ -92,6 +104,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
         services.AddScoped<ICurrentUserService>(_ => new TestCurrentUser(actingUserId));
         services.AddScoped<IOtpService, OtpService>();
+        services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<INumberGenerator, NumberGenerator>();
         services.AddScoped<INotificationService, NotificationService>();
@@ -101,7 +114,10 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IParticipationService, ParticipationService>();
         services.AddScoped<IBidService, BidService>();
         services.AddScoped<IAuctionCompletionService, AuctionCompletionService>();
+        services.AddScoped<IAuctionAdminService, AuctionAdminService>();
+        services.AddScoped<IAppAdService, AppAdService>();
         services.AddScoped<IStoreCatalogService, StoreCatalogService>();
+        services.AddScoped<IStoreAdminService, StoreAdminService>();
         services.AddScoped<StoreOrderService>();
         services.AddScoped<IStoreOrderService>(sp => sp.GetRequiredService<StoreOrderService>());
 
@@ -128,6 +144,24 @@ public sealed class DatabaseFixture : IAsyncLifetime
     {
         public Task<bool> TryAcquireAsync(string key, int limit, TimeSpan window, CancellationToken ct = default) =>
             Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// A provider that is switched off, exactly as an unconfigured deployment sees it. Calling it
+    /// would mean the service ignored IsEnabled, so both calls fail loudly rather than returning
+    /// something plausible.
+    /// </summary>
+    private sealed class DisabledTawkedClient : ITawkedVerifyClient
+    {
+        public bool IsEnabled => false;
+
+        public Task<TawkedVerification> StartAsync(string phoneE164, string language, string reference,
+            string? clientIp, string idempotencyKey, CancellationToken ct = default) =>
+            throw new InvalidOperationException("The provider is disabled and must not be called.");
+
+        public Task<TawkedCheckOutcome> CheckAsync(string verificationId, string code,
+            CancellationToken ct = default) =>
+            throw new InvalidOperationException("The provider is disabled and must not be called.");
     }
 
     /// <summary>Delivery is out of scope here; the code comes back on the challenge.</summary>
@@ -191,11 +225,11 @@ public static class TestData
 
         db.Wallets.Add(new Wallet
         {
-            UserId = user.Id, WalletType = WalletType.Main, Balance = mainBalance, Currency = "USD"
+            UserId = user.Id, WalletType = WalletType.Main, Balance = mainBalance, Currency = Money.DefaultCurrency
         });
         db.Wallets.Add(new Wallet
         {
-            UserId = user.Id, WalletType = WalletType.Shopping, Balance = shoppingBalance, Currency = "USD"
+            UserId = user.Id, WalletType = WalletType.Shopping, Balance = shoppingBalance, Currency = Money.DefaultCurrency
         });
 
         await db.SaveChangesAsync();
@@ -209,9 +243,9 @@ public static class TestData
         decimal increment = 20m,
         int requiredParticipants = 100)
     {
-        var product = new Product { Name = "Test Prize", Price = 5000m, Currency = "USD" };
+        var product = new Product { Name = "Test Prize", Price = 5000m, Currency = Money.DefaultCurrency };
         var extras = Enumerable.Range(2, 3)
-            .Select(i => new Product { Name = $"Prize {i}", Price = 1000m * i, Currency = "USD" })
+            .Select(i => new Product { Name = $"Prize {i}", Price = 1000m * i, Currency = Money.DefaultCurrency })
             .ToList();
 
         db.Products.Add(product);
@@ -233,7 +267,7 @@ public static class TestData
             FinalPhasePrice = 2000m,
             BidIncrement = increment,
             EntryFee = 20m,
-            Currency = "USD",
+            Currency = Money.DefaultCurrency,
             RequiredParticipants = requiredParticipants,
             DurationSeconds = 3600,
             Status = AuctionStatus.Live,
@@ -271,7 +305,7 @@ public static class TestData
             AuctionId = auctionId,
             UserId = userId,
             EntryFeePaid = entryFee,
-            Currency = "USD",
+            Currency = Money.DefaultCurrency,
             Status = ParticipantStatus.Active
         };
 
@@ -293,7 +327,7 @@ public static class TestData
             Slug = $"test-item-{Guid.NewGuid():N}",
             Sku = $"SKU-{Guid.NewGuid():N}"[..20],
             Price = price,
-            Currency = "USD",
+            Currency = Money.DefaultCurrency,
             StockQuantity = stock,
             Status = StoreProductStatus.Active,
             PaymentMode = mode,

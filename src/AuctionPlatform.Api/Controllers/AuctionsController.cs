@@ -28,7 +28,7 @@ public sealed class AuctionsController : ApiControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<PagedResult<AuctionListItemDto>>> List(
         [FromQuery] AuctionListQuery query, CancellationToken ct) =>
-        Ok(await _auctions.ListAsync(query, CurrentUserIdOrNull, ct));
+        Ok(await _auctions.ListAsync(query, CurrentUserIdOrNull, ct: ct));
 
     [HttpGet("{id:guid}")]
     [AllowAnonymous]

@@ -113,7 +113,11 @@ public sealed class OtpCodeConfiguration : IEntityTypeConfiguration<OtpCode>
         b.HasKey(o => o.Id);
 
         b.Property(o => o.Destination).HasMaxLength(256).IsRequired();
+
+        // Still NOT NULL, but empty for a code a provider holds: there is no hash of ours to keep,
+        // and ProviderVerificationId is then what says who can check it.
         b.Property(o => o.CodeHash).HasMaxLength(128).IsRequired();
+        b.Property(o => o.ProviderVerificationId).HasMaxLength(128);
         b.Property(o => o.OperationBinding).HasMaxLength(128);
         b.Property(o => o.InvalidatedReason).HasMaxLength(256);
         b.Property(o => o.IpAddress).HasMaxLength(64);

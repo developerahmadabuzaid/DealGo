@@ -158,7 +158,7 @@ returns `OTP_REQUEST_TOO_SOON`.
   "targetPrice": 2500.00,
   "finalPhasePrice": 2000.00,
   "bidIncrement": 20.00,
-  "currency": "USD",
+  "currency": "SAR",
   "participantCount": 400,
   "requiredParticipants": 400,
   "remainingSeconds": 72,
@@ -217,7 +217,7 @@ A withdrawal moves real money out of the platform, so a valid access token alone
 
 ```http
 POST /api/v1/wallet/withdraw/request-otp
-{ "amount": 100.00, "currency": "USD", "destination": "IBAN123" }
+{ "amount": 100.00, "currency": "SAR", "destination": "IBAN123" }
 ```
 
 The code is **bound to that exact amount, currency and destination**. A code obtained for a small
@@ -225,7 +225,7 @@ transfer cannot approve a larger one, or one to a different account — both ret
 
 ```http
 POST /api/v1/wallet/withdraw
-{ "amount": 100.00, "currency": "USD", "idempotencyKey": "...",
+{ "amount": 100.00, "currency": "SAR", "idempotencyKey": "...",
   "destination": "IBAN123", "otpCode": "482915" }
 ```
 
@@ -250,6 +250,18 @@ Omitting the code returns `OTP_REQUIRED`; reusing one returns `OTP_ALREADY_USED`
 | DELETE | `/store/addresses/{id}` | user |
 
 Checkout requires an `idempotencyKey`; a retry returns the original order.
+
+## Front-page advertisements
+
+| Method | Path | Auth |
+|---|---|---|
+| GET | `/ads` | anon |
+
+Returns only advertisements that are published and inside their dates, ordered by place and then
+by `displayOrder`. Each row carries `placement` (`HomeStrip`, `HomeSlideshow` or
+`HomeUnderCategories`), `imageUrl`, an optional `title` and `note`, and `route` — the address the
+app opens, worked out on the server, or `null` when the picture opens nothing. An empty list is
+normal: the app then advertises the featured auctions and the store's offers instead.
 
 ## Prizes & notifications
 
@@ -285,6 +297,7 @@ POST   /admin/auctions/{id}/pause         Auction.Start
 POST   /admin/auctions/{id}/resume        Auction.Start
 POST   /admin/auctions/{id}/cancel        Auction.Cancel
 GET    /admin/auctions/{id}/participants  Auction.Read
+POST   /admin/auctions/{id}/participants  Auction.Update   add a user at a chosen entry fee, paid from their Main wallet
 GET    /admin/auctions/{id}/winners       Auction.Read
 GET    /admin/auctions/{id}/events        Auction.Read
 ```
@@ -315,6 +328,20 @@ POST   /admin/store/orders/{id}/refund              Wallet.Refund
 GET    /admin/store/settings                        Store.Read
 PUT    /admin/store/settings                        Store.ManageSettings
 ```
+
+### Front-page advertisements — `Site.Manage`
+
+```text
+GET    /admin/ads                                   every advertisement, drafts included
+POST   /admin/ads                                   placement + imageUrl required
+PUT    /admin/ads/{id}
+DELETE /admin/ads/{id}
+```
+
+The body takes `placement`, `imageUrl`, `title`, `note`, `targetKind`
+(`None`, `Auction`, `Product`, `Category`, `Url`), `targetId` or `targetUrl`, `displayOrder`,
+`isPublished`, `startsAt` and `endsAt`. A target of `Auction`, `Product` or `Category` needs its
+`targetId`; a `Url` needs its address. Dates without a zone are read as UTC.
 
 ### Wallets, users, reporting
 

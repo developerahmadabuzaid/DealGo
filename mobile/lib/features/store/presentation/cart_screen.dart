@@ -5,6 +5,8 @@ import '../../../core/errors/api_exception.dart';
 import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
 import '../data/store_repository.dart';
 
@@ -48,7 +50,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       final quote = await ref.read(storeRepositoryProvider).quote(cart, _paymentMethod);
       if (mounted) setState(() => _quote = quote);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.displayMessage);
     } finally {
       if (mounted) setState(() => _loadingQuote = false);
     }
@@ -83,7 +85,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         Navigator.of(context).pop();
       }
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.displayMessage);
     } finally {
       if (mounted) setState(() => _placing = false);
     }
@@ -96,7 +98,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final cart = ref.watch(cartProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(t.cart)),
+      appBar: BrandAppBar(title: Text(t.cart)),
       body: cart.isEmpty
           ? EmptyState(message: t.emptyCart, icon: Icons.shopping_cart_outlined)
           : ListView(
@@ -134,24 +136,22 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                     ),
                   ),
 
-                const SizedBox(height: 12),
-                Text(t.payWith,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppTheme.space5),
+                Text(t.payWith, style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: AppTheme.space3),
 
-                SegmentedButton<String>(
-                  segments: [
-                    ButtonSegment(value: 'ShoppingWallet', label: Text(t.shoppingCredit)),
-                    ButtonSegment(value: 'MainWallet', label: Text(t.mainWallet)),
-                  ],
-                  selected: {_paymentMethod},
-                  onSelectionChanged: (s) {
-                    setState(() => _paymentMethod = s.first);
+                // Both wallets can pay here. Showing each balance beside its option is the
+                // point: a bare pair of labels gave no reason to believe the main wallet was
+                // usable, and no way to tell which one actually covers the total.
+                _PaymentChoice(
+                  selected: _paymentMethod,
+                  onChanged: (m) {
+                    setState(() => _paymentMethod = m);
                     _refreshQuote();
                   },
                 ),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: AppTheme.space5),
 
                 if (_loadingQuote)
                   const Center(child: Padding(
@@ -182,6 +182,124 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+/// Which wallet pays.
+///
+/// Two balances that behave differently, so each option carries its own colour, icon and figure.
+/// The main wallet is real cash; shopping credit can only be spent here. Neither is presented as
+/// a default "the balance" — the user picks, knowing what each one is.
+class _PaymentChoice extends ConsumerWidget {
+  const _PaymentChoice({required this.selected, required this.onChanged});
+
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppStrings.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final wallets = ref.watch(walletsProvider);
+
+    return Column(
+      children: [
+        _option(
+          context,
+          value: 'ShoppingWallet',
+          label: t.shoppingCredit,
+          note: t.storePurchasesOnly,
+          icon: Icons.card_giftcard_rounded,
+          accent: AppTheme.gold,
+          balance: wallets.valueOrNull == null
+              ? null
+              : Fmt.money(
+                  wallets.value!.shopping.balance,
+                  wallets.value!.shopping.currency,
+                  locale: locale,
+                ),
+        ),
+        const SizedBox(height: AppTheme.space2),
+        _option(
+          context,
+          value: 'MainWallet',
+          label: t.mainWallet,
+          note: t.withdrawable,
+          icon: Icons.account_balance_wallet_rounded,
+          accent: Theme.of(context).colorScheme.primary,
+          balance: wallets.valueOrNull == null
+              ? null
+              : Fmt.money(
+                  wallets.value!.main.balance,
+                  wallets.value!.main.currency,
+                  locale: locale,
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _option(
+    BuildContext context, {
+    required String value,
+    required String label,
+    required String note,
+    required IconData icon,
+    required Color accent,
+    required String? balance,
+  }) {
+    final theme = Theme.of(context);
+    final isSelected = selected == value;
+
+    return SurfaceCard(
+      accent: isSelected ? accent : null,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.space4,
+        vertical: AppTheme.space3,
+      ),
+      onTap: () => onChanged(value),
+      child: Row(
+        children: [
+          // A radio as well as the tint, so the choice is not signalled by colour alone.
+          Icon(
+            isSelected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+            size: 20,
+            color: isSelected ? accent : theme.colorScheme.outline,
+          ),
+          const SizedBox(width: AppTheme.space3),
+          Icon(icon, size: 19, color: accent),
+          const SizedBox(width: AppTheme.space2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  note,
+                  style: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          if (balance == null)
+            const Skeleton(height: 16, width: 70)
+          else
+            Text(
+              balance,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                fontFeatures: AppTheme.numeric,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

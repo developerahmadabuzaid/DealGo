@@ -14,6 +14,8 @@ class PrizeClaim {
     required this.currency,
     required this.status,
     required this.paymentDeadlineAt,
+    this.prizeOriginalPrice = 0,
+    this.prizeDescription,
   });
 
   final String id;
@@ -26,6 +28,15 @@ class PrizeClaim {
   final String currency;
   final String status;
   final DateTime? paymentDeadlineAt;
+
+  /// The prize's full price. [paymentAmount] is that price after the auction's discount.
+  final double prizeOriginalPrice;
+  final String? prizeDescription;
+
+  /// The discount the winner got, 0..1. Zero when the server sent no full price to compare with.
+  double get discount => prizeOriginalPrice > paymentAmount && prizeOriginalPrice > 0
+      ? 1 - paymentAmount / prizeOriginalPrice
+      : 0;
 
   bool get needsPayment => status == 'PaymentRequired' || status == 'Pending';
   bool get isPaid => status == 'Paid' || status == 'Claimed' || status == 'Fulfilled';
@@ -43,6 +54,8 @@ class PrizeClaim {
         paymentDeadlineAt: j['paymentDeadlineAt'] == null
             ? null
             : DateTime.parse(j['paymentDeadlineAt'] as String).toUtc(),
+        prizeOriginalPrice: _num(j['prizeOriginalPrice']),
+        prizeDescription: j['prizeDescription'] as String?,
       );
 }
 

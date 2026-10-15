@@ -22,8 +22,22 @@ public class OtpCode : Entity
     public Guid? UserId { get; set; }
     public ApplicationUser? User { get; set; }
 
-    /// <summary>SHA-256 of the code plus its salt. The code itself is never stored.</summary>
+    /// <summary>
+    /// SHA-256 of the code plus its salt. The code itself is never stored.
+    ///
+    /// Empty when a provider holds the code instead — see <see cref="ProviderVerificationId"/>.
+    /// </summary>
     public string CodeHash { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The verification id at the provider that issued and will check this code, when one did.
+    ///
+    /// Tawked generates the code itself and will not accept one of ours, so for an SMS destination
+    /// there is no hash to keep here: the code lives at the provider and this row is what ties it
+    /// to a purpose, an account and an operation. Null means the code is ours and
+    /// <see cref="CodeHash"/> is what proves it.
+    /// </summary>
+    public string? ProviderVerificationId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; }

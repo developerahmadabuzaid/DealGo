@@ -6,7 +6,7 @@ namespace AuctionPlatform.Domain.Common;
 /// </summary>
 public static class Money
 {
-    public const string DefaultCurrency = "USD";
+    public const string DefaultCurrency = "SAR";
     public const int Scale = 2;
 
     /// <summary>Deterministic half-away-from-zero rounding to the currency scale.</summary>

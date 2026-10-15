@@ -1,12 +1,18 @@
 {
-    "name": "mobile",
-    "short_name": "mobile",
+    "id": "dealgo",
+    "name": "DealGo — مزادات ومتجر",
+    "short_name": "DealGo",
+    "lang": "ar",
+    "dir": "rtl",
     "start_url": ".",
+    "scope": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "display_override": ["standalone", "minimal-ui"],
+    "background_color": "#F7F8FC",
+    "theme_color": "#F26A1B",
+    "description": "ديل جو — مزادات مباشرة ومتجر، مع محفظتك ورصيد التسوق.",
     "orientation": "portrait-primary",
+    "categories": ["shopping"],
     "prefer_related_applications": false,
     "icons": [
         {
@@ -30,6 +36,26 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "المزادات",
+            "short_name": "المزادات",
+            "url": "./#/auctions",
+            "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "المتجر",
+            "short_name": "المتجر",
+            "url": "./#/store",
+            "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "المحفظة",
+            "short_name": "المحفظة",
+            "url": "./#/wallet",
+            "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }]
         }
     ]
 }

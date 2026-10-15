@@ -13,12 +13,15 @@ class AuctionRepository {
   Future<Paged<AuctionSummary>> list({
     String? group,
     String? search,
+    bool? featured,
     int page = 1,
     int pageSize = 20,
   }) async {
     final data = await _api.get('/auctions', query: {
       'group': group,
       'search': search,
+      // Only ever sent as true; the server treats a missing value as "all auctions".
+      'featured': featured == true ? true : null,
       'page': page,
       'pageSize': pageSize,
     });

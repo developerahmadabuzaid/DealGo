@@ -137,7 +137,7 @@ balance alone — shopping credit is structurally excluded from any withdrawable
 - C# `decimal`, PostgreSQL `numeric(18,2)` — applied to every decimal property by convention
 - `Money.Round` uses `MidpointRounding.AwayFromZero`, deterministically, at every boundary
 - Floating point is never used for currency
-- `Amount` and `Currency` are stored together; USD is a default, not an assumption
+- `Amount` and `Currency` are stored together; SAR is a default, not an assumption
 - A `CHECK ("Balance" >= 0)` constraint is the last line of defence against a negative balance
 
 ## Credit source tracking

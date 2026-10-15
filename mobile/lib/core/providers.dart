@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/data/auth_repository.dart';
 import '../features/auctions/data/auction_repository.dart';
+import '../features/home/data/ads_repository.dart';
 import '../features/prizes/data/prize_repository.dart';
 import '../features/store/data/store_repository.dart';
 import '../features/wallets/data/wallet_repository.dart';
-import 'config/app_config.dart';
 import 'errors/api_exception.dart';
 import 'network/api_client.dart';
 import 'realtime/auction_hub_client.dart';
@@ -47,6 +47,8 @@ final walletRepositoryProvider =
 
 final storeRepositoryProvider =
     Provider((ref) => StoreRepository(ref.watch(apiClientProvider)));
+
+final adsRepositoryProvider = Provider((ref) => AdsRepository(ref.watch(apiClientProvider)));
 
 final prizeRepositoryProvider =
     Provider((ref) => PrizeRepository(ref.watch(apiClientProvider)));
@@ -147,7 +149,7 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// Requests a sign-in code by email or phone.
+  /// Requests a sign-in code for a phone number.
   Future<OtpChallenge> requestLoginOtp(String destination, String language) =>
       _repo.requestLoginOtp(destination, language);
 
@@ -163,38 +165,10 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> signIn(String email, String password) async {
-    state = state.copyWith(isLoading: true);
-    try {
-      final user = await _repo.login(email, password);
-      state = AuthState(user: user, checked: true, hasSession: true);
-      await _ref.read(hubClientProvider).connect();
-    } finally {
-      state = state.copyWith(isLoading: false);
-    }
-  }
-
-  Future<void> register({
-    required String fullName,
-    required String email,
-    required String password,
-    String? phone,
-    String language = 'ar',
-  }) async {
-    state = state.copyWith(isLoading: true);
-    try {
-      final user = await _repo.register(
-        fullName: fullName,
-        email: email,
-        password: password,
-        phoneNumber: phone,
-        language: language,
-      );
-      state = AuthState(user: user, checked: true, hasSession: true);
-      await _ref.read(hubClientProvider).connect();
-    } finally {
-      state = state.copyWith(isLoading: false);
-    }
+  /// Saves the name of an account that was just created by phone sign-in.
+  Future<void> completeProfile(String fullName) async {
+    final updated = await _repo.updateProfile(fullName: fullName);
+    state = state.copyWith(user: updated);
   }
 
   Future<void> signOut() async {
@@ -218,11 +192,10 @@ class AuthController extends StateNotifier<AuthState> {
 final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) => AuthController(ref));
 
-/// Arabic unless the signed-in user chose otherwise.
-final localeProvider = Provider<Locale>((ref) {
-  final language = ref.watch(authControllerProvider).user?.language ?? AppConfig.defaultLanguage;
-  return Locale(language == 'en' ? 'en' : 'ar');
-});
+/// The app is Arabic only. The English strings are kept in [AppStrings] so a second
+/// language can be switched back on by reading the user's choice here again, but nothing
+/// in the running app selects it.
+final localeProvider = Provider<Locale>((ref) => const Locale('ar'));
 
 // ---------------------------------------------------------------- data providers
 
@@ -244,11 +217,38 @@ final notificationsProvider = FutureProvider.autoDispose(
 final unreadCountProvider = FutureProvider.autoDispose(
     (ref) => ref.watch(notificationRepositoryProvider).unreadCount());
 
+/// One store category's offers, biggest saving first.
+final categoryOffersProvider = FutureProvider.autoDispose.family(
+    (ref, String categoryId) => ref.watch(storeRepositoryProvider).products(
+          categoryId: categoryId,
+          onOfferOnly: true,
+          sortBy: 'discount',
+          pageSize: 12,
+        ));
+
+/// One store category's products, for the home page's grid under the banner.
+/// One product's page. The page and its buy button both read this, so they ask the server once and
+/// can never show two different versions of the same product.
+final productDetailProvider = FutureProvider.autoDispose
+    .family((ref, String id) => ref.watch(storeRepositoryProvider).product(id));
+
+final categoryProductsProvider = FutureProvider.autoDispose.family((ref, String categoryId) =>
+    ref.watch(storeRepositoryProvider).products(categoryId: categoryId, pageSize: 30));
+
 final myOrdersProvider = FutureProvider.autoDispose(
     (ref) => ref.watch(storeRepositoryProvider).orders());
 
 final auctionListProvider = FutureProvider.autoDispose
     .family((ref, String group) => ref.watch(auctionRepositoryProvider).list(group: group));
+
+/// The advertisements an administrator set in the console. An error is not worth a message on
+/// the front page: with none, the app advertises the auctions and products it already has.
+final appAdsProvider = FutureProvider.autoDispose(
+    (ref) => ref.watch(adsRepositoryProvider).list());
+
+/// The auctions an administrator picked out for the front page.
+final featuredAuctionsProvider = FutureProvider.autoDispose(
+    (ref) => ref.watch(auctionRepositoryProvider).list(featured: true, pageSize: 10));
 
 final auctionDetailProvider = FutureProvider.autoDispose
     .family((ref, String id) => ref.watch(auctionRepositoryProvider).detail(id));

@@ -13,7 +13,7 @@ Built to the specification in [`CLAUDE_CODE_MASTER_PROMPT.md`](CLAUDE_CODE_MASTE
 | Real-time | ASP.NET Core SignalR + Redis backplane |
 | Cache / locks / rate limiting | Redis 7 |
 | Auth | JWT + rotating refresh tokens, one-time codes for sign-in and withdrawal |
-| Mobile | Flutter 3.44 (Arabic default, RTL, English supported) |
+| Mobile | Flutter 3.44 — Arabic only, right-to-left |
 | Admin | Dependency-free SPA served from the API |
 | ORM | Entity Framework Core 10 |
 | Logging / tracing | Serilog + OpenTelemetry |
@@ -44,6 +44,8 @@ Then:
 
 - API + Swagger — <http://localhost:8090/swagger>
 - Admin dashboard — <http://localhost:8090/admin/>
+- Mobile app as an installable PWA — <http://localhost:8090/app/> (build it with
+  `pwsh scripts/build-pwa.ps1`)
 - Health — <http://localhost:8090/health>
 
 Development ports are set in `.env` and avoid the common 5432/6379/8080 defaults.
@@ -64,7 +66,7 @@ accounts are created too (`Database:SeedDevelopmentData`).
 | `admin@auctions.local` | ADMIN |
 | `store@auctions.local` | STORE_MANAGER |
 | `finance@auctions.local` | FINANCE |
-| `user1@auctions.local` … `user12@auctions.local` | USER (500 USD main balance) |
+| `user1@auctions.local` … `user12@auctions.local` | USER (500 SAR main balance) |
 
 All demo accounts use `Passw0rd!`. They are **never** created when `ASPNETCORE_ENVIRONMENT=Production`.
 

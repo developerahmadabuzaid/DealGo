@@ -281,13 +281,7 @@ public sealed class WalletService : IWalletService
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw new DomainException(ErrorCodes.NotFound, "User not found.");
 
-        // Prefer the confirmed phone; fall back to email.
-        var destination = !string.IsNullOrWhiteSpace(user.PhoneNumber)
-            ? user.PhoneNumber!
-            : user.Email
-              ?? throw new DomainException(
-                  ErrorCodes.OtpDestinationInvalid,
-                  "Add a phone number or email address before withdrawing.");
+        var destination = WithdrawalCodeDestination(user);
 
         // Check the balance before sending a code, so the user is not asked to confirm a
         // withdrawal that cannot succeed.
@@ -325,7 +319,7 @@ public sealed class WalletService : IWalletService
             var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
                 ?? throw new DomainException(ErrorCodes.NotFound, "User not found.");
 
-            var destination = !string.IsNullOrWhiteSpace(user.PhoneNumber) ? user.PhoneNumber! : user.Email!;
+            var destination = WithdrawalCodeDestination(user);
 
             await _otp.VerifyAsync(new OtpVerification
             {
@@ -371,6 +365,19 @@ public sealed class WalletService : IWalletService
 
         await tx.CommitAsync(ct);
         return result;
+    }
+
+    /// <summary>
+    /// Where a withdrawal code goes: the phone when it is a valid Saudi mobile number, otherwise
+    /// the email. Requesting and checking a code both use this, so they always agree.
+    /// </summary>
+    private static string WithdrawalCodeDestination(ApplicationUser user)
+    {
+        if (SaudiPhone.TryNormalise(user.PhoneNumber, out var phone)) return phone;
+
+        return user.Email ?? throw new DomainException(
+            ErrorCodes.OtpDestinationInvalid,
+            "Add a Saudi mobile number or an email address before withdrawing.");
     }
 
     /// <summary>

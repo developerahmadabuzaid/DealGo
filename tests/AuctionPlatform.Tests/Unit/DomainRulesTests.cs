@@ -25,6 +25,23 @@ public class AuctionPricingTests
         AuctionRules.NextPrice(current, increment, target).Should().Be(expected);
     }
 
+    [Theory]
+    // Closed at 2500 on a 5000 value: half price for every prize, not only the first.
+    [InlineData(5000, 2500, 5000, 2500)]
+    [InlineData(1200, 2500, 5000, 600)]
+    // Closed below target because time ran out: a bigger discount.
+    [InlineData(1200, 2000, 5000, 480)]
+    // Rounded to money.
+    [InlineData(999, 2500, 5000, 499.5)]
+    // No usable value or price: full price, never a division by zero.
+    [InlineData(1200, 2500, 0, 1200)]
+    [InlineData(1200, 0, 5000, 1200)]
+    public void Every_prize_gets_the_auction_discount(
+        decimal prizePrice, decimal finalPrice, decimal auctionValue, decimal expected)
+    {
+        AuctionRules.PrizePaymentAmount(prizePrice, finalPrice, auctionValue).Should().Be(expected);
+    }
+
     [Fact]
     public void A_bid_never_overshoots_the_target()
     {
@@ -71,7 +88,8 @@ public class AuctionPublishValidationTests
         var auction = new Domain.Entities.Auction
         {
             Title = "Test auction",
-            MainProductId = Guid.NewGuid(),
+            // The rank 1 prize name is what publish validation requires, not a catalog link.
+            MainProductNameSnapshot = "Test prize",
             OriginalPrice = 5000m,
             StartingPrice = 1000m,
             TargetPercentage = 50m,

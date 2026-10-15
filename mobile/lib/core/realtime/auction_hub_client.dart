@@ -64,6 +64,17 @@ class AuctionHubClient {
   Future<void> connect() async {
     if (_connection != null && _current == HubStatus.connected) return;
 
+    // A connection that failed or dropped for good is replaced, not left running beside the new one.
+    final stale = _connection;
+    _connection = null;
+    if (stale != null) {
+      try {
+        await stale.stop();
+      } catch (_) {
+        // Already gone.
+      }
+    }
+
     _setStatus(HubStatus.connecting);
 
     final connection = HubConnectionBuilder()
@@ -73,6 +84,12 @@ class AuctionHubClient {
             // The token goes in the query string because a WebSocket handshake cannot carry
             // custom headers; the server only accepts it on the hub path.
             accessTokenFactory: () async => await accessTokenProvider() ?? '',
+            // One WebSocket request instead of negotiate-then-connect. With several server
+            // instances the two negotiate steps can land on different ones, and the second then
+            // fails with 404 because that instance never issued the connection id. The app has
+            // no cookie jar, so load-balancer affinity cannot pin the two together either.
+            transport: HttpTransportType.WebSockets,
+            skipNegotiation: true,
           ),
         )
         .withAutomaticReconnect(retryDelays: [0, 2000, 5000, 10000, 15000])

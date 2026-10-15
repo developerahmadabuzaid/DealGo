@@ -46,6 +46,13 @@ public class ApplicationDbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    public DbSet<SiteContent> SiteContent => Set<SiteContent>();
+    public DbSet<SiteCard> SiteCards => Set<SiteCard>();
+    public DbSet<SiteTestimonial> SiteTestimonials => Set<SiteTestimonial>();
+    public DbSet<SiteFaq> SiteFaqs => Set<SiteFaq>();
+
+    public DbSet<AppAd> AppAds => Set<AppAd>();
+
     DbSet<ApplicationUser> IApplicationDbContext.Users => Set<ApplicationUser>();
 
     /// <summary>

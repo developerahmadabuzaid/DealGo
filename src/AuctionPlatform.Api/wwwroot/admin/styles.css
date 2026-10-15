@@ -1,30 +1,147 @@
+/*
+    DealGo admin console theme — light.
+
+    Brand colours: orange, black and white.
+
+    The whole interface is light: an off-white ground, white cards, thin borders and soft shadows.
+    Colour is spent where it carries meaning — status, wallet type, the icon tile that identifies a
+    figure — and nowhere else. There are no dark panels and no gradients on content.
+
+    Written for Arabic first. Every directional rule uses a logical property (inline-start, not
+    left), so the layout is built for right-to-left rather than mirrored from a left-to-right one.
+
+    Every colour lives in the block below. app.js never sets a colour.
+*/
+
 :root {
-  --bg: #0f1115;
-  --surface: #171a21;
-  --surface-2: #1e222b;
-  --border: #2a2f3a;
-  --text: #e7e9ee;
-  --muted: #9aa3b2;
-  --accent: #4f8cff;
-  --accent-dim: #2f5fb3;
-  --ok: #35c07f;
-  --warn: #e8b046;
-  --danger: #e5544b;
+  /* Ground and surfaces */
+  --bg: #f7f8fc;
+  --surface: #ffffff;
+  --surface-2: #fafbfd;
+  --surface-3: #f2f4f9;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* Type. The dark is the logo's own near-black rather than a blue-grey. */
+  --text: #17191d;
+  --text-2: #3b4048;
+  --muted: #5c626c;
+
+  /*
+   * Brand orange, in three steps.
+   *
+   * The logo's orange is bright: white text on it reaches only 3:1, which is fine behind a shape
+   * but not behind a label. So the bright colour is kept for large solid graphics, a darker step
+   * carries white button text, and a darker one still is used wherever the brand appears as text.
+   * All three read as the same colour; only the contrast changes.
+   */
+  --brand: #f26a1b;
+  --accent: #c64d09;
+  --accent-hover: #a63f06;
+  --accent-soft: #fff1e6;
+  --accent-tint: #ffe0c6;
+  --accent-text: #a63f06;
+  --accent-ring: rgba(242, 106, 27, 0.22);
+
+  /* Black, the logo's other half. Carries the primary surface in the sidebar mark. */
+  --ink: #1c1f24;
+  --ink-soft: #f1f2f4;
+  --ink-text: #24282e;
+
+  /*
+   * Meaning. These are not brand colours and must stay apart from it: orange now belongs to
+   * DealGo, so "pending" moved to a yellow amber and "ready" stays blue. A status that shared
+   * the brand colour would read as a brand mark rather than as a state.
+   */
+  --ok: #0ea15e;
+  --ok-soft: #e8f7ef;
+  --ok-text: #06713f;
+  --warn-soft: #fdf3d3;
+  --warn-text: #7a5a05;
+  --warn-icon: #b38609;
+  --danger: #dd3341;
+  --danger-soft: #fdedee;
+  --danger-text: #a01823;
+  --info: #2f6fd0;
+  --info-soft: #e9f1fd;
+  --info-text: #14508f;
+
+  /* Smaller radii and a visible border: an enterprise console should read as crisp panels,
+     not as rounded consumer tiles. */
+  --radius-lg: 12px;
   --radius: 10px;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+
+  --shadow-xs: 0 1px 2px rgba(13, 20, 36, 0.04);
+  --shadow-sm: 0 1px 3px rgba(13, 20, 36, 0.07);
+  --shadow-lg: 0 12px 36px rgba(13, 20, 36, 0.14);
+
+  /* One spacing scale, used everywhere. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 22px;
+  --s6: 30px;
+  --s7: 40px;
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "RiyalSign", monospace;
+  --ease: cubic-bezier(.4, 0, .2, 1);
 }
 
 * { box-sizing: border-box; }
+
+/* The Saudi Riyal sign, which no system font carries yet. One glyph at U+E900; listing the font
+   last in the stack means it is used for that character and nothing else. */
+@font-face {
+  font-family: "RiyalSign";
+  src: url("/admin/RiyalSign.ttf") format("truetype");
+  font-display: swap;
+  unicode-range: U+E900;
+}
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 14px/1.65 "Cairo", "Segoe UI", system-ui, -apple-system, "Noto Sans Arabic",
+        "IBM Plex Sans Arabic", "Dubai", Tahoma, Roboto, "RiyalSign", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a { color: var(--accent); text-decoration: none; }
 button { font: inherit; cursor: pointer; }
+
+/* Figures line up in a column when every digit is the same width. */
+.num, td.num, th.num, .kpi .value, .mono, .wallet-box .v, .progress-figure {
+  font-variant-numeric: tabular-nums;
+}
+
+.ico { width: 17px; height: 17px; flex: none; }
+
+/*
+ * A money amount: digits, then the currency to their left, which is where "after the amount"
+ * falls in a right-to-left line. The isolation stops a neighbouring word from reordering it.
+ */
+.amount {
+  direction: rtl;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+.amount-num { font-variant-numeric: tabular-nums; }
+
+/* A unit, not part of the figure, so it never matches the digits for weight or size. */
+.amount-cur {
+  font-size: .64em;
+  font-weight: 600;
+  opacity: .72;
+  /* The symbol sits to the LEFT of the digits inside this right-to-left box, so the space that
+     separates the two is on its inline-start edge. Putting it on inline-end pushed the gap out
+     to the far side and ran the symbol straight into the number. */
+  margin-inline-start: .3em;
+}
 
 /* ---------------------------------------------------------------- login */
 
@@ -32,225 +149,1491 @@ button { font: inherit; cursor: pointer; }
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: var(--s5);
+  background:
+    radial-gradient(1200px 560px at 80% -14%, #ffe8d5 0%, transparent 62%),
+    radial-gradient(900px 520px at 6% 112%, #f0f1f3 0%, transparent 58%),
+    var(--bg);
 }
 
 .login-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 396px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 28px;
+  border-radius: 20px;
+  padding: var(--s6) var(--s5) var(--s5);
+  box-shadow: var(--shadow-lg);
 }
 
-.login-card h1 { margin: 0 0 4px; font-size: 20px; }
-.login-card p.sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+/* The mark, the word and the line under them sit on the card's centre line, rather than against
+   the right edge that the page's own direction would otherwise push them to. */
+.login-brand { margin-bottom: var(--s3); display: grid; place-items: center; }
+.login-brand .brand-mark { width: 112px; height: 112px; }
+.login-card h1 {
+  margin: 0 0 var(--s3);
+  padding-bottom: var(--s3);
+  font-size: 15px;
+  text-align: center;
+}
+.login-card h1 .brand-word { font-size: 40px; }
+.login-card p.sub {
+  margin: 0 0 var(--s5);
+  color: var(--muted);
+  font-size: 13.5px;
+  text-align: center;
+}
 
 /* ---------------------------------------------------------------- shell */
 
-.shell { display: grid; grid-template-columns: 236px 1fr; min-height: 100vh; }
+.shell { display: grid; grid-template-columns: 276px 1fr; min-height: 100vh; }
 
+/* A light sidebar: the brief asked for no large dark areas, and a white rail with one thin
+   border separates navigation from content without weighing the page down. */
 .sidebar {
   background: var(--surface);
-  border-right: 1px solid var(--border);
-  padding: 18px 12px;
+  padding: var(--s4) var(--s3) var(--s4);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   overflow-y: auto;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
 }
 
 .brand {
-  font-weight: 650;
-  font-size: 15px;
-  padding: 4px 10px 16px;
-  letter-spacing: .2px;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s3) var(--s4);
+  margin-bottom: var(--s3);
 }
-.brand small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+/*
+ * The logo.
+ *
+ * No tinted tile behind it: the artwork carries its own black and orange, and a coloured ground
+ * would fight them. It is sized generously because it is the one place the brand is stated.
+ */
+.brand-mark {
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.brand-mark img,
+.brand-mark .brand-drawn { width: 100%; height: 100%; object-fit: contain; display: block; }
 
+/* The wordmark, in the two brand colours. */
+.brand-word {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -.6px;
+  line-height: 1.15;
+  white-space: nowrap;
+  direction: ltr;
+  display: inline-block;
+}
+.brand-word .deal { color: var(--ink); }
+.brand-word .go { color: var(--brand); }
+.brand-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.brand-text small { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+.nav-section { display: flex; flex-direction: column; }
+.nav-section + .nav-section { margin-top: var(--s3); }
+
+/*
+ * The group header is a button that folds its own items away.
+ *
+ * It is a quiet orange label, not a filled bar. Five solid orange bars down a white rail made the
+ * headings compete with each other and with the page you are actually on; black on that orange
+ * also reads muddy at small sizes even though it measures well. The strong orange is spent once,
+ * on the open page, which is the only thing in the sidebar that should pull the eye.
+ */
 .nav-group {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .6px;
-  padding: 14px 10px 6px;
-}
-
-.nav-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 10px;
-  border-radius: 7px;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-}
-.nav-item:hover { background: var(--surface-2); }
-.nav-item.active { background: var(--accent-dim); color: #fff; }
-
-.sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
-.sidebar-footer .who { padding: 6px 10px; font-size: 12px; color: var(--muted); }
-
-.main { padding: 22px 26px 60px; overflow-x: auto; }
-
-.page-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: var(--s2);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 700;
+  /* No uppercase and no letter-spacing: Arabic has no capital letters, and spacing the letters
+     apart pulls a cursive script's joined forms away from each other. */
+  text-align: start;
+  padding: 7px var(--s3);
+  margin-bottom: 2px;
+  border-radius: 8px;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.nav-group:hover { background: var(--accent-soft); }
+.nav-group:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.nav-chevron {
+  width: 16px;
+  height: 16px;
+  opacity: .55;
+  transition: transform .2s var(--ease);
+}
+/* Pointing up when the group is open, down when it is shut. */
+.nav-group:not(.folded) .nav-chevron { transform: rotate(180deg); }
+
+/* A shut group holding the page you are on keeps a mark, since its active item is hidden. */
+.nav-group.holds-current {
+  background: var(--accent-tint);
+  color: var(--accent-hover);
+}
+
+.nav-items { display: flex; flex-direction: column; gap: 1px; }
+/* An author `display` beats the browser default for [hidden], so the fold needs saying here. */
+.nav-items[hidden] { display: none; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  padding: 10px var(--s3);
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 500;
+  font-size: 14px;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.nav-item .ico { color: #97a0b2; transition: color .15s var(--ease); }
+.nav-item:hover { background: var(--accent-soft); color: var(--accent-text); }
+.nav-item:hover .ico { color: var(--accent); }
+.nav-item.active:hover { background: var(--accent); color: #fff; }
+.nav-item.active:hover .ico { color: #fff; }
+/*
+ * The open page: filled orange with white text.
+ *
+ * This is the only strong colour in the rail, so there is never a question about where you are.
+ * The fill uses the darker step of the brand, because white text on the bright logo orange
+ * reaches only 3:1.
+ */
+.nav-item.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(198, 77, 9, 0.28);
+}
+.nav-item.active .ico { color: #fff; }
+.nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/*
+ * The line between the sidebar and the page.
+ *
+ * A gradient that drifts along the edge rather than a flat border.
+ *
+ * It is drawn on the page side, not the sidebar side. The sidebar is its own scroll container, so
+ * a line placed there sat underneath the sidebar's scrollbar and was hidden wherever the thumb
+ * happened to be. The main column stretches to the full height of the shell, so the same line
+ * placed on its leading edge is visible end to end with nothing on top of it.
+ *
+ * Decoration only: `pointer-events: none` keeps it clear of anything beside it, and the
+ * reduced-motion rule at the end of this file stops the movement for anyone who asked for that.
+ */
+.main::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  pointer-events: none;
+  /*
+   * Two layers. The first is a narrow bright band that travels down the line and is what reads as
+   * the shine; the second is the orange body underneath it. One animation drives both, at
+   * different rates, because a single element can only animate background-position once.
+   */
+  background-image:
+    linear-gradient(180deg,
+      transparent 0%, rgba(255, 255, 255, .95) 6%, rgba(255, 255, 255, .35) 11%, transparent 18%),
+    linear-gradient(180deg,
+      var(--brand) 0%, #ffa864 20%, var(--brand) 40%,
+      #c64d09 60%, var(--brand) 80%, #ffa864 100%);
+  background-size: 100% 320%, 100% 200%;
+  background-repeat: no-repeat, repeat;
+  box-shadow: 0 0 10px rgba(242, 106, 27, .55), 0 0 22px rgba(242, 106, 27, .28);
+  animation: railFlow 9s linear infinite;
+}
+
+@keyframes railFlow {
+  from { background-position: 0 -120%, 0 0; }
+  to { background-position: 0 320%, 0 -200%; }
+}
+
+@keyframes railFlowX {
+  from { background-position: 120% 0, 0 0; }
+  to { background-position: -320% 0, -200% 0; }
+}
+
+/*
+ * The same line under the logo and the name, so the brand block is closed off by the mark that
+ * runs down the edge of the page rather than by a plain grey border.
+ */
+.brand,
+.login-card h1 { position: relative; }
+
+.brand::after,
+.login-card h1::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 2px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(90deg,
+      transparent 0%, rgba(255, 255, 255, .95) 6%, rgba(255, 255, 255, .35) 11%, transparent 18%),
+    linear-gradient(90deg,
+      var(--brand) 0%, #ffa864 20%, var(--brand) 40%,
+      #c64d09 60%, var(--brand) 80%, #ffa864 100%);
+  background-size: 320% 100%, 200% 100%;
+  background-repeat: no-repeat, repeat;
+  box-shadow: 0 0 10px rgba(242, 106, 27, .5), 0 0 20px rgba(242, 106, 27, .25);
+  animation: railFlowX 9s linear infinite;
+}
+
+.sidebar-footer { margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--border); }
+
+.who { display: flex; align-items: center; gap: 10px; padding: var(--s2) var(--s3) var(--s3); }
+.who-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  color: var(--ink-text);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex: none;
+}
+.who-text { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
+.who-text strong { font-size: 13px; font-weight: 600; }
+.who-text small { color: var(--muted); font-size: 11px; }
+
+.main { position: relative; padding: var(--s6) var(--s6) var(--s7); overflow-x: auto; }
+
+/* ---------------------------------------------------------------- page head */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s5);
   flex-wrap: wrap;
 }
-.page-head h2 { margin: 0; font-size: 19px; }
-.page-head .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.page-head-text { min-width: 0; }
+.page-head h2 { margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -.5px; }
+.page-head .sub { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+.page-head .row { padding-top: 3px; }
 
-/* ---------------------------------------------------------------- widgets */
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px var(--s3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.context-chip .ico { width: 15px; height: 15px; }
 
+/* ---------------------------------------------------------------- form hero */
+
+/*
+ * The header of a long form.
+ *
+ * A white panel on a warm brand wash, so the page opens with something composed rather than a
+ * bare heading. The steps underneath mirror the numbered sections and report their real state.
+ */
+.page-hero {
+  background:
+    radial-gradient(620px 200px at 92% -40%, #ffe2cc 0%, transparent 70%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--s4) var(--s5);
+  margin-bottom: var(--s4);
+  box-shadow: var(--shadow-xs);
+}
+
+.hero-top { display: flex; align-items: flex-start; gap: var(--s4); flex-wrap: wrap; }
+.hero-top > .row { padding-top: 2px; margin-inline-start: auto; }
+.hero-text { flex: 1; min-width: 0; }
+.hero-text h2 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
+.hero-text .sub { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+
+.hero-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(198, 77, 9, 0.3);
+}
+.hero-icon .ico { width: 23px; height: 23px; }
+
+/* The step row. */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s3);
+  margin-top: var(--s5);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  min-width: 0;
+  transition: border-color .18s var(--ease), background .18s var(--ease);
+}
+.step.done { background: var(--accent-soft); border-color: #f7c9a4; }
+
+.step-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: var(--surface-3);
+  color: var(--muted);
+  transition: background .18s var(--ease), color .18s var(--ease);
+}
+.step.done .step-badge { background: var(--accent); color: #fff; }
+.step-badge .ico { width: 15px; height: 15px; }
+
+.step-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.step-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step.done .step-label { color: var(--accent-text); }
+.step-note {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-note:empty { display: none; }
+
+/* ---------------------------------------------------------------- KPI cards */
+
+/*
+ * A fixed column count rather than auto-fit.
+ *
+ * auto-fit stretched a pair of figures across a whole row, which wasted the width and pushed
+ * everything else down the page. Each grid now declares how many columns it holds, and collapses
+ * in defined steps instead of by available width alone.
+ */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  margin-bottom: var(--s4);
 }
+.kpi-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kpi-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+@media (min-width: 1000px) {
+  .kpi-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .kpi-grid.cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@media (max-width: 999px) {
+  .kpi-grid.cols-4, .kpi-grid.cols-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Two related sections side by side, so neither takes a full row on its own. */
+.section-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
+.section-row > .card { margin-bottom: var(--s4); }
 
 .kpi {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: var(--s3) var(--s4);
+  box-shadow: none;
+  transition: box-shadow .18s var(--ease), transform .18s var(--ease), border-color .18s var(--ease);
 }
-.kpi .label { color: var(--muted); font-size: 12px; }
-.kpi .value { font-size: 22px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.kpi .value.money { color: var(--ok); }
+.kpi:hover { box-shadow: var(--shadow-sm); border-color: var(--border-strong); transform: translateY(-1px); }
+
+.kpi-top { display: flex; align-items: center; gap: 10px; }
+
+/* A small tinted tile identifies the figure. It replaces the coloured slab on the card edge. */
+.kpi-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.kpi-icon.ok { background: var(--ok-soft); color: var(--ok); }
+.kpi-icon.info { background: var(--info-soft); color: var(--info); }
+.kpi-icon.warn { background: var(--warn-soft); color: var(--warn-icon); }
+.kpi-icon.violet { background: var(--ink-soft); color: var(--ink-text); }
+.kpi-icon.gold { background: var(--accent-soft); color: var(--accent); }
+.kpi-icon.neutral { background: var(--surface-3); color: var(--muted); }
+
+.kpi .label { color: var(--muted); font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+.kpi .value {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.6px;
+  margin-top: var(--s2);
+  color: var(--text);
+  line-height: 1.2;
+}
+/* Money is not "good news", so it is not green. It reads as the figure it is. */
+.kpi .value.money { color: var(--text); }
+.kpi-note { color: var(--muted); font-size: 12px; margin-top: var(--s1); }
+
+/* Month-on-month change. The pill carries the figure; the sentence beside it says what the
+   comparison is, so the number is never left to be guessed at. */
+.trend { display: flex; align-items: center; gap: 7px; margin-top: var(--s2); flex-wrap: wrap; }
+.trend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  direction: ltr;
+  white-space: nowrap;
+}
+.trend-pill.up { background: var(--ok-soft); color: var(--ok-text); }
+.trend-pill.down { background: var(--danger-soft); color: var(--danger-text); }
+.trend-pill.flat { background: var(--surface-3); color: var(--muted); font-weight: 600; direction: rtl; }
+.trend-ico { width: 12px; height: 12px; }
+.trend-note { color: var(--muted); font-size: 11.5px; }
+
+/* ---------------------------------------------------------------- cards */
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 18px;
+  border-radius: var(--radius-lg);
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+  box-shadow: var(--shadow-xs);
 }
-.card > h3 { margin: 0 0 12px; font-size: 15px; }
+/*
+ * The section heading is a bar across the top of its card.
+ *
+ * It runs edge to edge, which is why the negative margin matches the card's own padding, and its
+ * top corners follow the card's radius less the one-pixel border. Anchoring it to the card this
+ * way is what stops a title from floating in empty space.
+ */
+.card > h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: calc(var(--s4) * -1) calc(var(--s4) * -1) var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--surface-3);
+  border-bottom: 1px solid var(--border);
+  border-start-start-radius: 11px;
+  border-start-end-radius: 11px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.1px;
+  color: var(--text);
+}
 
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* The icon sits on a white tile, so it reads against the tinted bar at any tone. */
+.card-head-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px rgba(13, 20, 36, .07);
+}
+
+/* Tones repeat the meaning the figures already carry: money in, money owed, store credit. */
+.card > h3.ok { background: var(--ok-soft); border-bottom-color: #c3e8d5; color: var(--ok-text); }
+.card > h3.warn { background: var(--warn-soft); border-bottom-color: #ecd899; color: var(--warn-text); }
+.card > h3.gold { background: var(--accent-soft); border-bottom-color: #fbd0ad; color: var(--accent-text); }
+.card > h3.info { background: var(--info-soft); border-bottom-color: #cbdefa; color: var(--info-text); }
+.card > h3.violet { background: var(--ink-soft); border-bottom-color: #dfe1e5; color: var(--ink-text); }
+
+.card > h3.ok .card-head-icon { color: var(--ok); }
+.card > h3.warn .card-head-icon { color: var(--warn-icon); }
+.card > h3.gold .card-head-icon { color: var(--brand); }
+.card > h3.info .card-head-icon { color: var(--info); }
+.card > h3.violet .card-head-icon { color: var(--ink-text); }
+
+/*
+ * A card is framed in the colour of its own heading, so the panel reads as one piece rather than
+ * a tinted strip sitting on a neutral box. Written with :has() because the tone is declared on the
+ * heading; a browser without it simply keeps the default grey frame.
+ */
+.card:has(> h3.ok) { border-color: #c3e8d5; }
+.card:has(> h3.warn) { border-color: #ecd899; }
+.card:has(> h3.gold) { border-color: #fbd0ad; }
+.card:has(> h3.info) { border-color: #cbdefa; }
+.card:has(> h3.violet) { border-color: #dfe1e5; }
+
+/* A card whose head sits inside a modal keeps the flatter treatment. */
+.modal .card > h3 { background: var(--surface-3); }
+/* A card holding only figures already has its own frame; no shadow doubling inside it. */
+.card .kpi { box-shadow: none; }
+.card .kpi-grid:last-child { margin-bottom: 0; }
+
+/* A tinted panel inside a card or a modal. */
+.panel {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+  background: var(--surface-2);
+}
+.panel.ready { background: var(--ok-soft); border-color: #c3e8d5; }
+.panel h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 var(--s3);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ok-text);
+}
+
+/* ---------------------------------------------------------------- progress */
+
+.progress-block { margin: var(--s2) 0; }
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: 7px;
+}
+.progress-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.progress-figure { font-size: 13px; font-weight: 700; color: var(--text); direction: ltr; }
+
+.progress {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  transition: width .5s var(--ease);
+}
+.progress.mini { height: 5px; margin-top: 5px; }
+.progress-pct { font-size: 11.5px; color: var(--muted); margin-top: 5px; direction: ltr; }
+
+.cell-progress { min-width: 108px; }
+.cell-progress-text { font-size: 12.5px; font-weight: 600; color: var(--text); direction: ltr; display: block; }
+
+/* ---------------------------------------------------------------- prizes */
+
+.prize-row {
+  display: flex;
+  gap: var(--s4);
+  align-items: flex-start;
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--border);
+}
+.prize-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.prize-row.main { background: var(--accent-soft); border-radius: var(--radius); padding: var(--s4); }
+
+
+.prize-fields { flex: 1; min-width: 0; }
+.prize-fields > label:first-child { margin-top: 0; }
+.prize-grid { display: grid; grid-template-columns: 1.4fr .7fr 1.4fr; gap: var(--s3); }
+
+/* The add/edit dialog: picture on one side, the written details on the other. */
+.prize-dialog { display: grid; grid-template-columns: 150px 1fr; gap: var(--s5); align-items: start; }
+.prize-dialog > div:first-child { text-align: center; }
+.prize-dialog .prize-thumb { width: 150px; height: 150px; }
+.prize-dialog label:first-child { margin-top: 0; }
+
+label.sm { font-size: 11.5px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
+
+/* The picture beside each prize, so a wrong link is obvious while typing rather than after
+   the auction is published. */
+.prize-thumb {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #9aa3b4;
+}
+.prize-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.prize-thumb.sm { width: 44px; height: 44px; border-radius: var(--radius-sm); }
+.prize-thumb.broken { background: var(--danger-soft); border-color: #f6c4c9; color: var(--danger-text); }
+
+/* The auction's own picture: wide, like the card it becomes in the app. */
+.cover-preview {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 16 / 7;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  object-fit: cover;
+  display: block;
+}
+/* The same picture in a table cell, where a row must stay a row. */
+.cover-preview.sm { width: 120px; max-width: 120px; border-radius: var(--radius-sm); }
+.cover-preview.empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  color: #9aa3b4;
+  font-size: 12.5px;
+}
+
+/* A value the system works out rather than one you type. */
+.derived {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s3);
+}
+.derived label { margin-top: 0; }
+.derived-value {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.5px;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+}
+[dir="rtl"] .derived-value { text-align: right; }
+
+/* ---------------------------------------------------------------- timeline */
+
+.timeline { list-style: none; margin: var(--s2) 0 var(--s4); padding: 0; }
+
+.tl-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding-bottom: var(--s4);
+}
+/* The connector hangs from each dot to the next, so it never runs past the last step. */
+.tl-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 0;
+  inset-inline-start: 5px;
+  width: 2px;
+  background: var(--border-strong);
+}
+.tl-step.done:not(:last-child)::before { background: #fac59a; }
+
+.tl-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex: none;
+  background: var(--surface);
+  border: 2px solid var(--border-strong);
+  z-index: 1;
+}
+.tl-step.done .tl-dot { background: var(--brand); border-color: var(--brand); }
+.tl-step.current .tl-dot { box-shadow: 0 0 0 4px var(--accent-ring); }
+
+.tl-body { min-width: 0; }
+.tl-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.tl-step.todo .tl-label { color: #99a1b2; font-weight: 500; }
+.tl-time { font-size: 12px; color: var(--muted); }
+
+/* ---------------------------------------------------------------- tables */
+
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead { position: sticky; top: 0; z-index: 1; }
 th {
-  text-align: left;
+  text-align: start;
   color: var(--muted);
-  font-weight: 500;
-  font-size: 12px;
-  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: var(--s3) var(--s4);
+  background: var(--surface-3);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th:first-child { border-start-start-radius: var(--radius-sm); }
+th:last-child { border-start-end-radius: var(--radius-sm); }
+
+td {
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  color: var(--text-2);
+}
+tbody tr { transition: background .14s var(--ease); }
 tbody tr:hover { background: var(--surface-2); }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+tbody tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: end; }
+td.num { color: var(--text); font-weight: 600; }
+td.mono { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 .table-wrap { overflow-x: auto; }
 
+/* ---------------------------------------------------------------- badges */
+
 .badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 650;
+  border: 1px solid transparent;
+  background: var(--surface-3);
+  color: var(--text-2);
   white-space: nowrap;
 }
-.badge.live, .badge.ok { border-color: #1f6b48; background: #113626; color: #7ee0af; }
-.badge.warn { border-color: #6b5320; background: #322710; color: #f0c46c; }
-.badge.danger { border-color: #6b2a26; background: #331413; color: #f09b95; }
-.badge.info { border-color: #26456b; background: #131f33; color: #9dbdf5; }
+/* The dot is what makes a status readable at a glance without a loud fill. */
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+  opacity: .85;
+}
+.badge.live, .badge.ok { background: var(--ok-soft); color: var(--ok-text); border-color: #cfeddf; }
+.badge.warn { background: var(--warn-soft); color: var(--warn-text); border-color: #ecd899; }
+.badge.danger { background: var(--danger-soft); color: var(--danger-text); border-color: #f8cfd3; }
+.badge.info { background: var(--info-soft); color: var(--info-text); border-color: #cbdefa; }
 
+/* ---------------------------------------------------------------- forms */
+
+/*
+ * Fields.
+ *
+ * A tinted resting state rather than a white box on a white card: the input is then readable as
+ * something you type into before you touch it. Focus lifts it to white and rings it in the brand
+ * colour, so the field you are in is the brightest thing on the page.
+ */
 input, select, textarea {
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   color: var(--text);
-  border-radius: 7px;
-  padding: 8px 10px;
+  border-radius: 10px;
+  padding: 12px 14px;
   font: inherit;
+  font-weight: 500;
   width: 100%;
+  transition: border-color .16s var(--ease), box-shadow .16s var(--ease),
+              background .16s var(--ease);
 }
-input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); }
-label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+input::placeholder { color: #a2aab7; font-weight: 400; }
+input:hover, select:hover, textarea:hover { border-color: var(--border-strong); background: var(--surface); }
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}
+
+/* A number is data, so it is set in the same tabular figures as the tables and cards. */
+input[type="number"] { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+select {
+  cursor: pointer;
+  /* Room for the arrow the browser draws on the inline-end edge. */
+  padding-inline-end: 34px;
+}
+
+label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+  margin: var(--s4) 0 7px;
+  letter-spacing: 0;
+}
+
+/* The field you are in also marks its own title. */
+.field:focus-within > label,
+.field:focus-within > .label-row > label { color: var(--accent-text); }
+
+.field { margin-bottom: var(--s1); }
+
+/* ---------------------------------------------------------------- info bubble */
+
+.label-row { display: flex; align-items: center; gap: 6px; }
+.label-row label { margin-bottom: 0; }
+
+.info-wrap { position: relative; display: inline-flex; }
+
+.info-btn {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.info-btn .ico { width: 16px; height: 16px; }
+.info-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.info-btn[aria-expanded="true"] { background: var(--accent); color: #fff; }
+.info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/*
+ * The explanation. Anchored to the button and allowed to sit over whatever is beneath it, which
+ * is why it carries a z-index: it opens inside a form, not beside it.
+ */
+/* Opens upward. A settings field sits low in a long form, so a bubble below it fell past the
+   bottom of the window and had to be scrolled to. */
+.info-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  inset-inline-start: -8px;
+  z-index: 20;
+  width: min(340px, 78vw);
+  padding: var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  animation: lift .16s var(--ease);
+  text-align: start;
+}
+
+/* A small pointer joining the bubble to its button. */
+.info-panel::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 14px;
+  border: 7px solid transparent;
+  border-top-color: var(--surface);
+  filter: drop-shadow(0 1px 0 var(--border-strong));
+}
+
+@keyframes lift {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.info-head {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  padding-bottom: var(--s2);
+  margin-bottom: var(--s2);
+  border-bottom: 1px solid var(--border);
+}
+
+.info-panel dl { margin: 0; }
+.info-panel dt {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent-text);
+  margin-top: var(--s3);
+}
+.info-panel dt:first-of-type { margin-top: 0; }
+.info-panel dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- buttons */
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   background: var(--accent);
   color: #fff;
-  border: 0;
-  border-radius: 7px;
-  padding: 8px 14px;
-  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 10px 18px;
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+  transition: background .15s var(--ease), box-shadow .15s var(--ease), transform .1s var(--ease);
 }
-.btn:hover { filter: brightness(1.1); }
-.btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
-.btn.danger { background: var(--danger); }
-.btn.ok { background: var(--ok); color: #06281a; }
-.btn.sm { padding: 5px 10px; font-size: 12px; }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:hover { background: var(--accent-hover); box-shadow: 0 4px 14px rgba(242, 106, 27, 0.3); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 14px; }
+.btn.ghost {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text-2);
+  box-shadow: none;
+}
+.btn.ghost:hover { background: var(--surface-3); border-color: #c2cad8; color: var(--text); box-shadow: none; }
 
-.toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
-.toolbar input, .toolbar select { width: auto; min-width: 160px; }
+/* Soft treatment: a destructive action should be easy to find, not alarming until it is pressed. */
+.btn.danger { background: var(--danger-soft); color: var(--danger-text); border-color: #f6c4c9; box-shadow: none; }
+.btn.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); box-shadow: 0 4px 14px rgba(221, 51, 65, 0.25); }
 
-.pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.btn.ok { background: var(--ok); color: #fff; }
+.btn.ok:hover { background: #0b8a50; box-shadow: 0 4px 14px rgba(14, 161, 94, 0.26); }
 
-.empty { color: var(--muted); padding: 24px; text-align: center; }
+.btn.sm { padding: 6px 12px; font-size: 12.5px; border-radius: 8px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.btn:disabled:hover { background: var(--accent); }
+.btn.ghost:disabled:hover { background: var(--surface); }
+
+/* ---------------------------------------------------------------- layout bits */
+
+.row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s5); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 var(--s5); }
+
+.toolbar {
+  display: flex;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.toolbar input, .toolbar select { width: auto; min-width: 180px; }
+
+.pager {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: var(--s4);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.empty {
+  color: var(--muted);
+  padding: var(--s7) var(--s5);
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+
+/* ---------------------------------------------------------------- skeletons */
+
+.skel {
+  background: linear-gradient(90deg, var(--surface-3) 25%, #e8ebf3 37%, var(--surface-3) 63%);
+  background-size: 400% 100%;
+  border-radius: 6px;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+@keyframes shimmer { from { background-position: 100% 50%; } to { background-position: 0 50%; } }
+
+/* ---------------------------------------------------------------- modal */
 
 .modal-back {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,.6);
+  background: rgba(13, 20, 36, 0.36);
+  backdrop-filter: blur(3px);
   display: grid; place-items: center;
-  padding: 24px;
+  padding: var(--s5);
   z-index: 50;
+  animation: fade .16s var(--ease);
 }
 .modal {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
+  border-radius: 20px;
+  padding: var(--s6);
   width: 100%;
-  max-width: 620px;
+  max-width: 660px;
   max-height: 86vh;
   overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: rise .2s var(--ease);
 }
-.modal h3 { margin: 0 0 4px; }
-.modal .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+.modal h3 { margin: 0 0 var(--s1); font-size: 19px; font-weight: 700; letter-spacing: -.4px; }
+.modal .sub { color: var(--muted); font-size: 13px; margin-bottom: var(--s4); }
+.modal .card { box-shadow: none; background: var(--surface-2); }
+.modal-actions {
+  display: flex; gap: var(--s2); justify-content: flex-end;
+  margin-top: var(--s5); padding-top: var(--s4);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.99); } to { opacity: 1; transform: none; } }
+
+/*
+ * The auction management dialog.
+ *
+ * Three fixed parts rather than one long scroll: the header naming the auction stays put, the
+ * middle scrolls, and the action buttons stay on screen. On the old single-scroll dialog the
+ * Publish and Cancel buttons sat below everything and had to be hunted for.
+ */
+.modal-wide {
+  max-width: 780px;
+  max-height: 88vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* The body scrolls, so the box itself must not. */
+  overflow: hidden;
+}
+
+.modal-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  flex: none;
+  padding: var(--s5) var(--s6);
+  background:
+    radial-gradient(520px 170px at 92% -60%, #ffe2cc 0%, transparent 70%),
+    var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-hero-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(198, 77, 9, 0.3);
+}
+.modal-hero-icon .ico { width: 23px; height: 23px; }
+
+.modal-hero-text { flex: 1; min-width: 0; }
+.modal-hero-text h3 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.4px; }
+.modal-hero-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* The auction number is an identifier, so it is set in the same face as every other id. */
+.num-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--ink-soft);
+  color: var(--ink-text);
+  border: 1px solid var(--border);
+}
+
+.modal-x {
+  margin-inline-start: auto;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+}
+.modal-x:hover { background: var(--danger-soft); border-color: #f6c4c9; color: var(--danger-text); }
+.modal-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.modal-wide .modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--s5) var(--s6);
+  background: var(--bg);
+}
+
+.modal-wide .modal-actions {
+  flex: none;
+  margin: 0;
+  padding: var(--s4) var(--s6);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.modal-actions.split { justify-content: space-between; }
+.action-group { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+/* Named 'primary', not 'main': .main is the page body, and its 30px padding leaked in here. */
+.action-group.primary { margin-inline-start: auto; }
+
+/* A titled block inside the dialog, framed in the colour of its own heading. */
+.modal-sec {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--s4);
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+}
+.modal-sec:last-child { margin-bottom: 0; }
+
+.modal-sec > h4 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface-3);
+  border-bottom: 1px solid var(--border);
+}
+.sec-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px rgba(13, 20, 36, .07);
+}
+.sec-icon .ico { width: 15px; height: 15px; }
+.sec-body { padding: var(--s4); }
+
+.modal-sec.gold { border-color: #fbd0ad; }
+.modal-sec.gold > h4 { background: var(--accent-soft); border-bottom-color: #fbd0ad; color: var(--accent-text); }
+.modal-sec.gold .sec-icon { color: var(--brand); }
+
+.modal-sec.ok { border-color: #c3e8d5; }
+.modal-sec.ok > h4 { background: var(--ok-soft); border-bottom-color: #c3e8d5; color: var(--ok-text); }
+.modal-sec.ok .sec-icon { color: var(--ok); }
+
+.modal-sec.info { border-color: #cbdefa; }
+.modal-sec.info > h4 { background: var(--info-soft); border-bottom-color: #cbdefa; color: var(--info-text); }
+.modal-sec.info .sec-icon { color: var(--info); }
+
+.modal-sec.warn { border-color: #ecd899; }
+.modal-sec.warn > h4 { background: var(--warn-soft); border-bottom-color: #ecd899; color: var(--warn-text); }
+.modal-sec.warn .sec-icon { color: var(--warn-icon); }
+
+/* A figure and its name. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s3);
+}
+.stat {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4);
+}
+.stat-label { font-size: 11.5px; font-weight: 650; color: var(--muted); margin-bottom: 5px; }
+.stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A prize's place, so the four ranks are countable without reading. */
+.rank-chip {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-tint);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* A progress bar following a grid of tiles needs air above it. */
+.sec-body .stat-grid + .progress-block { margin-top: var(--s4); }
+
+@media (max-width: 780px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modal-hero, .modal-wide .modal-body, .modal-wide .modal-actions { padding-inline: var(--s4); }
+}
+@media (max-width: 520px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .modal-actions.split { justify-content: flex-start; }
+  .action-group.primary { margin-inline-start: 0; }
+}
+
+/* ---------------------------------------------------------------- toast */
 
 .toast {
   position: fixed;
-  right: 18px; bottom: 18px;
+  inset-inline-end: var(--s5); bottom: var(--s5);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: 8px;
-  padding: 11px 15px;
-  max-width: 380px;
+  border: 1px solid var(--border-strong);
+  border-inline-start: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4);
+  max-width: 400px;
   z-index: 100;
-  font-size: 13px;
+  font-size: 13.5px;
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  animation: rise .2s var(--ease);
 }
-.toast.err { border-left-color: var(--danger); }
-.toast.ok { border-left-color: var(--ok); }
+.toast.err { border-inline-start-color: var(--danger); }
+.toast.ok { border-inline-start-color: var(--ok); }
 
-.err-text { color: var(--danger); font-size: 13px; margin-top: 10px; min-height: 18px; }
-.hint { color: var(--muted); font-size: 12px; }
+.err-text { color: var(--danger-text); font-size: 13px; margin-top: var(--s2); min-height: 18px; }
+.hint { color: var(--muted); font-size: 12.5px; }
 
-.wallet-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.wallet-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
-.wallet-box .t { color: var(--muted); font-size: 12px; }
-.wallet-box .v { font-size: 20px; font-weight: 600; margin-top: 3px; }
-.wallet-box .n { font-size: 11px; color: var(--muted); margin-top: 4px; }
+/* ---------------------------------------------------------------- wallets */
 
-@media (max-width: 860px) {
+.wallet-split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
+
+.wallet-box { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: var(--s4) var(--s5); }
+/* Cash and store-only credit are different things, so they never share a colour. */
+.wallet-box:first-child { background: var(--ink-soft); border-color: #dcdee2; }
+.wallet-box:last-child { background: var(--accent-soft); border-color: #fbd0ad; }
+.wallet-box .t { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.wallet-box .v { font-size: 26px; font-weight: 700; margin-top: var(--s1); letter-spacing: -.7px; }
+.wallet-box:first-child .v { color: var(--ink-text); }
+.wallet-box:last-child .v { color: var(--accent-text); }
+.wallet-box .n { font-size: 11.5px; color: var(--muted); margin-top: var(--s1); }
+
+/* ---------------------------------------------------------------- responsive */
+
+@media (max-width: 1080px) {
+  .main { padding: var(--s5) var(--s5) var(--s7); }
+}
+
+@media (max-width: 960px) {
   .shell { grid-template-columns: 1fr; }
-  .sidebar { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .sidebar {
+    flex-direction: row;
+    overflow-x: auto;
+    max-height: none;
+    padding: var(--s2) var(--s3);
+    gap: var(--s1);
+    align-items: center;
+    border-bottom: 0;
+  }
+  .main::before {
+    inset-block: 0 auto;
+    inset-inline: 0;
+    width: auto;
+    height: 3px;
+    background: linear-gradient(
+      90deg,
+      var(--brand) 0%,
+      #ffa864 20%,
+      var(--brand) 40%,
+      #c64d09 60%,
+      var(--brand) 80%,
+      #ffa864 100%);
+    background-size: 200% 100%;
+    animation-name: railFlowX;
+  }
   .nav-group, .brand, .sidebar-footer { display: none; }
-  .grid-2, .grid-3, .wallet-split { grid-template-columns: 1fr; }
+  .nav-section { flex-direction: row; align-items: center; }
+  .nav-section + .nav-section { margin-top: 0; }
+  .nav-items { flex-direction: row; gap: var(--s1); }
+  .nav-items[hidden] { display: flex; }
+  .nav-item { width: auto; white-space: nowrap; padding: 8px var(--s3); }
+  .main { padding: var(--s4) var(--s4) var(--s6); }
+  .grid-2, .grid-3, .wallet-split, .section-row { grid-template-columns: 1fr; }
+  .prize-grid { grid-template-columns: 1fr; }
+  .prize-dialog { grid-template-columns: 1fr; }
+  .prize-dialog .prize-thumb { width: 100%; }
+  .prize-row { flex-direction: column; }
+  .prize-thumb { width: 100%; height: 150px; }
+  .page-head h2 { font-size: 20px; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-hero { padding: var(--s4); }
+  .hero-text h2 { font-size: 20px; }
+  .modal { padding: var(--s5); }
+}
+
+@media (max-width: 560px) {
+  .kpi-grid, .kpi-grid.cols-2, .kpi-grid.cols-3 { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .toolbar input, .toolbar select { width: 100%; min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ---------------------------------------------------------------- direction */
+
+/* Latin identifiers and figures stay left-to-right inside the right-to-left page,
+   otherwise a code like AUC-2026-000001 renders with its parts reversed. */
+.mono, td.mono { direction: ltr; unicode-bidi: embed; }
+td.num, th.num { text-align: end; }
+
+/* Forcing the direction also pushes these to the left edge of a right-to-left page, so a figure
+   stops lining up with the label above it. The direction stays; the alignment goes back. */
+[dir="rtl"] td.mono,
+[dir="rtl"] .cell-progress-text,
+[dir="rtl"] .progress-figure,
+[dir="rtl"] .progress-pct { text-align: right; }
+
+/* A progress bar should fill from the side the reader starts on, which in Arabic is the right. */
+[dir="rtl"] .progress { transform: scaleX(-1); }
+
+/* Picking one user from a short search result. */
+.pick-list { display: grid; gap: 6px; margin: 8px 0; max-height: 260px; overflow-y: auto; }
+.pick {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name bal" "sub bal";
+  gap: 2px 12px;
+  text-align: start;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.pick:hover { border-color: var(--brand, #F26A1B); }
+.pick.on { border-color: var(--brand, #F26A1B); box-shadow: 0 0 0 2px rgba(242, 106, 27, 0.18); }
+.pick-name { grid-area: name; font-weight: 700; }
+.pick-sub { grid-area: sub; color: var(--muted); font-size: 12px; }
+.pick-bal { grid-area: bal; align-self: center; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* The mark on an auction chosen for the app's featured row. */
+.star { color: var(--warn-icon); font-size: 13px; }
+
+/* ---------------------------------------------------------------- dragging a list into order
+ *
+ * Used by the featured auctions row. The rules here are about making the drag legible: where the
+ * row will land, which row is moving, and that the handle is the thing to grab.
+ */
+.reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.reorder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: grab;
+
+  /* The row slides to its new place instead of jumping, so the eye can follow what moved. */
+  transition: transform 120ms ease, opacity 120ms ease, border-color 120ms ease;
+}
+
+.reorder-row:hover { border-color: var(--border-strong); }
+
+/* The row being carried: still visible, clearly not settled. */
+.reorder-row.dragging {
+  opacity: 0.45;
+  border-style: dashed;
+  cursor: grabbing;
+}
+
+.reorder-grip {
+  color: #9aa3b4;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: -1px;
+  cursor: grab;
+}
+
+/* The position, which is the whole point of the list, so it reads before anything else. */
+.reorder-rank {
+  min-width: 22px;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.reorder-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.reorder-text strong {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reorder-text .sub { font-size: 11px; }
+
+/* A picture in this list is a thumbnail, not the banner the rule above describes. */
+.reorder-row .cover-preview.sm {
+  width: 56px;
+  max-width: 56px;
+  aspect-ratio: 16 / 10;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reorder-row { transition: none; }
 }

@@ -35,6 +35,7 @@ public sealed class AuthService : IAuthService
     private readonly IDateTimeProvider _clock;
     private readonly JwtOptions _jwt;
     private readonly AuctionOptions _auctionOptions;
+    private readonly OtpOptions _otpOptions;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -47,6 +48,7 @@ public sealed class AuthService : IAuthService
         IDateTimeProvider clock,
         IOptions<JwtOptions> jwt,
         IOptions<AuctionOptions> auctionOptions,
+        IOptions<OtpOptions> otpOptions,
         ILogger<AuthService> logger)
     {
         _users = users;
@@ -58,6 +60,7 @@ public sealed class AuthService : IAuthService
         _clock = clock;
         _jwt = jwt.Value;
         _auctionOptions = auctionOptions.Value;
+        _otpOptions = otpOptions.Value;
         _logger = logger;
     }
 
@@ -74,7 +77,7 @@ public sealed class AuthService : IAuthService
             UserName = request.Email,
             Email = request.Email,
             FullName = request.FullName,
-            PhoneNumber = request.PhoneNumber,
+            PhoneNumber = await ClaimPhoneAsync(request.PhoneNumber, null, ct),
             Language = string.IsNullOrWhiteSpace(request.Language) ? "ar" : request.Language,
             IsActive = true,
             CreatedAt = _clock.UtcNow,
@@ -307,14 +310,27 @@ public sealed class AuthService : IAuthService
     /// Issues a sign-in code.
     ///
     /// The response is identical whether or not the destination belongs to an account, so the
-    /// endpoint cannot be used to discover who is registered. A code is only actually issued for a
-    /// real, active account; for anything else the caller still gets a plausible challenge back.
+    /// endpoint cannot be used to discover who is registered. When sign-up on login is allowed, a
+    /// phone number with no account gets a real code, because verifying it is how a new account is
+    /// created. Anything else unknown, and a disabled account, gets a plausible challenge with no
+    /// code behind it.
     /// </summary>
     public async Task<OtpChallengeDto> RequestLoginOtpAsync(
         RequestLoginOtpRequest request, CancellationToken ct = default)
     {
         var user = await FindByDestinationAsync(request.Destination, ct);
         var language = request.Language ?? user?.Language ?? "ar";
+
+        if (user is null && _otpOptions.AllowSignUpOnLogin &&
+            OtpService.Normalise(request.Destination).Channel == OtpChannel.Sms)
+        {
+            return await _otp.RequestAsync(new OtpRequest
+            {
+                Destination = request.Destination,
+                Purpose = OtpPurpose.Login,
+                Language = language
+            }, ct);
+        }
 
         if (user is null || !user.IsActive)
         {
@@ -348,6 +364,15 @@ public sealed class AuthService : IAuthService
             ? await _users.FindByIdAsync(userId.ToString())
             : await FindByDestinationAsync(request.Destination, ct);
 
+        var (normalised, channel) = OtpService.Normalise(request.Destination);
+
+        if (user is null && result.UserId is null && channel == OtpChannel.Sms &&
+            _otpOptions.AllowSignUpOnLogin)
+        {
+            // Proving control of a phone number with no account is how an account is created.
+            user = await CreatePhoneAccountAsync(normalised, ct);
+        }
+
         if (user is null)
         {
             throw new DomainException(ErrorCodes.InvalidOtp, "Invalid verification code.");
@@ -359,14 +384,15 @@ public sealed class AuthService : IAuthService
         }
 
         // Signing in with a code proves control of the destination, so mark it confirmed.
-        var (normalised, channel) = OtpService.Normalise(request.Destination);
         if (channel == OtpChannel.Email && !user.EmailConfirmed &&
             string.Equals(user.Email, normalised, StringComparison.OrdinalIgnoreCase))
         {
             user.EmailConfirmed = true;
         }
-        else if (channel == OtpChannel.Sms && !user.PhoneNumberConfirmed)
+        else if (channel == OtpChannel.Sms)
         {
+            // A number saved before the canonical form existed is rewritten in it here.
+            user.PhoneNumber = normalised;
             user.PhoneNumberConfirmed = true;
         }
 
@@ -380,6 +406,42 @@ public sealed class AuthService : IAuthService
         return await IssueTokensAsync(user, ct);
     }
 
+    /// <summary>
+    /// Creates an account for a phone number that has just been verified. The account has no email
+    /// or password, and its name is empty until the app asks the user for it.
+    /// </summary>
+    private async Task<ApplicationUser> CreatePhoneAccountAsync(string phone, CancellationToken ct)
+    {
+        var id = Guid.NewGuid();
+        var user = new ApplicationUser
+        {
+            Id = id,
+            // Identity needs a unique user name; the phone number is the real identifier.
+            UserName = $"phone-{id:N}",
+            PhoneNumber = phone,
+            PhoneNumberConfirmed = true,
+            FullName = string.Empty,
+            IsActive = true,
+            CreatedAt = _clock.UtcNow,
+            UpdatedAt = _clock.UtcNow
+        };
+
+        var result = await _users.CreateAsync(user);
+        if (!result.Succeeded)
+        {
+            throw new DomainException(
+                ErrorCodes.ValidationFailed,
+                "Registration failed.",
+                result.Errors.Select(e => e.Description).ToList());
+        }
+
+        await _users.AddToRoleAsync(user, Roles.User);
+
+        _logger.LogInformation("Created user {UserId} from a verified phone number.", user.Id);
+
+        return user;
+    }
+
     /// <summary>Resolves an account from either an email address or a phone number.</summary>
     private async Task<ApplicationUser?> FindByDestinationAsync(string destination, CancellationToken ct)
     {
@@ -390,19 +452,49 @@ public sealed class AuthService : IAuthService
             return await _users.FindByEmailAsync(value);
         }
 
-        // Phone numbers are stored as entered, so compare on digits only.
-        var digits = new string(value.Where(char.IsDigit).ToArray());
+        return await FindByPhoneAsync(value, ct);
+    }
 
-        var candidates = await _db.Users
-            .Where(u => u.PhoneNumber != null)
+    /// <summary>
+    /// The account holding a Saudi mobile number, given in canonical form. The match is exact: a
+    /// shorter number that merely ends the same way is a different number.
+    /// </summary>
+    private async Task<ApplicationUser?> FindByPhoneAsync(string canonical, CancellationToken ct)
+    {
+        var exact = await _db.Users.FirstOrDefaultAsync(u => u.PhoneNumber == canonical, ct);
+        if (exact is not null) return exact;
+
+        // Numbers saved before the canonical form existed are normalised before comparing.
+        var legacy = await _db.Users
+            .Where(u => u.PhoneNumber != null && !u.PhoneNumber.StartsWith(SaudiPhone.CountryCode))
             .Select(u => new { u.Id, u.PhoneNumber })
             .ToListAsync(ct);
 
-        var match = candidates.FirstOrDefault(u =>
-            new string(u.PhoneNumber!.Where(char.IsDigit).ToArray()).EndsWith(digits, StringComparison.Ordinal) ||
-            digits.EndsWith(new string(u.PhoneNumber!.Where(char.IsDigit).ToArray()), StringComparison.Ordinal));
+        var match = legacy.FirstOrDefault(u =>
+            SaudiPhone.TryNormalise(u.PhoneNumber, out var p) && p == canonical);
 
         return match is null ? null : await _users.FindByIdAsync(match.Id.ToString());
+    }
+
+    /// <summary>
+    /// Validates a phone number an account wants to hold and returns it in canonical form. Empty
+    /// means no number. A number already held by another account is refused, because the number
+    /// is how its owner signs in.
+    /// </summary>
+    private async Task<string?> ClaimPhoneAsync(string? raw, Guid? userId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        var phone = SaudiPhone.Normalise(raw);
+        var holder = await FindByPhoneAsync(phone, ct);
+
+        if (holder is not null && holder.Id != userId)
+        {
+            throw new DomainException(
+                ErrorCodes.PhoneNumberTaken, "That phone number belongs to another account.");
+        }
+
+        return phone;
     }
 
     /// <summary>
@@ -438,7 +530,16 @@ public sealed class AuthService : IAuthService
             ?? throw new DomainException(ErrorCodes.NotFound, "User not found.");
 
         if (request.FullName is not null) user.FullName = request.FullName;
-        if (request.PhoneNumber is not null) user.PhoneNumber = request.PhoneNumber;
+        if (request.PhoneNumber is not null)
+        {
+            var phone = await ClaimPhoneAsync(request.PhoneNumber, user.Id, ct);
+            if (phone != user.PhoneNumber)
+            {
+                // A new number has not been proven yet; signing in with it will confirm it.
+                user.PhoneNumber = phone;
+                user.PhoneNumberConfirmed = false;
+            }
+        }
         if (request.Language is not null) user.Language = request.Language;
         if (request.NotificationsEnabled.HasValue) user.NotificationsEnabled = request.NotificationsEnabled.Value;
 

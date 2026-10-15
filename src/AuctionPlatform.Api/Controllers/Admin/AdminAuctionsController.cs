@@ -18,20 +18,23 @@ public sealed class AdminAuctionsController : ApiControllerBase
     private readonly IAuctionAdminService _admin;
     private readonly IAuctionService _reader;
     private readonly IDashboardService _dashboard;
+    private readonly IParticipationService _participation;
 
     public AdminAuctionsController(
-        IAuctionAdminService admin, IAuctionService reader, IDashboardService dashboard)
+        IAuctionAdminService admin, IAuctionService reader, IDashboardService dashboard,
+        IParticipationService participation)
     {
         _admin = admin;
         _reader = reader;
         _dashboard = dashboard;
+        _participation = participation;
     }
 
     [HttpGet]
     [Authorize(Policy = Permissions.AuctionRead)]
     public async Task<ActionResult<PagedResult<AuctionListItemDto>>> List(
         [FromQuery] AuctionListQuery query, CancellationToken ct) =>
-        Ok(await _reader.ListAsync(query, null, ct));
+        Ok(await _reader.ListAsync(query, null, includeDrafts: true, ct));
 
     [HttpGet("{id:guid}")]
     [Authorize(Policy = Permissions.AuctionRead)]
@@ -61,6 +64,22 @@ public sealed class AdminAuctionsController : ApiControllerBase
     }
 
     /// <summary>Validates the full publish checklist, including exactly four ranked prizes.</summary>
+    /// <summary>Puts the auction in the app's featured row, or takes it out.</summary>
+    [HttpPut("{id:guid}/featured")]
+    [Authorize(Policy = Permissions.AuctionUpdate)]
+    public async Task<ActionResult<AuctionDetailDto>> SetFeatured(
+        Guid id, SetFeaturedRequest request, CancellationToken ct) =>
+        Ok(await _admin.SetFeaturedAsync(id, request.Featured, ct));
+
+    /// <summary>Arranges the featured row: the auctions named take that order, front to back.</summary>
+    [HttpPut("featured/order")]
+    [Authorize(Policy = Permissions.AuctionUpdate)]
+    public async Task<IActionResult> ReorderFeatured(ReorderFeaturedRequest request, CancellationToken ct)
+    {
+        await _admin.ReorderFeaturedAsync(request.AuctionIds, ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/publish")]
     [Authorize(Policy = Permissions.AuctionUpdate)]
     public async Task<ActionResult<AuctionDetailDto>> Publish(Guid id, CancellationToken ct) =>
@@ -99,6 +118,17 @@ public sealed class AdminAuctionsController : ApiControllerBase
         Guid id, [FromQuery] PagedQuery query, CancellationToken ct) =>
         Ok(await _reader.GetParticipantsAsync(id, query, ct));
 
+    /// <summary>
+    /// Adds a user to the auction at an entry fee the administrator sets. The fee comes out of the
+    /// user's Main wallet; if the balance does not cover it the request fails with
+    /// INSUFFICIENT_BALANCE and nothing changes.
+    /// </summary>
+    [HttpPost("{id:guid}/participants")]
+    [Authorize(Policy = Permissions.AuctionUpdate)]
+    public async Task<ActionResult<MyParticipationDto>> AddParticipant(
+        Guid id, AddParticipantRequest request, CancellationToken ct) =>
+        Ok(await _participation.AddByAdminAsync(id, request, ct));
+
     [HttpGet("{id:guid}/winners")]
     [Authorize(Policy = Permissions.AuctionRead)]
     public async Task<ActionResult<IReadOnlyList<WinnerDto>>> Winners(Guid id, CancellationToken ct) =>
@@ -113,6 +143,11 @@ public sealed class AdminAuctionsController : ApiControllerBase
 }
 
 public sealed record CancelAuctionRequest(string? Reason);
+
+public sealed record SetFeaturedRequest(bool Featured);
+
+/// <summary>The featured auctions in the order they should appear, front to back.</summary>
+public sealed record ReorderFeaturedRequest(IReadOnlyList<Guid> AuctionIds);
 
 [Route("api/v1/admin")]
 [Authorize]

@@ -25,24 +25,36 @@ class WalletScreen extends ConsumerWidget {
     final walletsAsync = ref.watch(walletsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(t.wallet)),
       body: walletsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Padding(
+            padding: EdgeInsets.all(AppTheme.space4),
+            child: Column(
+              children: [
+                Skeleton(height: 210, radius: AppTheme.radiusLg),
+                SizedBox(height: AppTheme.space3),
+                Skeleton(height: 210, radius: AppTheme.radiusLg),
+              ],
+            )),
         error: (e, _) => ErrorView(
-          message: e is ApiException ? e.message : e.toString(),
+          message: e is ApiException ? e.displayMessage : e.toString(),
           onRetry: () => ref.invalidate(walletsProvider),
         ),
         data: (wallets) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(walletsProvider),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.space4,
+              AppTheme.space4,
+              AppTheme.space4,
+              AppTheme.space8,
+            ),
             children: [
               _MainWalletCard(wallet: wallets.main),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               _ShoppingWalletCard(wallet: wallets.shopping),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTheme.space5),
               _TransactionSection(walletType: 'Main', title: t.mainWalletHistory),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTheme.space4),
               _TransactionSection(walletType: 'Shopping', title: t.shoppingWalletHistory),
             ],
           ),
@@ -62,58 +74,36 @@ class _MainWalletCard extends ConsumerWidget {
     final t = AppStrings.of(context);
     final locale = Localizations.localeOf(context).languageCode;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.account_balance_wallet_rounded),
-                const SizedBox(width: 8),
-                Text(t.mainWallet,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(Fmt.money(wallet.balance, wallet.currency, locale: locale),
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineMedium
-                    ?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            StatusPill(t.withdrawable, color: AppTheme.success, icon: Icons.check_rounded),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => _depositSheet(context, ref),
-                    icon: const Icon(Icons.add_rounded),
-                    label: Text(t.deposit),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (_) => WithdrawSheet(wallet: wallet),
-                    ),
-                    icon: const Icon(Icons.arrow_outward_rounded),
-                    label: Text(t.withdraw),
-                  ),
-                ),
-              ],
-            ),
-          ],
+    return WalletCard(
+      title: t.mainWallet,
+      amount: Fmt.money(wallet.balance, wallet.currency, locale: locale),
+      accent: Theme.of(context).colorScheme.primary,
+      icon: Icons.account_balance_wallet_rounded,
+      ruleLabel: t.withdrawable,
+      ruleIcon: Icons.check_circle_rounded,
+      actions: [
+        // Tonal buttons take their colour from the secondary role, which is gold here — the
+        // shopping-credit colour. On the cash card that would say the wrong thing, so this one
+        // is tinted from the primary role instead.
+        FilledButton.icon(
+          onPressed: () => _depositSheet(context, ref),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+          ),
+          icon: const Icon(Icons.add_rounded, size: 18),
+          label: Text(t.deposit),
         ),
-      ),
+        OutlinedButton.icon(
+          onPressed: () => showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => WithdrawSheet(wallet: wallet),
+          ),
+          icon: const Icon(Icons.arrow_outward_rounded, size: 18),
+          label: Text(t.withdraw),
+        ),
+      ],
     );
   }
 
@@ -156,7 +146,8 @@ class _MainWalletCard extends ConsumerWidget {
                 } on ApiException catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.message), backgroundColor: AppTheme.urgentDeep),
+                      SnackBar(
+                          content: Text(e.displayMessage), backgroundColor: AppTheme.urgentDeep),
                     );
                   }
                 }
@@ -217,7 +208,7 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
           );
       setState(() => _challenge = challenge);
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.displayMessage);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -249,7 +240,7 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
         );
       }
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.displayMessage);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -352,45 +343,25 @@ class _ShoppingWalletCard extends StatelessWidget {
     final t = AppStrings.of(context);
     final locale = Localizations.localeOf(context).languageCode;
 
-    return Card(
-      color: AppTheme.gold.withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.card_giftcard_rounded, color: AppTheme.gold),
-                const SizedBox(width: 8),
-                Text(t.shoppingCredit,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(Fmt.money(wallet.balance, wallet.currency, locale: locale),
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineMedium
-                    ?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            StatusPill(t.storePurchasesOnly, color: AppTheme.gold, icon: Icons.lock_rounded),
-            const SizedBox(height: 10),
-            Text(t.shoppingCreditCannotBeWithdrawn,
-                style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => context.go('/store'),
-              style: FilledButton.styleFrom(backgroundColor: AppTheme.gold),
-              icon: const Icon(Icons.storefront_rounded),
-              label: Text(t.shopNow),
-            ),
-          ],
+    return WalletCard(
+      title: t.shoppingCredit,
+      amount: Fmt.money(wallet.balance, wallet.currency, locale: locale),
+      accent: AppTheme.gold, icon: Icons.card_giftcard_rounded,
+      // A padlock, not a tick. The badge has to read as a restriction at a glance.
+      ruleLabel: t.storePurchasesOnly,
+      ruleIcon: Icons.lock_rounded,
+      note: t.shoppingCreditCannotBeWithdrawn,
+      actions: [
+        FilledButton.icon(
+          onPressed: () => context.go('/store'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppTheme.gold,
+            foregroundColor: AppTheme.onGold,
+          ),
+          icon: const Icon(Icons.storefront_rounded, size: 18),
+          label: Text(t.shopNow),
         ),
-      ),
+      ],
     );
   }
 }
@@ -441,10 +412,14 @@ class _TransactionSection extends ConsumerWidget {
                           ),
                           title: Text(_label(tx.transactionType, context)),
                           subtitle: Text(Fmt.dateTime(tx.createdAt, locale: locale)),
-                          trailing: Text(
+                          // The sign belongs in front of the figure. Left to Arabic's own
+                          // ordering, "-150.00 $" comes out as "$ 150.00-", which reads as a
+                          // credit at a glance — the opposite of what it is.
+                          trailing: LtrText(
                             '${tx.isCredit ? '+' : ''}${Fmt.money(tx.amount, tx.currency, locale: locale)}',
                             style: TextStyle(
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: AppTheme.numeric,
                               color: tx.isCredit ? AppTheme.success : null,
                             ),
                           ),

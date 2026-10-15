@@ -45,6 +45,8 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.OrderDeliveredBody] = "تم تسليم طلبك رقم {0}.",
             [NotificationKeys.AuctionCancelledTitle] = "تم إلغاء المزاد",
             [NotificationKeys.AuctionCancelledBody] = "تم إلغاء المزاد وسيتم رد المبالغ المستحقة.",
+            [NotificationKeys.EntryFeeRefundedTitle] = "تم رد رسوم الاشتراك",
+            [NotificationKeys.EntryFeeRefundedBody] = "تم رد {0} إلى محفظتك الرئيسية بعد إلغاء المزاد.",
             [NotificationKeys.LowStockTitle] = "تنبيه: مخزون منخفض",
             [NotificationKeys.LowStockBody] = "المنتج {0} تبقى منه {1} فقط.",
 
@@ -85,6 +87,8 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.OrderDeliveredBody] = "Order {0} has been delivered.",
             [NotificationKeys.AuctionCancelledTitle] = "Auction cancelled",
             [NotificationKeys.AuctionCancelledBody] = "The auction was cancelled and any amounts due will be returned.",
+            [NotificationKeys.EntryFeeRefundedTitle] = "Entry fee refunded",
+            [NotificationKeys.EntryFeeRefundedBody] = "{0} was returned to your Main Wallet after the auction was cancelled.",
             [NotificationKeys.LowStockTitle] = "Low stock alert",
             [NotificationKeys.LowStockBody] = "{0} has only {1} remaining.",
 

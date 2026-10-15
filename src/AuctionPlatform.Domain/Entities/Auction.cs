@@ -15,11 +15,40 @@ public class Auction : AuditableEntity
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
 
-    public Guid MainProductId { get; set; }
+/// <summary>
+    /// Optional link to a shared catalog product, kept for auctions created before prizes moved
+    /// onto the auction. The name and image shown to users come from the snapshots below.
+    /// </summary>
+    public Guid? MainProductId { get; set; }
     public Product? MainProduct { get; set; }
 
     /// <summary>Snapshot of the main product's name at publish time.</summary>
     public string MainProductNameSnapshot { get; set; } = string.Empty;
+
+    /// <summary>The auction's picture. Taken from the rank 1 prize whenever prizes are saved.</summary>
+    public string? MainImageSnapshot { get; set; }
+
+    /// <summary>
+    /// The auction's own picture, shown on its card and at the top of its page. Separate from the
+    /// prize pictures, so the auction can be advertised with a banner of its own. When empty, the
+    /// first prize's picture stands in for it.
+    /// </summary>
+    public string? CoverImageUrl { get; set; }
+
+    /// <summary>
+    /// Picked out by an administrator for the front page. It changes nothing about how the auction
+    /// runs; it only decides whether the app shows it in the featured row.
+    /// </summary>
+    public bool IsFeatured { get; set; }
+
+    /// <summary>
+    /// Where this one sits in the featured row, smallest first.
+    ///
+    /// Only meaningful while <see cref="IsFeatured"/> is true. Ties — and everything an
+    /// administrator has never dragged — fall back to newest first, so an auction that has just
+    /// been featured appears at the front rather than silently behind everything at zero.
+    /// </summary>
+    public int FeaturedOrder { get; set; }
 
     public decimal OriginalPrice { get; set; }
     public decimal StartingPrice { get; set; }
@@ -42,8 +71,15 @@ public class Auction : AuditableEntity
     public int StartDelayAfterParticipantsSeconds { get; set; }
     public int DurationSeconds { get; set; }
 
+    //Times of auction
+
+    //The moment the required participant count was reached
     public DateTime? ParticipantsCompletedAt { get; set; }
+
+    //When the auction is supposed to go live — ParticipantsCompletedAt + StartDelayAfterParticipantsSeconds.
     public DateTime? ScheduledStartAt { get; set; }
+
+    //When it really went live.
     public DateTime? ActualStartedAt { get; set; }
     public DateTime? FinalPhaseStartedAt { get; set; }
     public DateTime? FinishedAt { get; set; }

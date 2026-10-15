@@ -8,6 +8,7 @@ import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auctions/presentation/auction_detail_screen.dart';
 import 'features/auctions/presentation/auctions_screen.dart';
+import 'features/auth/presentation/complete_profile_screen.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/home_screen.dart';
 import 'features/prizes/presentation/prizes_screen.dart';
@@ -15,6 +16,7 @@ import 'features/profile/presentation/profile_screen.dart';
 import 'features/store/presentation/cart_screen.dart';
 import 'features/store/presentation/store_screen.dart';
 import 'features/wallets/presentation/wallet_screen.dart';
+import 'shared/app_header.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,17 +36,18 @@ class AuctionApp extends ConsumerWidget {
     if (!auth.checked) {
       return MaterialApp(
         theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
         home: const Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
     return MaterialApp.router(
-      title: 'Auction Platform',
+      title: 'DealGo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
+
+      // The app is light whatever the phone is set to: the catalogue's photographs, the price
+      // colours and the brand read the same for everyone, and screenshots match what people see.
+      themeMode: ThemeMode.light,
       locale: locale,
       supportedLocales: AppStrings.supportedLocales,
       localizationsDelegates: const [
@@ -55,6 +58,36 @@ class AuctionApp extends ConsumerWidget {
       ],
       // Arabic lays out right-to-left; Flutter derives the direction from the locale.
       routerConfig: _router(ref),
+      builder: (context, child) => _ReadableWidth(child: child),
+    );
+  }
+}
+
+/// Keeps the app readable on a laptop or a large monitor.
+///
+/// These are mobile-first layouts. Left to fill a 27-inch screen they stretch a card to a metre
+/// wide and put the bid button an arm's length from the price. Capping the width and centring it
+/// keeps the reading distance the same everywhere; the surrounding band is painted in the page
+/// background so the app still looks deliberate rather than letterboxed.
+class _ReadableWidth extends StatelessWidget {
+  const _ReadableWidth({required this.child});
+
+  static const _maxWidth = 640.0;
+
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (child == null) return const SizedBox.shrink();
+
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _maxWidth),
+          child: child!,
+        ),
+      ),
     );
   }
 }
@@ -68,15 +101,23 @@ GoRouter _router(WidgetRef ref) {
     initialLocation: '/',
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
-      final signedIn = ref.read(authControllerProvider).isSignedIn;
+      final auth = ref.read(authControllerProvider);
       final atLogin = state.matchedLocation == '/login';
+      final atProfile = state.matchedLocation == '/complete-profile';
 
-      if (!signedIn) return atLogin ? null : '/login';
-      if (atLogin) return '/';
+      if (!auth.isSignedIn) return atLogin ? null : '/login';
+
+      // An account created by phone sign-in has no name until the user gives one.
+      final needsName = auth.user != null && auth.user!.fullName.trim().isEmpty;
+      if (needsName) return atProfile ? null : '/complete-profile';
+
+      if (atLogin || atProfile) return '/';
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(
+          path: '/complete-profile', builder: (_, _) => const CompleteProfileScreen()),
 
       // The five main tabs, per the specification's navigation.
       StatefulShellRoute.indexedStack(
@@ -89,7 +130,11 @@ GoRouter _router(WidgetRef ref) {
             GoRoute(path: '/auctions', builder: (_, _) => const AuctionsScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/store', builder: (_, _) => const StoreScreen()),
+            GoRoute(
+              path: '/store',
+              builder: (_, state) =>
+                  StoreScreen(categoryId: state.uri.queryParameters['categoryId']),
+            ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen()),
@@ -110,7 +155,14 @@ GoRouter _router(WidgetRef ref) {
         parentNavigatorKey: _rootKey,
         path: '/store/products',
         builder: (_, state) =>
-            StoreProductsScreen(categoryId: state.uri.queryParameters['categoryId']),
+            StoreProductsScreen(
+              categoryId: state.uri.queryParameters['categoryId'],
+              initialSearch: state.uri.queryParameters['q'],
+              offersOnly: state.uri.queryParameters['offers'] == '1',
+              creditOnly: state.uri.queryParameters['credit'] == '1',
+              sortBy: state.uri.queryParameters['sort'],
+              title: state.uri.queryParameters['title'],
+            ),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
@@ -159,7 +211,8 @@ class _MainShell extends ConsumerWidget {
     final t = AppStrings.of(context);
 
     return Scaffold(
-      body: shell,
+      // One bar for the whole app: it is drawn above the tabs' own pages and never scrolls away.
+      body: Column(children: [const AppHeader(), Expanded(child: shell)]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),

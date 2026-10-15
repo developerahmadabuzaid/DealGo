@@ -6,6 +6,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AuctionPlatform.Application.Admin;
 
+/// <summary>
+/// One figure measured over this calendar month and the one before it.
+///
+/// Only flow figures can be compared this way, because each underlying row carries the moment it
+/// happened. A stock figure — auctions open right now, credit still outstanding — has no history
+/// to compare against, so it is deliberately absent here rather than estimated.
+/// </summary>
+public sealed record PeriodChangeDto(decimal Current, decimal Previous);
+
 public sealed record DashboardDto(
     int ActiveAuctions,
     int UpcomingAuctions,
@@ -23,6 +32,10 @@ public sealed record DashboardDto(
     long PendingStoreOrders,
     decimal MainWalletDeposits,
     decimal MainWalletWithdrawals,
+    PeriodChangeDto EntryRevenueTrend,
+    PeriodChangeDto ParticipantsTrend,
+    PeriodChangeDto StoreRevenueTrend,
+    PeriodChangeDto CreditIssuedTrend,
     string Currency);
 
 public sealed record AuditLogDto(
@@ -87,7 +100,12 @@ public sealed class DashboardService : IDashboardService
     public async Task<DashboardDto> GetDashboardAsync(CancellationToken ct = default)
     {
         var currency = _options.DefaultCurrency;
-        var todayStart = _clock.UtcNow.Date;
+        var now = _clock.UtcNow;
+        var todayStart = now.Date;
+
+        // Calendar months, so "compared with last month" means what a reader expects it to.
+        var thisMonthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var lastMonthStart = thisMonthStart.AddMonths(-1);
 
         var activeAuctions = await _db.Auctions.AsNoTracking()
             .CountAsync(a => a.Status == AuctionStatus.Live || a.Status == AuctionStatus.FinalPhase, ct);
@@ -141,13 +159,56 @@ public sealed class DashboardService : IDashboardService
             .Where(t => t.TransactionType == WalletTransactionType.Withdrawal)
             .SumAsync(t => (decimal?)t.Amount, ct) ?? 0m);
 
+        // Month-on-month movement. Every one of these reads a real timestamp on the row itself:
+        // WalletTransaction.CreatedAt, AuctionParticipant.JoinedAt and StoreOrder.CreatedAt.
+        var entryThisMonth = Math.Abs(await entryFees
+            .Where(t => t.CreatedAt >= thisMonthStart)
+            .SumAsync(t => (decimal?)t.Amount, ct) ?? 0m);
+
+        var entryLastMonth = Math.Abs(await entryFees
+            .Where(t => t.CreatedAt >= lastMonthStart && t.CreatedAt < thisMonthStart)
+            .SumAsync(t => (decimal?)t.Amount, ct) ?? 0m);
+
+        var participantsThisMonth = await _db.AuctionParticipants.AsNoTracking()
+            .CountAsync(p => p.JoinedAt >= thisMonthStart, ct);
+
+        var participantsLastMonth = await _db.AuctionParticipants.AsNoTracking()
+            .CountAsync(p => p.JoinedAt >= lastMonthStart && p.JoinedAt < thisMonthStart, ct);
+
+        var countedOrders = _db.StoreOrders.AsNoTracking()
+            .Where(o => o.Status != StoreOrderStatus.Cancelled && o.Status != StoreOrderStatus.Refunded);
+
+        var storeThisMonth = await countedOrders
+            .Where(o => o.CreatedAt >= thisMonthStart)
+            .SumAsync(o => (decimal?)o.Total, ct) ?? 0m;
+
+        var storeLastMonth = await countedOrders
+            .Where(o => o.CreatedAt >= lastMonthStart && o.CreatedAt < thisMonthStart)
+            .SumAsync(o => (decimal?)o.Total, ct) ?? 0m;
+
+        var issuedCredit = _db.WalletTransactions.AsNoTracking()
+            .Where(t => t.WalletType == WalletType.Shopping && t.Currency == currency && t.Amount > 0);
+
+        var creditThisMonth = await issuedCredit
+            .Where(t => t.CreatedAt >= thisMonthStart)
+            .SumAsync(t => (decimal?)t.Amount, ct) ?? 0m;
+
+        var creditLastMonth = await issuedCredit
+            .Where(t => t.CreatedAt >= lastMonthStart && t.CreatedAt < thisMonthStart)
+            .SumAsync(t => (decimal?)t.Amount, ct) ?? 0m;
+
         return new DashboardDto(
             activeAuctions, upcomingAuctions, completedAuctions, totalParticipants,
             Money.Round(todayEntryRevenue), Money.Round(totalEntryRevenue),
             pendingClaims.Count, Money.Round(pendingClaims.Sum()),
             credit.TotalIssued, credit.TotalUsed, credit.Outstanding,
             storeOrders, Money.Round(storeRevenue), pendingStoreOrders,
-            Money.Round(deposits), Money.Round(withdrawals), currency);
+            Money.Round(deposits), Money.Round(withdrawals),
+            new PeriodChangeDto(Money.Round(entryThisMonth), Money.Round(entryLastMonth)),
+            new PeriodChangeDto(participantsThisMonth, participantsLastMonth),
+            new PeriodChangeDto(Money.Round(storeThisMonth), Money.Round(storeLastMonth)),
+            new PeriodChangeDto(Money.Round(creditThisMonth), Money.Round(creditLastMonth)),
+            currency);
     }
 
     public async Task<PagedResult<AuditLogDto>> GetAuditLogsAsync(

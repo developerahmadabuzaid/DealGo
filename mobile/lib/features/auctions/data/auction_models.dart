@@ -1,11 +1,33 @@
 /// Wire models for the auction API.
 ///
 /// Every value here is decided by the backend. The client stores and displays them; it never
-/// derives a price, a rank, a winner or an end time of its own.
+/// derives a rank, a winner or an end time of its own. The one figure it works out is the
+/// discounted prize price shown before an auction ends ([prizePriceAt]); that mirrors the server's
+/// rule, and what a winner actually owes is still the amount the server puts on the claim.
 library;
 
 DateTime? _date(dynamic v) => v == null ? null : DateTime.parse(v as String).toUtc();
 double _num(dynamic v) => (v as num?)?.toDouble() ?? 0;
+
+/// What a prize costs its winner when the auction price stands at [auctionPrice].
+///
+/// The auction's discount — where its price sits against its value — applies to every prize alike,
+/// not only the first. Same rule as the server's AuctionRules.PrizePaymentAmount.
+double prizePriceAt(
+  double prizePrice,
+  double auctionPrice,
+  double auctionValue,
+) {
+  if (auctionValue <= 0 || auctionPrice <= 0) return prizePrice;
+  final fraction = (auctionPrice / auctionValue).clamp(0.0, 1.0);
+  return (prizePrice * fraction * 100).roundToDouble() / 100;
+}
+
+/// The discount, 0..1, that an auction price of [auctionPrice] gives on a value of [auctionValue].
+double discountAt(double auctionPrice, double auctionValue) {
+  if (auctionValue <= 0 || auctionPrice <= 0) return 0;
+  return (1 - auctionPrice / auctionValue).clamp(0.0, 1.0);
+}
 
 class AuctionSummary {
   const AuctionSummary({
@@ -26,6 +48,8 @@ class AuctionSummary {
     required this.scheduledStartAt,
     required this.actualStartedAt,
     required this.remainingSeconds,
+    this.coverImageUrl,
+    this.isFeatured = false,
   });
 
   final String id;
@@ -33,6 +57,13 @@ class AuctionSummary {
   final String title;
   final String mainProductName;
   final String? mainImageUrl;
+
+  /// The auction's own picture. When there is none, the first prize's picture stands in.
+  final String? coverImageUrl;
+  String? get imageUrl => coverImageUrl ?? mainImageUrl;
+
+  /// Picked by an administrator for the front page's featured row.
+  final bool isFeatured;
   final double originalPrice;
   final double startingPrice;
   final double currentPrice;
@@ -78,6 +109,8 @@ class AuctionSummary {
         scheduledStartAt: _date(j['scheduledStartAt']),
         actualStartedAt: _date(j['actualStartedAt']),
         remainingSeconds: j['remainingSeconds'] as int?,
+        coverImageUrl: j['coverImageUrl'] as String?,
+        isFeatured: j['isFeatured'] as bool? ?? false,
       );
 }
 
@@ -89,6 +122,7 @@ class AuctionPrize {
     required this.imageUrl,
     required this.originalPrice,
     required this.currency,
+    this.description,
   });
 
   final String id;
@@ -97,6 +131,7 @@ class AuctionPrize {
   final String? imageUrl;
   final double originalPrice;
   final String currency;
+  final String? description;
 
   factory AuctionPrize.fromJson(Map<String, dynamic> j) => AuctionPrize(
         id: j['id'] as String,
@@ -105,6 +140,7 @@ class AuctionPrize {
         imageUrl: j['imageUrl'] as String?,
         originalPrice: _num(j['originalPrice']),
         currency: j['currency'] as String? ?? 'USD',
+        description: j['description'] as String?,
       );
 }
 
@@ -143,6 +179,7 @@ class AuctionDetail {
     required this.myHighestPrice,
     required this.myBidCount,
     required this.serverTime,
+    this.coverImageUrl,
   });
 
   final String id;
@@ -151,6 +188,10 @@ class AuctionDetail {
   final String? description;
   final String mainProductName;
   final String? mainImageUrl;
+
+  /// The auction's own picture. When there is none, the first prize's picture stands in.
+  final String? coverImageUrl;
+  String? get imageUrl => coverImageUrl ?? mainImageUrl;
   final double originalPrice;
   final double startingPrice;
   final double currentPrice;
@@ -230,6 +271,7 @@ class AuctionDetail {
         myHighestPrice: (j['myHighestPrice'] as num?)?.toDouble(),
         myBidCount: j['myBidCount'] as int?,
         serverTime: _date(j['serverTime']) ?? DateTime.now().toUtc(),
+        coverImageUrl: j['coverImageUrl'] as String?,
       );
 }
 

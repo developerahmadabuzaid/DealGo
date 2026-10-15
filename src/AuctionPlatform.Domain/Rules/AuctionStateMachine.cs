@@ -99,4 +99,18 @@ public static class AuctionStateMachine
 
     public static bool IsTerminal(AuctionStatus status) =>
         status == AuctionStatus.Completed || status == AuctionStatus.Cancelled;
+
+    /// <summary>
+    /// States an auction may be shown in the front page's featured row.
+    ///
+    /// The row is a place to act, not a history: every card there offers to take a seat or to
+    /// bid. An auction a visitor can do neither with — still a draft, paused, finished, cancelled
+    /// — would be an advertisement for a door that does not open, so it is refused when an
+    /// administrator picks it and dropped from the row the moment it leaves these states.
+    /// </summary>
+    public static bool CanBeFeatured(AuctionStatus status) =>
+        AcceptsRegistration(status) ||
+        AcceptsBids(status) ||
+        status == AuctionStatus.Ready ||
+        status == AuctionStatus.WaitingForStart;
 }

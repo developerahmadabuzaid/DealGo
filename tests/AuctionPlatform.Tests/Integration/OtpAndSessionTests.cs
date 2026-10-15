@@ -263,7 +263,7 @@ public class OtpServiceTests
     [Theory]
     [InlineData("USER@Example.COM", "  user@example.com  ")]
     [InlineData("+966 50 123 4567", "+966501234567")]
-    [InlineData("(050) 123-4567", "0501234567")]
+    [InlineData("(055) 987-6543", "0559876543")]
     public async Task Two_formattings_of_one_destination_are_the_same_identity(
         string requestedAs, string verifiedAs)
     {
@@ -339,7 +339,7 @@ public class WithdrawalOtpTests
         var wallets = scope.ServiceProvider.GetRequiredService<IWalletService>();
 
         var noCode = async () => await wallets.WithdrawAsync(userId,
-            new WithdrawRequest(100m, "USD", "wd-1", "IBAN123"));
+            new WithdrawRequest(100m, Money.DefaultCurrency, "wd-1", "IBAN123"));
 
         await noCode.Should().ThrowAsync<DomainException>()
             .Where(e => e.Code == ErrorCodes.OtpRequired);
@@ -368,12 +368,12 @@ public class WithdrawalOtpTests
         var wallets = scope.ServiceProvider.GetRequiredService<IWalletService>();
 
         var challenge = await wallets.RequestWithdrawalOtpAsync(userId,
-            new RequestWithdrawalOtpRequest(100m, "USD", "IBAN123"));
+            new RequestWithdrawalOtpRequest(100m, Money.DefaultCurrency, "IBAN123"));
 
         challenge.DevelopmentCode.Should().NotBeNullOrEmpty();
 
         var result = await wallets.WithdrawAsync(userId,
-            new WithdrawRequest(100m, "USD", "wd-ok", "IBAN123", challenge.DevelopmentCode));
+            new WithdrawRequest(100m, Money.DefaultCurrency, "wd-ok", "IBAN123", challenge.DevelopmentCode));
 
         result.BalanceBefore.Should().Be(500m);
         result.BalanceAfter.Should().Be(400m);
@@ -398,16 +398,16 @@ public class WithdrawalOtpTests
         var wallets = scope.ServiceProvider.GetRequiredService<IWalletService>();
 
         var challenge = await wallets.RequestWithdrawalOtpAsync(userId,
-            new RequestWithdrawalOtpRequest(10m, "USD", "IBAN-mine"));
+            new RequestWithdrawalOtpRequest(10m, Money.DefaultCurrency, "IBAN-mine"));
 
         var biggerAmount = async () => await wallets.WithdrawAsync(userId,
-            new WithdrawRequest(5000m, "USD", "wd-evil", "IBAN-mine", challenge.DevelopmentCode));
+            new WithdrawRequest(5000m, Money.DefaultCurrency, "wd-evil", "IBAN-mine", challenge.DevelopmentCode));
 
         await biggerAmount.Should().ThrowAsync<DomainException>()
             .Where(e => e.Code == ErrorCodes.InvalidOtp);
 
         var otherDestination = async () => await wallets.WithdrawAsync(userId,
-            new WithdrawRequest(10m, "USD", "wd-evil-2", "IBAN-attacker", challenge.DevelopmentCode));
+            new WithdrawRequest(10m, Money.DefaultCurrency, "wd-evil-2", "IBAN-attacker", challenge.DevelopmentCode));
 
         await otherDestination.Should().ThrowAsync<DomainException>()
             .Where(e => e.Code == ErrorCodes.InvalidOtp);
@@ -435,14 +435,14 @@ public class WithdrawalOtpTests
         var wallets = scope.ServiceProvider.GetRequiredService<IWalletService>();
 
         var challenge = await wallets.RequestWithdrawalOtpAsync(userId,
-            new RequestWithdrawalOtpRequest(50m, "USD", "IBAN123"));
+            new RequestWithdrawalOtpRequest(50m, Money.DefaultCurrency, "IBAN123"));
 
         await wallets.WithdrawAsync(userId,
-            new WithdrawRequest(50m, "USD", "wd-first", "IBAN123", challenge.DevelopmentCode));
+            new WithdrawRequest(50m, Money.DefaultCurrency, "wd-first", "IBAN123", challenge.DevelopmentCode));
 
         // A different idempotency key, so this is a genuinely new withdrawal attempt.
         var second = async () => await wallets.WithdrawAsync(userId,
-            new WithdrawRequest(50m, "USD", "wd-second", "IBAN123", challenge.DevelopmentCode));
+            new WithdrawRequest(50m, Money.DefaultCurrency, "wd-second", "IBAN123", challenge.DevelopmentCode));
 
         await second.Should().ThrowAsync<DomainException>()
             .Where(e => e.Code == ErrorCodes.OtpAlreadyUsed);

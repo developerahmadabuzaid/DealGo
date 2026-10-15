@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 9 and later block plain HTTP by default, and a release build enforces it.
+
+    That default is right: this app carries auth tokens, balances and withdrawals, so traffic to a
+    real server must be encrypted. But it also breaks local development, where the API runs as
+    plain HTTP on the machine hosting the emulator.
+
+    So HTTPS stays mandatory everywhere except the two addresses that can only ever mean "the
+    computer this emulator is running on". A production server can never match them.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- The Android emulator's route to the host machine's localhost. -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- The device itself, for a port-forwarded setup (adb reverse). -->
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

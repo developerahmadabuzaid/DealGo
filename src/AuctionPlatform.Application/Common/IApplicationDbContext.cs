@@ -43,6 +43,13 @@ public interface IApplicationDbContext
     DbSet<Notification> Notifications { get; }
     DbSet<AuditLog> AuditLogs { get; }
 
+    DbSet<SiteContent> SiteContent { get; }
+    DbSet<SiteCard> SiteCards { get; }
+    DbSet<SiteTestimonial> SiteTestimonials { get; }
+    DbSet<SiteFaq> SiteFaqs { get; }
+
+    DbSet<AppAd> AppAds { get; }
+
     DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

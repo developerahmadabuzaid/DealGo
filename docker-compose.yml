@@ -52,10 +52,14 @@ services:
       # Supply real secrets through the environment; never commit them.
       Jwt__Secret: ${JWT_SECRET:-development-only-signing-key-change-me-please-32+}
       Payments__WebhookSecret: ${PAYMENT_WEBHOOK_SECRET:-development-webhook-secret}
+      Tawked__ApiKey: ${TAWKED_API_KEY:-}
       Database__AutoMigrate: "true"
       Database__SeedDevelopmentData: ${SEED_DEV_DATA:-true}
     ports:
       - "${API_PORT:-8090}:8080"
+    volumes:
+      # Uploaded prize images live outside the image, so rebuilding the API does not delete them.
+      - uploads-data:/app/wwwroot/uploads
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
       interval: 10s
@@ -85,6 +89,7 @@ services:
       Redis__ConnectionString: "redis:6379"
       Jwt__Secret: ${JWT_SECRET:-development-only-signing-key-change-me-please-32+}
       Payments__WebhookSecret: ${PAYMENT_WEBHOOK_SECRET:-development-webhook-secret}
+      Tawked__ApiKey: ${TAWKED_API_KEY:-}
       # Only one instance needs to own migrations and seeding.
       Database__AutoMigrate: "false"
       Database__SeedDevelopmentData: "false"
@@ -94,3 +99,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  uploads-data:

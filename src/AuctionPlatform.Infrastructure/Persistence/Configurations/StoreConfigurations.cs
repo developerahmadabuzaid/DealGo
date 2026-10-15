@@ -19,6 +19,13 @@ public sealed class StoreCategoryConfiguration : IEntityTypeConfiguration<StoreC
         b.HasIndex(c => c.Slug).IsUnique();
         b.HasIndex(c => c.Status);
         b.HasIndex(c => c.DisplayOrder);
+        b.HasIndex(c => c.ParentId);
+
+        // A main department with sub-departments cannot be deleted out from under them.
+        b.HasOne(c => c.Parent)
+            .WithMany(c => c.Children)
+            .HasForeignKey(c => c.ParentId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 
@@ -41,6 +48,7 @@ public sealed class StoreProductConfiguration : IEntityTypeConfiguration<StorePr
         b.HasIndex(p => p.Status);
         b.HasIndex(p => p.CategoryId);
         b.HasIndex(p => new { p.Status, p.IsFeatured });
+        b.HasIndex(p => new { p.Status, p.CompareAtPrice });
         b.HasIndex(p => p.CreatedAt);
 
         b.HasOne(p => p.Category)

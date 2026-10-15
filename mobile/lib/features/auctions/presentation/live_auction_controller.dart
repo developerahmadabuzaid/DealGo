@@ -86,12 +86,17 @@ class LiveAuctionState {
 /// events on top, and refetches the snapshot whenever the connection was interrupted or an event
 /// might have been missed.
 class LiveAuctionController extends StateNotifier<LiveAuctionState> {
-  LiveAuctionController(this._ref, this.auctionId) : super(const LiveAuctionState()) {
+  // The hub is read once, here, and kept: dispose runs after the provider container may already be
+  // gone, and reading it again from there throws.
+  LiveAuctionController(this._ref, this.auctionId)
+      : _hub = _ref.read(hubClientProvider),
+        super(const LiveAuctionState()) {
     _start();
   }
 
   final Ref _ref;
   final String auctionId;
+  final AuctionHubClient _hub;
 
   StreamSubscription<HubEvent>? _eventSub;
   StreamSubscription<HubStatus>? _statusSub;
@@ -99,7 +104,7 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
   final _random = Random();
 
   Future<void> _start() async {
-    final hub = _ref.read(hubClientProvider);
+    final hub = _hub;
 
     _statusSub = hub.status.listen((status) {
       final wasDisconnected = state.hubStatus != HubStatus.connected;
@@ -115,12 +120,42 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
     _eventSub = hub.events.listen(_onEvent);
 
     await hub.connect();
+    // The status stream only reports changes. When the connection was already up before this
+    // screen opened — the usual case, since the app connects at sign-in — nothing changes, so the
+    // current status has to be read directly. Without this the screen believed it was offline and
+    // kept the bid button switched off on a perfectly good connection.
+    if (mounted) state = state.copyWith(hubStatus: hub.currentStatus);
     await hub.joinAuction(auctionId);
 
     await Future.wait([resync(), _loadDetail()]);
 
     // A periodic resync is the safety net for anything the event stream lost.
     _resyncTimer = Timer.periodic(AppConfig.resyncInterval, (_) => resync());
+
+    // Automatic reconnect only covers a connection that was once established. If the first attempt
+    // failed, nothing would ever try again, so this does.
+    _reconnectTimer = Timer.periodic(const Duration(seconds: 5), (_) => _ensureConnected());
+  }
+
+  Timer? _reconnectTimer;
+  bool _reconnecting = false;
+
+  Future<void> _ensureConnected() async {
+    final hub = _hub;
+    if (_reconnecting || hub.currentStatus != HubStatus.disconnected) return;
+
+    _reconnecting = true;
+    try {
+      await hub.connect();
+      if (!mounted) return;
+      state = state.copyWith(hubStatus: hub.currentStatus);
+      if (hub.currentStatus == HubStatus.connected) {
+        await hub.joinAuction(auctionId);
+        unawaited(resync());
+      }
+    } finally {
+      _reconnecting = false;
+    }
   }
 
   Future<void> _loadDetail() async {
@@ -140,7 +175,7 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
 
       state = state.copyWith(snapshot: snapshot, serverOffset: offset, clearError: true);
     } catch (e) {
-      if (e is ApiException) state = state.copyWith(error: e.message);
+      if (e is ApiException) state = state.copyWith(error: e.displayMessage);
     }
   }
 
@@ -167,6 +202,8 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
       case 'AuctionParticipantCountChanged':
         final count = event.payload['participantCount'] as int?;
         if (count != null) state = state.copyWith(snapshot: _withCount(snapshot, count));
+        // The registration bar on the page is drawn from the detail.
+        _ref.invalidate(auctionDetailProvider(auctionId));
         break;
 
       case 'LeaderboardUpdated':
@@ -179,6 +216,9 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
         }
         break;
 
+      case 'AuctionReady':
+      case 'AuctionStartScheduled':
+      case 'AuctionStartTimeChanged':
       case 'FinalPhaseStarted':
       case 'AuctionStarted':
       case 'AuctionFinished':
@@ -187,9 +227,13 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
       case 'AuctionPaused':
       case 'AuctionResumed':
         // These change status or timing, both of which the server owns: refetch rather than guess.
+        // The page is drawn from the detail, so that is refetched too; before, it stayed on the
+        // old panel until the user pulled down.
         unawaited(resync());
-        if (event.name == 'WinnersDeclared' || event.name == 'AuctionFinished') {
-          unawaited(_loadDetail());
+        unawaited(_loadDetail());
+        _ref.invalidate(auctionDetailProvider(auctionId));
+        if (event.name == 'WinnersDeclared') {
+          _ref.invalidate(auctionWinnersProvider(auctionId));
         }
         break;
     }
@@ -265,7 +309,7 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
 
       return result;
     } on ApiException catch (e) {
-      state = state.copyWith(isBidding: false, error: e.message);
+      state = state.copyWith(isBidding: false, error: e.displayMessage);
 
       // These mean the world moved on; pull the truth rather than showing a stale screen.
       if (e.code == ErrorCodes.auctionFinished ||
@@ -282,12 +326,16 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
 
   void clearRankMessage() => state = state.copyWith(clearRankMessage: true);
 
+  /// Called once the message has been shown, so the same refusal is not reported twice.
+  void clearError() => state = state.copyWith(clearError: true);
+
   @override
   void dispose() {
     _resyncTimer?.cancel();
+    _reconnectTimer?.cancel();
     _eventSub?.cancel();
     _statusSub?.cancel();
-    _ref.read(hubClientProvider).leaveAuction(auctionId);
+    _hub.leaveAuction(auctionId);
     super.dispose();
   }
 }

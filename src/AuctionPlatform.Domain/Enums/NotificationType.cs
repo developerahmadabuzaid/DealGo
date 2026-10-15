@@ -18,5 +18,6 @@ public enum NotificationType
     OrderDelivered = 13,
     LowStock = 14,
     ShoppingCreditExpiring = 15,
-    Generic = 16
+    Generic = 16,
+    EntryFeeRefunded = 17
 }

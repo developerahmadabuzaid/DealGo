@@ -12,6 +12,14 @@ public class StoreCategory : AuditableEntity
     public int DisplayOrder { get; set; }
     public StoreCategoryStatus Status { get; set; } = StoreCategoryStatus.Active;
 
+    /// <summary>
+    /// The main department this one sits under, or null for a main department. Two levels only:
+    /// a department with a parent cannot have children of its own.
+    /// </summary>
+    public Guid? ParentId { get; set; }
+    public StoreCategory? Parent { get; set; }
+    public ICollection<StoreCategory> Children { get; set; } = new List<StoreCategory>();
+
     public ICollection<StoreProduct> Products { get; set; } = new List<StoreProduct>();
 }
 
@@ -29,6 +37,14 @@ public class StoreProduct : AuditableEntity
     public string Sku { get; set; } = string.Empty;
 
     public decimal Price { get; set; }
+
+    /// <summary>
+    /// What the item costs without the offer. Null, or anything not above <see cref="Price"/>,
+    /// means there is no offer: a discount is only ever the difference between the two, never a
+    /// number typed in on its own.
+    /// </summary>
+    public decimal? CompareAtPrice { get; set; }
+
     public string Currency { get; set; } = Money.DefaultCurrency;
 
     /// <summary>Physical units on hand, including any currently reserved by open orders.</summary>
@@ -55,6 +71,12 @@ public class StoreProduct : AuditableEntity
     public ICollection<StoreProductImage> Images { get; set; } = new List<StoreProductImage>();
 
     public int AvailableQuantity => StockQuantity - ReservedQuantity;
+
+    public bool IsOnOffer => CompareAtPrice is { } was && was > Price;
+
+    /// <summary>Whole percent off, rounded down, or zero when there is no offer.</summary>
+    public int DiscountPercentage =>
+        IsOnOffer ? (int)Math.Floor((CompareAtPrice!.Value - Price) / CompareAtPrice.Value * 100m) : 0;
 
     public bool IsPubliclyVisible =>
         Status == StoreProductStatus.Active || Status == StoreProductStatus.OutOfStock;

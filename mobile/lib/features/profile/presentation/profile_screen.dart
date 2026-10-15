@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
+import '../../../shared/app_header.dart';
+import '../../../shared/legal_links.dart';
 import '../../../shared/widgets.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -18,7 +21,6 @@ class ProfileScreen extends ConsumerWidget {
     if (user == null) return const Scaffold(body: EmptyState());
 
     return Scaffold(
-      appBar: AppBar(title: Text(t.profile)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
@@ -93,31 +95,26 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: 16),
 
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(t.language,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 10),
-                  SegmentedButton<String>(
-                    segments: [
-                      ButtonSegment(value: 'ar', label: Text(t.arabic)),
-                      ButtonSegment(value: 'en', label: Text(t.english)),
-                    ],
-                    selected: {user.language},
-                    onSelectionChanged: (s) =>
-                        ref.read(authControllerProvider.notifier).setLanguage(s.first),
-                  ),
-                ],
-              ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: Text(t.termsOfUse),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () => openLegalPage(context, AppConfig.termsUrl),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: Text(t.privacyPolicy),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () => openLegalPage(context, AppConfig.privacyUrl),
+                ),
+              ],
             ),
           ),
 
+          // The app is Arabic only, so there is no language picker here.
           const SizedBox(height: 24),
 
           OutlinedButton.icon(
@@ -141,7 +138,7 @@ class NotificationsScreen extends ConsumerWidget {
     final async = ref.watch(notificationsProvider);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: BrandAppBar(
         title: Text(t.notifications),
         actions: [
           TextButton(
