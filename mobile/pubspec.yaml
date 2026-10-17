@@ -36,7 +36,6 @@ dependencies:
 
   # An advertisement may point at an address outside the app; this opens it in the phone browser.
   url_launcher: ^6.3.1
-  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
@@ -52,8 +51,6 @@ flutter:
     - assets/images/
     # Advertisement artwork. A folder is not covered by the line above, which is one level only.
     - assets/images/ads/
-    # The arena's sounds: the start, the final phase and a bid landing.
-    - assets/sounds/
 
   fonts:
     # The Saudi Riyal sign. Ordinary fonts do not carry it yet, so it is drawn from this one:

@@ -263,7 +263,10 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
     if (!state.canBid) return null;
 
     state = state.copyWith(isBidding: true, clearError: true);
-    final key = '${DateTime.now().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
+    // Two 30-bit halves rather than nextInt(1 << 32): compiled to JavaScript, 1 << 32 is 0, the
+    // call threw before any request was sent, and in the web app the bid button spun for ever.
+    final key = '${DateTime.now().microsecondsSinceEpoch}-'
+        '${_random.nextInt(1 << 30)}${_random.nextInt(1 << 30)}';
 
     try {
       final result = await _ref.read(auctionRepositoryProvider).placeBid(auctionId, key);

@@ -193,63 +193,40 @@ class AppStrings {
       );
   String prizeRank(int rank) => _t('المركز $rank', 'Place $rank');
 
-  // ---- the bidding arena (full screen, while an auction is live)
-  String get arenaStarted => _t('بدأ المزاد!', 'The auction is live!');
+  // ---- live bidding (the focused screen while an auction runs)
+  String get liveBidding => _t('المزايدة المباشرة', 'Live bidding');
   String get arenaLive => _t('مباشر الآن', 'Live now');
-  String get arenaFinalPhase => _t('مرحلة الحسم', 'Final phase');
-  String get arenaFinalPhaseSub => _t('الثواني الأخيرة تصنع الفائز', 'The last seconds decide it');
-  String get arenaBid => _t('زايد', 'BID');
-  String arenaNextPrice(String amount) => _t('مزايدتك ترفع السعر إلى $amount', 'Your bid takes it to $amount');
-  String arenaYourRank(int rank) => _t('مركزك #$rank', 'You are #$rank');
-  String get arenaNoRank => _t('لم تزايد بعد', 'No bid yet');
-  String get arenaInWinners => _t('ضمن الفائزين', 'In the winning four');
-  String get arenaOutOfWinners => _t('خارج المراكز الأربعة', 'Outside the top four');
+  String get enterArena => _t('متابعة المزايدة المباشرة', 'Open live bidding');
   String get arenaConnecting => _t('جارٍ الاتصال بالمزاد…', 'Connecting to the auction…');
+  String get arenaLeave => _t('العودة إلى تفاصيل المزاد', 'Back to the auction');
+  String get finalPhaseStarted =>
+      _t('بدأت المرحلة النهائية، والوقت المتبقي محدود.', 'The final phase has started; time is short.');
+  String get outbidNotice => _t('قدّم مشارك آخر مزايدة أعلى من سعرك.', 'Another participant bid above your price.');
+  String get auctionEndedBody =>
+      _t('اكتمل المزاد واحتُسب الترتيب النهائي لجميع المشاركين.', "The auction is over and every participant's final place is set.");
+  String get viewResults => _t('عرض النتائج', 'View results');
   String get waitForOtherBidder => _t('أنت صاحب آخر مزايدة — انتظر حتى يزايد غيرك',
       'You placed the last bid — wait for someone else to bid');
-  String get arenaTargetReached => _t('وصل السعر إلى الهدف', 'The target price is reached');
-  String get arenaEnded => _t('انتهى المزاد', 'The auction has ended');
-  String get arenaSeeResults => _t('عرض النتائج', 'See the results');
-  String get arenaLeave => _t('عرض تفاصيل المزاد', 'Auction details');
-  String get enterArena => _t('ادخل ساحة المزايدة', 'Enter the bidding arena');
 
-  // Said while the auction is live, one at a time, to keep the pace up.
-  List<String> get arenaLivePhrases => isArabic
-      ? const [
-          'زايد الآن وخلّك في المقدمة!',
-          'كل مزايدة تقرّبك من الجائزة',
-          'المراكز الأربعة الأولى تفوز — ثبّت مكانك!',
-          'لا تتردد… الفرصة لا تنتظر',
-          'السعر يتحرك، تحرّك أنت أيضاً!',
-        ]
-      : const [
-          'Bid now and stay ahead!',
-          'Every bid brings the prize closer',
-          'The top four win — hold your place!',
-          'Don\'t wait — chances don\'t',
-          'The price is moving. Move with it!',
-        ];
-
-  // The same, harder, once the final phase starts.
-  List<String> get arenaFinalPhrases => isArabic
-      ? const [
-          'لحظة الحسم! زايد الآن',
-          'الثواني الأخيرة تصنع الفائز',
-          'لا تدعهم يخطفون مركزك!',
-          'الآن أو أبداً!',
-          'كل ضغطة قد تكون الفائزة',
-        ]
-      : const [
-          'This is it! Bid now',
-          'The last seconds make the winner',
-          'Don\'t let them take your place!',
-          'Now or never!',
-          'Any tap could be the winning one',
-        ];
-
-  String get arenaOutbid => _t('مزايد آخر رفع السعر! استرجع مركزك الآن', 'Someone raised the price! Take your place back');
-  String get arenaJoinedWinners => _t('🔥 أنت ضمن الفائزين — حافظ على مركزك!', '🔥 You are in the top four — hold on!');
-  String get arenaDroppedOut => _t('⚠️ خرجت من المراكز الأربعة! زايد فوراً', '⚠️ You dropped out of the top four! Bid now');
+  // ---- results
+  String get auctionResults => _t('نتائج المزاد', 'Auction results');
+  String get closingPrice => _t('سعر الإغلاق', 'Closing price');
+  String get totalBids => _t('عدد المزايدات', 'Total bids');
+  String get finalStandings => _t('الترتيب النهائي', 'Final standings');
+  String get finalStandingsSubtitle =>
+      _t('ترتيب جميع المزايدين عند انتهاء المزاد', "Every bidder's place when the auction closed");
+  String get noBidsInAuction => _t('لم تُقدَّم أي مزايدة في هذا المزاد.', 'No bids were placed in this auction.');
+  String participantsWithoutBids(int count) => _t(
+      count == 1 ? 'ومشارك واحد لم يزايد' : 'و$count مشاركين لم يزايدوا',
+      count == 1 ? 'and 1 participant who did not bid' : 'and $count participants who did not bid');
+  String get yourFinalPlace => _t('مركزك النهائي', 'Your final place');
+  String get noBidPlaced => _t('لم تزايد في هذا المزاد', 'You did not bid');
+  String placeOutOf(int rank, int count) =>
+      _t('المركز $rank من $count', 'Place $rank of $count');
+  String youWonPrize(String prize) => _t('فزت بـ $prize', 'You won $prize');
+  String prizeAmountDue(String amount) =>
+      _t('المبلغ المستحق لاستلام الجائزة: $amount', 'Amount due to claim the prize: $amount');
+  String get viewFullResults => _t('عرض النتائج الكاملة', 'View full results');
 
   /// A prize claim's state, from the server's status name.
   String claimStatus(String status) => switch (status) {
@@ -273,8 +250,8 @@ class AppStrings {
         'This raises the auction price. It is not charged to you.',
       );
 
-  String get inTopFour => _t('🎉 أنت الآن ضمن الفائزين!', '🎉 You are in the winning four!');
-  String get lostFourthPlace => _t('⚠️ فقدت المركز الرابع!', '⚠️ You dropped out of the top four!');
+  String get inTopFour => _t('أصبحت ضمن المراكز الأربعة الفائزة.', 'You are now in the four prize places.');
+  String get lostFourthPlace => _t('لم تعد ضمن المراكز الأربعة الفائزة.', 'You are no longer in the four prize places.');
 
   String get connectionLost =>
       _t('انقطع الاتصال. جارٍ إعادة المزامنة…', 'Connection lost. Resyncing…');

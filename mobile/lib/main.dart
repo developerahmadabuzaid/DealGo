@@ -7,6 +7,7 @@ import 'core/localization/app_strings.dart';
 import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auctions/presentation/auction_detail_screen.dart';
+import 'features/auctions/presentation/auction_results_screen.dart';
 import 'features/auctions/presentation/auctions_screen.dart';
 import 'features/auth/presentation/complete_profile_screen.dart';
 import 'features/auth/presentation/login_screen.dart';
@@ -150,6 +151,11 @@ GoRouter _router(WidgetRef ref) {
         parentNavigatorKey: _rootKey,
         path: '/auctions/:id',
         builder: (_, state) => AuctionDetailScreen(auctionId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/auctions/:id/results',
+        builder: (_, state) => AuctionResultsScreen(auctionId: state.pathParameters['id']!),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
