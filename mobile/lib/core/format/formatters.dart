@@ -29,6 +29,14 @@ class Fmt {
   /// server data, and mixing digit systems in one screen reads badly.
   static String symbolFor(String currency) => _symbols[currency.toUpperCase()] ?? currency;
 
+  /// A person's name, isolated from the text around it.
+  ///
+  /// Names arrive in either script. A Latin name with a trailing initial, "Test 3.", laid out in an
+  /// Arabic line put its full stop on the wrong end; isolating it lets the name keep its own
+  /// direction whatever the page's.
+  static String name(String value) =>
+      String.fromCharCode(0x2068) + value + String.fromCharCode(0x2069); // FSI … PDI
+
   static String money(num? value, String currency, {String locale = 'en'}) {
     if (value == null) return '—';
     final formatter = NumberFormat.currency(

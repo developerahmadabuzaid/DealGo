@@ -144,6 +144,16 @@ class AppStrings {
   String get yourRank => _t('ترتيبك', 'Your rank');
   String get yourHighest => _t('أعلى سعر لك', 'Your highest price');
   String get leaderboard => _t('المتصدرون', 'Leaderboard');
+  String get topBidders => _t('المتصدرون', 'Top bidders');
+  String get topBiddersSubtitle =>
+      _t('أكثر المشاركين تقدّمًا في المزايدة الآن', 'The participants furthest ahead right now');
+  String get noBidsYet => _t('لم يزايد أحد بعد. كن أول المزايدين!', 'No bids yet. Be the first!');
+  String get winningZoneEnds => _t('حدود المراكز الفائزة', 'Prize places end here');
+  String bidsCount(int count) => isArabic
+      ? (count == 1 ? 'مزايدة واحدة' : count == 2 ? 'مزايدتان' : count <= 10 ? '$count مزايدات' : '$count مزايدة')
+      : (count == 1 ? '1 bid' : '$count bids');
+  String showAllBidders(int count) =>
+      _t('عرض جميع المزايدين ($count)', 'Show all bidders ($count)');
   String get you => _t('أنت', 'You');
   String get noBidYet => _t('لم يزايد بعد', 'No bid yet');
   String participantsCount(int count) =>

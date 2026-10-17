@@ -545,7 +545,13 @@ class _Stage extends StatelessWidget {
 
           // Who else is in the room. Without it the arena was a price and a button: nobody could
           // see the people they were bidding against, or what it would take to pass them.
-          _LiveBoard(entries: s.leaderboard, currency: s.currency, locale: locale, hot: hot),
+          _LiveBoard(
+            entries: s.leaderboard,
+            participantCount: s.participantCount,
+            currency: s.currency,
+            locale: locale,
+            hot: hot,
+          ),
 
           const Spacer(),
 
@@ -752,22 +758,49 @@ class _GlowBar extends StatelessWidget {
 class _LiveBoard extends StatelessWidget {
   const _LiveBoard({
     required this.entries,
+    required this.participantCount,
     required this.currency,
     required this.locale,
     required this.hot,
   });
 
   final List<LeaderboardEntry> entries;
+
+  /// Everyone in the auction. The board itself is capped, so it cannot be counted from [entries].
+  final int participantCount;
   final String currency;
   final String locale;
   final Color hot;
+
+  static const _shownRows = 5;
+  static const _winningPlaces = 4;
+  static const _win = Color(0xFF3DDC84);
 
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     if (entries.isEmpty) return const SizedBox.shrink();
 
-    final shown = entries.take(5).toList();
+    final shown = entries.take(_shownRows).toList();
+    // My own place stays on the board even when it is below the rows shown.
+    final me = entries.where((e) => e.isMe).firstOrNull;
+    final meHidden = me != null && !shown.contains(me);
+
+    final rows = <Widget>[];
+    for (var i = 0; i < shown.length; i++) {
+      final e = shown[i];
+      if (i > 0 && shown[i - 1].rank <= _winningPlaces && e.rank > _winningPlaces) {
+        rows.add(_winningLine());
+      }
+      rows.add(_row(e, t));
+    }
+    if (meHidden) {
+      rows.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Icon(Icons.more_horiz_rounded, size: 14, color: Colors.white.withValues(alpha: 0.4)),
+      ));
+      rows.add(_row(me, t));
+    }
 
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
@@ -792,8 +825,10 @@ class _LiveBoard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              Icon(Icons.groups_rounded, size: 13, color: Colors.white.withValues(alpha: 0.55)),
+              const SizedBox(width: 4),
               Text(
-                t.participantsCount(entries.length),
+                t.participantsCount(participantCount),
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.55),
                   fontSize: 10.5,
@@ -803,19 +838,41 @@ class _LiveBoard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          for (final e in shown) _row(context, e, t),
+          ...rows,
         ],
       ),
     );
   }
 
-  Widget _row(BuildContext context, LeaderboardEntry e, AppStrings t) {
-    // The four who would win if it ended now are marked; my own row is marked whatever my place.
-    final winning = e.rank <= 4;
-    final colour = e.isMe ? hot : (winning ? const Color(0xFF3DDC84) : Colors.white70);
+  /// Everyone above this line would win a prize if the auction ended now.
+  Widget _winningLine() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Expanded(child: Container(height: 1, color: _win.withValues(alpha: 0.35))),
+            const SizedBox(width: 6),
+            Icon(Icons.emoji_events_rounded, size: 11, color: _win.withValues(alpha: 0.8)),
+            const SizedBox(width: 6),
+            Expanded(child: Container(height: 1, color: _win.withValues(alpha: 0.35))),
+          ],
+        ),
+      );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+  Widget _row(LeaderboardEntry e, AppStrings t) {
+    // The four who would win if it ended now are marked; my own row is marked whatever my place.
+    final winning = e.rank <= _winningPlaces;
+    final colour = e.isMe ? hot : (winning ? _win : Colors.white70);
+    final bid = e.bidCount > 0;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      decoration: e.isMe
+          ? BoxDecoration(
+              color: hot.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(8),
+            )
+          : null,
       child: Row(
         children: [
           SizedBox(
@@ -835,7 +892,7 @@ class _LiveBoard extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              e.isMe ? t.you : e.displayName,
+              e.isMe ? t.you : Fmt.name(e.displayName),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -845,14 +902,22 @@ class _LiveBoard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          if (bid) ...[
+            Text(
+              t.bidsCount(e.bidCount),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 10),
+          ],
           Text(
             // Somebody who has not bid yet has no price to show, so the row says so.
-            e.bidCount == 0
-                ? t.noBidYet
-                : Fmt.money(e.highestPrice, currency, locale: locale),
+            bid ? Fmt.money(e.highestPrice, currency, locale: locale) : t.noBidYet,
             style: TextStyle(
-              color: e.bidCount == 0 ? Colors.white38 : colour,
+              color: bid ? colour : Colors.white38,
               fontSize: 12,
               fontWeight: FontWeight.w800,
               fontFeatures: AppTheme.numeric,

@@ -16,6 +16,7 @@ import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
 import 'bidding_arena_screen.dart';
 import 'live_auction_controller.dart';
+import 'top_bidders_panel.dart';
 
 /// One auction, in whichever of its phases it happens to be.
 ///
@@ -217,13 +218,19 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
                 else if (detail.isComplete)
                   _ResultsPanel(detail: detail),
 
+                // Who is ahead, right under the live state and above the prizes, so it is seen
+                // without scrolling past four large pictures first.
+                if (snapshot != null && (isLive || detail.isComplete)) ...[
+                  const SizedBox(height: 22),
+                  TopBiddersPanel(
+                    entries: snapshot.leaderboard,
+                    currency: snapshot.currency,
+                    participantCount: snapshot.participantCount,
+                  ),
+                ],
+
                 const SizedBox(height: 22),
                 _PrizeList(detail: detail, livePrice: snapshot?.currentPrice),
-
-                if (snapshot != null && snapshot.leaderboard.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-                  _Leaderboard(entries: snapshot.leaderboard, currency: snapshot.currency),
-                ],
               ],
             ),
           ),
@@ -979,45 +986,3 @@ class _PrizeList extends StatelessWidget {
   }
 }
 
-class _Leaderboard extends StatelessWidget {
-  const _Leaderboard({required this.entries, required this.currency});
-
-  final List<LeaderboardEntry> entries;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppStrings.of(context);
-    final locale = Localizations.localeOf(context).languageCode;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(t.leaderboard,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 10),
-        Card(
-          child: Column(
-            children: [
-              for (final e in entries)
-                ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 15,
-                    backgroundColor: e.rank <= 4
-                        ? AppTheme.gold.withValues(alpha: 0.25)
-                        : Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: Text('${e.rank}', style: const TextStyle(fontSize: 12)),
-                  ),
-                  title: Text(e.isMe ? '${e.displayName} (you)' : e.displayName,
-                      style: TextStyle(
-                          fontWeight: e.isMe ? FontWeight.bold : FontWeight.normal)),
-                  trailing: Text(Fmt.money(e.highestPrice, currency, locale: locale)),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
