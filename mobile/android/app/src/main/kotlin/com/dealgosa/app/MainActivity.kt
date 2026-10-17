@@ -1,4 +1,4 @@
-package com.example.mobile
+package com.dealgosa.app
 
 import io.flutter.embedding.android.FlutterActivity
 
