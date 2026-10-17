@@ -131,6 +131,39 @@ public class UploadValidationTests : IDisposable
             .Should().BeFalse("nothing may be written before the content is accepted");
     }
 
+    /// <summary>The header of a WebP file: a RIFF container whose form type is WEBP.</summary>
+    private static byte[] Riff(string formType) =>
+        Encoding.ASCII.GetBytes("RIFF").Concat(BitConverter.GetBytes(64))
+            .Concat(Encoding.ASCII.GetBytes(formType + "VP8 ")).Concat(new byte[52]).ToArray();
+
+    [Fact]
+    public async Task A_webp_photo_is_accepted()
+    {
+        var controller = BuildController();
+
+        var result = await controller.UploadImage(
+            FileFrom(Riff("WEBP"), "iphone.jpg", "image/jpeg"), CancellationToken.None);
+
+        var dto = result.Result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<AdminUploadsController.UploadedFileDto>().Subject;
+
+        // Saved by what the bytes are, not by the name it arrived with.
+        dto.Url.Should().EndWith(".webp");
+    }
+
+    /// <summary>RIFF also wraps audio and video; only the WEBP form type is an image.</summary>
+    [Fact]
+    public async Task Other_riff_files_are_refused()
+    {
+        var controller = BuildController();
+
+        var act = async () => await controller.UploadImage(
+            FileFrom(Riff("WAVE"), "song.webp", "image/webp"), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>()
+            .Where(e => e.Code == ErrorCodes.ValidationFailed);
+    }
+
     [Fact]
     public async Task An_empty_upload_is_refused()
     {

@@ -27,15 +27,24 @@ public sealed class AdminUploadsController : ApiControllerBase
     private const long MaxBytes = 5 * 1024 * 1024;
 
     /// <summary>
-    /// The only formats accepted, each identified by the bytes a real file of that type starts
-    /// with. The extension on the right is what the file is saved as.
+    /// The only formats accepted, each identified by bytes a real file of that type carries at a
+    /// fixed place near its start. The extension on the right is what the file is saved as.
+    ///
+    /// WebP is a RIFF container: "RIFF", four bytes of length, then "WEBP". Checking only "RIFF"
+    /// would also let through audio and video, so both markers must be there. Product photos saved
+    /// from the web are very often WebP.
     /// </summary>
-    private static readonly (byte[] Magic, string Extension, string ContentType)[] AllowedImages =
+    private static readonly (Func<byte[], bool> Matches, string Extension, string ContentType)[] AllowedImages =
     {
-        (new byte[] { 0xFF, 0xD8, 0xFF }, ".jpg", "image/jpeg"),
-        (new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, ".png", "image/png"),
-        (new byte[] { 0x47, 0x49, 0x46, 0x38 }, ".gif", "image/gif"),
+        (h => StartsWith(h, 0, 0xFF, 0xD8, 0xFF), ".jpg", "image/jpeg"),
+        (h => StartsWith(h, 0, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A), ".png", "image/png"),
+        (h => StartsWith(h, 0, 0x47, 0x49, 0x46, 0x38), ".gif", "image/gif"),
+        (h => StartsWith(h, 0, (byte)'R', (byte)'I', (byte)'F', (byte)'F') &&
+              StartsWith(h, 8, (byte)'W', (byte)'E', (byte)'B', (byte)'P'), ".webp", "image/webp"),
     };
+
+    private static bool StartsWith(byte[] header, int offset, params byte[] magic) =>
+        header.Length >= offset + magic.Length && header.AsSpan(offset, magic.Length).SequenceEqual(magic);
 
     private readonly IMediaStorage _storage;
     private readonly ILogger<AdminUploadsController> _logger;
@@ -66,7 +75,7 @@ public sealed class AdminUploadsController : ApiControllerBase
         }
 
         // Read the signature from the content itself. Everything the browser claimed is ignored.
-        var header = new byte[8];
+        var header = new byte[12];
         await using (var probe = file.OpenReadStream())
         {
             var read = await probe.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, ct);
@@ -76,12 +85,12 @@ public sealed class AdminUploadsController : ApiControllerBase
             }
         }
 
-        var match = AllowedImages.FirstOrDefault(a => header.AsSpan(0, a.Magic.Length).SequenceEqual(a.Magic));
+        var match = AllowedImages.FirstOrDefault(a => a.Matches(header));
         if (match.Extension is null)
         {
             throw new DomainException(
                 ErrorCodes.ValidationFailed,
-                "Only JPEG, PNG and GIF images are accepted.");
+                "Only JPEG, PNG, WebP and GIF images are accepted.");
         }
 
         // The name is ours. Nothing the caller sent reaches the filesystem or the container.

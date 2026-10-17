@@ -85,7 +85,11 @@ async function api(path, options = {}, retry = true) {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
-    const err = new Error(body?.message || `فشل الطلب (${res.status})`);
+    // Our own errors carry `message`. A request ASP.NET refuses before it reaches a controller — a
+    // body over the size limit, say — answers with ProblemDetails instead, which has `errors` and
+    // `title`; reading only `message` left nothing but the status code on screen.
+    const problem = body?.errors ? Object.values(body.errors).flat()[0] : null;
+    const err = new Error(body?.message || problem || body?.title || `فشل الطلب (${res.status})`);
     err.code = body?.code;
     err.details = body?.details || [];
     throw err;
@@ -598,7 +602,7 @@ function formModal(title, subtitle, fields, onSubmit) {
       inputs[f.name] = holder;
 
       const thumb = h('div', { class: 'prize-thumb' });
-      const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/gif' });
+      const fileInput = h('input', { type: 'file', accept: 'image/*' });
       fileInput.hidden = true;
       const pick = h('button', { class: 'btn ghost sm', type: 'button' }, 'اختر صورة');
       const remove = h('button', { class: 'btn ghost sm', type: 'button' }, 'إزالة الصورة');
@@ -1990,11 +1994,64 @@ async function openEvents(auctionId) {
  * administrator who was still signed in and still working.
  */
 async function uploadImage(file) {
-  const form = new FormData();
-  form.append('file', file);
+  let upload = file;
 
-  const body = await api('/admin/uploads/image', { method: 'POST', body: form });
-  return body.url;
+  // A phone photo is easily over the server's 5 MB limit, and HEIC is not something the server
+  // accepts at all. Either is redrawn here as a JPEG of sensible size, which is all a prize or
+  // product picture needs. Anything already small and in a supported format goes up untouched.
+  if (file.size > UPLOAD_LIMIT || !UPLOAD_TYPES.test(file.type)) {
+    upload = await shrinkImage(file);
+  }
+  if (upload.size > UPLOAD_LIMIT) throw new Error('حجم الصورة أكبر من 5 ميغابايت. اختر صورة أصغر.');
+
+  const form = new FormData();
+  form.append('file', upload, upload.name || file.name);
+
+  try {
+    const body = await api('/admin/uploads/image', { method: 'POST', body: form });
+    return body.url;
+  } catch (e) {
+    if (/Only JPEG/.test(e.message)) throw new Error('صيغة الصورة غير مدعومة. استخدم JPG أو PNG أو WebP.');
+    if (/too large|larger than/i.test(e.message)) throw new Error('حجم الصورة أكبر من 5 ميغابايت. اختر صورة أصغر.');
+    throw new Error(`تعذّر رفع الصورة: ${e.message}`);
+  }
+}
+
+const UPLOAD_LIMIT = 5 * 1024 * 1024;
+const UPLOAD_TYPES = /^image\/(jpeg|png|webp|gif)$/;
+
+/**
+ * Redraws a picture as a JPEG no wider or taller than 2000 px, stepping down until it fits the
+ * upload limit. The background is painted white first, so a transparent PNG does not turn black.
+ */
+async function shrinkImage(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('تعذّر قراءة الصورة. استخدم صورة بصيغة JPG أو PNG أو WebP.');
+  }
+
+  for (const [side, quality] of [[2000, 0.85], [1600, 0.8], [1200, 0.75]]) {
+    const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (blob && blob.size <= UPLOAD_LIMIT) {
+      bitmap.close();
+      return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+    }
+  }
+
+  bitmap.close();
+  throw new Error('حجم الصورة أكبر من 5 ميغابايت. اختر صورة أصغر.');
 }
 
 /**
@@ -2023,7 +2080,7 @@ function prizeDialog({ rank, prize, takenRanks, onSave }) {
   const thumb = h('div', { class: imageUrl ? 'prize-thumb' : 'prize-thumb empty' },
     imageUrl ? h('img', { src: imageUrl, alt: '' }) : icon('box'));
 
-  const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/gif' });
+  const fileInput = h('input', { type: 'file', accept: 'image/*' });
   const pickLabel = h('button', { class: 'btn ghost sm', type: 'button' }, 'اختر صورة');
   const removeBtn = h('button', { class: 'btn ghost sm', type: 'button' }, 'إزالة الصورة');
   const fileState = h('div', { class: 'hint' }, 'JPEG أو PNG أو GIF · حتى ٥ ميجابايت');
@@ -2199,7 +2256,7 @@ async function viewAuctionForm() {
 
   const coverThumb = h('div', {});
   const coverState = h('div', { class: 'hint' }, 'JPEG أو PNG أو GIF · حتى ٥ ميجابايت. يُفضّل صورة عرضية.');
-  const coverInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/gif' });
+  const coverInput = h('input', { type: 'file', accept: 'image/*' });
   coverInput.hidden = true;
   const coverPick = h('button', { class: 'btn ghost sm', type: 'button' }, 'اختر صورة');
   const coverRemove = h('button', { class: 'btn ghost sm', type: 'button' }, 'إزالة الصورة');
@@ -2650,7 +2707,7 @@ async function viewSiteContent() {
 
   // A picture is uploaded from the machine, the same way a prize picture is.
   const heroPicker = (() => {
-    const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif' });
+    const input = h('input', { type: 'file', accept: 'image/*' });
     input.hidden = true;
 
     const state = h('span', { class: 'hint' });
@@ -2838,7 +2895,7 @@ function siteCardDialog({ card, kind, onSaved }) {
   let imageUrl = card?.imageUrl || null;
 
   const thumb = h('div', { class: 'prize-thumb empty' });
-  const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/gif' });
+  const fileInput = h('input', { type: 'file', accept: 'image/*' });
   const pick = h('button', { class: 'btn ghost sm', type: 'button' }, 'اختر صورة');
   const drop = h('button', { class: 'btn ghost sm', type: 'button' }, 'إزالة الصورة');
   const fileState = h('div', { class: 'hint' }, 'JPEG أو PNG أو GIF · حتى ٥ ميجابايت');
