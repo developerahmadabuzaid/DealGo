@@ -31,4 +31,12 @@
     <ProjectReference Include="..\AuctionPlatform.Infrastructure\AuctionPlatform.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!--
+    Pictures uploaded while developing stay on this machine. The live site keeps its own uploads
+    folder, and a package should never carry test images into it.
+  -->
+  <ItemGroup>
+    <Content Update="wwwroot\uploads\**" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
 </Project>
