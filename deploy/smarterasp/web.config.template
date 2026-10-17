@@ -40,6 +40,7 @@
           <environmentVariable name="Tawked__ApiKey" value="__TAWKED_API_KEY__" />
           <environmentVariable name="Payments__WebhookSecret" value="__PAYMENT_WEBHOOK_SECRET__" />
           <environmentVariable name="Bootstrap__SuperAdminEmail" value="__BOOTSTRAP_ADMIN_EMAIL__" />
+          <environmentVariable name="Bootstrap__SuperAdminPhone" value="__BOOTSTRAP_ADMIN_PHONE__" />
         </environmentVariables>
       </aspNetCore>
     </system.webServer>

@@ -321,6 +321,24 @@ public sealed class AuthService : IAuthService
         var user = await FindByDestinationAsync(request.Destination, ct);
         var language = request.Language ?? user?.Language ?? "ar";
 
+        if (request.StaffOnly)
+        {
+            if (user is null || !user.IsActive || !await IsStaffAsync(user))
+            {
+                _logger.LogInformation(
+                    "Staff sign-in code requested for a destination with no active staff account; returning a decoy challenge.");
+                return DecoyChallenge(request.Destination);
+            }
+
+            return await _otp.RequestAsync(new OtpRequest
+            {
+                Destination = request.Destination,
+                Purpose = OtpPurpose.Login,
+                UserId = user.Id,
+                Language = language
+            }, ct);
+        }
+
         if (user is null && _otpOptions.AllowSignUpOnLogin &&
             OtpService.Normalise(request.Destination).Channel == OtpChannel.Sms)
         {
@@ -367,7 +385,7 @@ public sealed class AuthService : IAuthService
         var (normalised, channel) = OtpService.Normalise(request.Destination);
 
         if (user is null && result.UserId is null && channel == OtpChannel.Sms &&
-            _otpOptions.AllowSignUpOnLogin)
+            _otpOptions.AllowSignUpOnLogin && !request.StaffOnly)
         {
             // Proving control of a phone number with no account is how an account is created.
             user = await CreatePhoneAccountAsync(normalised, ct);
@@ -381,6 +399,11 @@ public sealed class AuthService : IAuthService
         if (!user.IsActive)
         {
             throw new DomainException(ErrorCodes.AccountDisabled, "This account has been disabled.");
+        }
+
+        if (request.StaffOnly && !await IsStaffAsync(user))
+        {
+            throw new DomainException(ErrorCodes.Forbidden, "This account does not have administrative access.");
         }
 
         // Signing in with a code proves control of the destination, so mark it confirmed.
@@ -501,6 +524,10 @@ public sealed class AuthService : IAuthService
     /// A challenge that looks exactly like a real one but has no code behind it, so an attacker
     /// cannot tell registered destinations from unregistered ones.
     /// </summary>
+    /// <summary>Holds any role that opens the admin console.</summary>
+    private async Task<bool> IsStaffAsync(ApplicationUser user) =>
+        (await _users.GetRolesAsync(user)).Any(r => Roles.AdminRoles.Contains(r));
+
     private static OtpChallengeDto DecoyChallenge(string destination)
     {
         var (value, channel) = OtpService.Normalise(destination);

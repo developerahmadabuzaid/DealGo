@@ -15,11 +15,18 @@ public sealed record RefreshRequest(string RefreshToken);
 
 public sealed record LogoutRequest(string? RefreshToken, bool AllDevices);
 
-/// <summary>Ask for a sign-in code. The destination is an email address or a phone number.</summary>
-public sealed record RequestLoginOtpRequest(string Destination, string? Language);
+/// <summary>
+/// Ask for a sign-in code. The destination is an email address or a phone number.
+/// <para>
+/// <c>StaffOnly</c> is set by the admin console. A destination that is not an active staff account
+/// then gets the same decoy reply an unknown one does: no message is sent and no account is
+/// created, so the console can neither enrol customers nor be used to send codes to any number.
+/// </para>
+/// </summary>
+public sealed record RequestLoginOtpRequest(string Destination, string? Language, bool StaffOnly = false);
 
-/// <summary>Exchange a sign-in code for a session.</summary>
-public sealed record VerifyLoginOtpRequest(string Destination, string Code);
+/// <summary>Exchange a sign-in code for a session. <c>StaffOnly</c> refuses non-staff accounts.</summary>
+public sealed record VerifyLoginOtpRequest(string Destination, string Code, bool StaffOnly = false);
 
 /// <summary>Legacy contact-verification code. Kept so existing clients keep working.</summary>
 public sealed record VerifyOtpRequest(string Email, string Code);

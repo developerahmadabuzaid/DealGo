@@ -184,6 +184,53 @@ button { font: inherit; cursor: pointer; }
   text-align: center;
 }
 
+/* Phone sign-in: the country code beside the number, and the code in one wide field. */
+.phone-field {
+  display: flex;
+  align-items: stretch;
+  direction: ltr;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.phone-field:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(242, 106, 27, .15); }
+.phone-field .cc {
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  background: var(--bg);
+  border-inline-end: 1px solid var(--border);
+  font-weight: 700;
+  color: var(--muted);
+}
+.login-card .phone-field input { border: 0; box-shadow: none; margin: 0; flex: 1; min-width: 0; }
+.login-card .code-input {
+  text-align: center;
+  font-size: 26px;
+  letter-spacing: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.login-card .hint { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.login-card .hint.center { text-align: center; margin: 0 0 12px; font-size: 13.5px; }
+.login-links { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.login-links .link-btn { margin: 12px 0 0; }
+.link-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: #a63f06;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.link-btn:hover:not([disabled]) { text-decoration: underline; }
+.link-btn[disabled] { color: var(--muted); cursor: default; }
+
 /* ---------------------------------------------------------------- shell */
 
 .shell { display: grid; grid-template-columns: 276px 1fr; min-height: 100vh; }

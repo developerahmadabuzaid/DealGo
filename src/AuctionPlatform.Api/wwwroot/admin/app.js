@@ -718,46 +718,209 @@ function pagedTable({ columns, rows, page, totalPages, totalCount, onPage }) {
 
 // ---------------------------------------------------------------- login
 
-function renderLogin() {
-  const email = h('input', { type: 'email', placeholder: 'admin@auctions.local', value: '' });
-  const password = h('input', { type: 'password', placeholder: '••••••••' });
-  const error = h('div', { class: 'err-text' });
-  const button = h('button', { class: 'btn', style: 'width:100%;margin-top:16px' }, 'Sign in');
+/*
+ * Staff sign in the way customers do: with their mobile number and a one-time code.
+ *
+ * The requests carry staffOnly, so a number that is not an active staff account gets the server's
+ * decoy reply — no message is sent and no account is created — and nothing on this screen says
+ * whether a number is registered. Email and password remain for accounts that have no number on
+ * file, such as the development accounts.
+ */
+const LOGIN_ERRORS = {
+  INVALID_OTP: 'رمز التحقق غير صحيح.',
+  OTP_EXPIRED: 'انتهت صلاحية الرمز. اطلب رمزًا جديدًا.',
+  OTP_ALREADY_USED: 'استُخدم هذا الرمز من قبل. اطلب رمزًا جديدًا.',
+  OTP_TOO_MANY_ATTEMPTS: 'محاولات كثيرة. اطلب رمزًا جديدًا.',
+  OTP_REQUEST_TOO_SOON: 'انتظر قليلًا قبل طلب رمز جديد.',
+  OTP_DESTINATION_INVALID: 'أدخل رقم جوال سعوديًا صحيحًا، مثل 05XXXXXXXX.',
+  VALIDATION_FAILED: 'أدخل رقم جوال سعوديًا صحيحًا، مثل 05XXXXXXXX.',
+  FORBIDDEN: 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة الإدارة.',
+  ACCOUNT_DISABLED: 'هذا الحساب موقوف.',
+  RATE_LIMITED: 'محاولات كثيرة. حاول بعد قليل.',
+  INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+};
 
-  const submit = async () => {
-    error.textContent = '';
-    button.disabled = true;
-    try {
-      const auth = await api('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email: email.value.trim(), password: password.value }),
-      });
+const loginError = (e) => LOGIN_ERRORS[e.code] || e.message;
 
-      const isAdmin = (auth.user.roles || []).some((r) => r !== 'USER');
-      if (!isAdmin) throw new Error('This account does not have administrative access.');
+function finishLogin(auth) {
+  const isAdmin = (auth.user.roles || []).some((r) => r !== 'USER');
+  if (!isAdmin) throw Object.assign(new Error(LOGIN_ERRORS.FORBIDDEN), { code: 'FORBIDDEN' });
 
-      state.auth = auth;
-      store.save(auth);
-      render();
-    } catch (e) {
-      error.textContent = e.message;
-    } finally {
-      button.disabled = false;
-    }
-  };
+  state.auth = auth;
+  store.save(auth);
+  render();
+}
 
-  button.addEventListener('click', submit);
-  password.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-
+function loginCard(...body) {
   return h('div', { class: 'login-wrap' },
     h('div', { class: 'login-card' },
       h('div', { class: 'login-brand' }, brandMark()),
       h('h1', {}, brandWord()),
       h('p', { class: 'sub' }, 'صفقتك جاهزة · لوحة الإدارة'),
+      ...body));
+}
+
+function renderLogin() {
+  const card = h('div');
+  const show = (view) => card.replaceChildren(view);
+
+  // ---- step one: the number
+  const phoneStep = () => {
+    const phone = h('input', {
+      type: 'tel', inputmode: 'numeric', autocomplete: 'tel-national', dir: 'ltr',
+      placeholder: '5X XXX XXXX',
+    });
+    const error = h('div', { class: 'err-text' });
+    const button = h('button', { class: 'btn', style: 'width:100%;margin-top:16px' }, 'إرسال رمز التحقق');
+
+    const submit = async () => {
+      error.textContent = '';
+      const raw = phone.value.trim();
+      if (!raw) { error.textContent = LOGIN_ERRORS.OTP_DESTINATION_INVALID; return; }
+
+      // The country code sits beside the field; the server accepts the number however it is written.
+      const destination = raw.startsWith('+') || raw.startsWith('00') ? raw : `+966${raw.replace(/^0/, '')}`;
+
+      button.disabled = true;
+      try {
+        const challenge = await api('/auth/otp/request', {
+          method: 'POST',
+          body: JSON.stringify({ destination, language: 'ar', staffOnly: true }),
+        });
+        show(codeStep(destination, challenge));
+      } catch (e) {
+        error.textContent = loginError(e);
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    button.addEventListener('click', submit);
+    phone.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+    setTimeout(() => phone.focus(), 0);
+
+    return h('div', {},
+      h('label', {}, 'رقم الجوال'),
+      h('div', { class: 'phone-field' }, h('span', { class: 'cc', dir: 'ltr' }, '+966'), phone),
+      h('p', { class: 'hint' }, 'يصلك رمز تحقق برسالة نصية إذا كان الرقم مسجّلًا لحساب إداري.'),
+      button,
+      error,
+      h('button', { class: 'link-btn', onclick: () => show(emailStep()) }, 'الدخول بالبريد الإلكتروني وكلمة المرور'));
+  };
+
+  // ---- step two: the code
+  const codeStep = (destination, challenge) => {
+    const length = challenge.codeLength || 6;
+    const code = h('input', {
+      type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', dir: 'ltr',
+      maxlength: String(length), class: 'code-input', placeholder: '•'.repeat(length),
+    });
+    // Outside Production the server echoes the code, so the flow can be used without SMS.
+    if (challenge.developmentCode) code.value = challenge.developmentCode;
+
+    const error = h('div', { class: 'err-text' });
+    const button = h('button', { class: 'btn', style: 'width:100%;margin-top:16px' }, 'تأكيد');
+    const resend = h('button', { class: 'link-btn' });
+
+    let left = challenge.resendAvailableInSeconds || 60;
+    const tick = () => {
+      if (!resend.isConnected && left < (challenge.resendAvailableInSeconds || 60)) return;
+      if (left > 0) {
+        resend.textContent = `إعادة الإرسال بعد ${left} ثانية`;
+        resend.disabled = true;
+        left -= 1;
+        setTimeout(tick, 1000);
+      } else {
+        resend.textContent = 'إعادة إرسال الرمز';
+        resend.disabled = false;
+      }
+    };
+    tick();
+
+    resend.addEventListener('click', async () => {
+      error.textContent = '';
+      try {
+        const again = await api('/auth/otp/request', {
+          method: 'POST',
+          body: JSON.stringify({ destination, language: 'ar', staffOnly: true }),
+        });
+        show(codeStep(destination, again));
+      } catch (e) {
+        error.textContent = loginError(e);
+      }
+    });
+
+    const submit = async () => {
+      error.textContent = '';
+      button.disabled = true;
+      try {
+        const auth = await api('/auth/otp/verify', {
+          method: 'POST',
+          body: JSON.stringify({ destination, code: code.value.trim(), staffOnly: true }),
+        });
+        finishLogin(auth);
+      } catch (e) {
+        error.textContent = loginError(e);
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    button.addEventListener('click', submit);
+    code.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+    code.addEventListener('input', () => {
+      code.value = code.value.replace(/\D/g, '');
+      if (code.value.length === length) submit();
+    });
+    setTimeout(() => code.focus(), 0);
+
+    return h('div', {},
+      h('p', { class: 'hint center' }, 'أدخل رمز التحقق المرسل إلى ',
+        h('b', { dir: 'ltr' }, challenge.destination || destination)),
+      code,
+      button,
+      error,
+      h('div', { class: 'login-links' },
+        resend,
+        h('button', { class: 'link-btn', onclick: () => show(phoneStep()) }, 'تغيير الرقم')));
+  };
+
+  // ---- the other way in
+  const emailStep = () => {
+    const email = h('input', { type: 'email', dir: 'ltr', placeholder: 'name@example.com' });
+    const password = h('input', { type: 'password', dir: 'ltr', placeholder: '••••••••' });
+    const error = h('div', { class: 'err-text' });
+    const button = h('button', { class: 'btn', style: 'width:100%;margin-top:16px' }, 'Sign in');
+
+    const submit = async () => {
+      error.textContent = '';
+      button.disabled = true;
+      try {
+        const auth = await api('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email: email.value.trim(), password: password.value }),
+        });
+        finishLogin(auth);
+      } catch (e) {
+        error.textContent = loginError(e);
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    button.addEventListener('click', submit);
+    password.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+
+    return h('div', {},
       h('label', {}, 'Email'), email,
       h('label', {}, 'Password'), password,
       button,
-      error));
+      error,
+      h('button', { class: 'link-btn', onclick: () => show(phoneStep()) }, 'الدخول برقم الجوال'));
+  };
+
+  show(phoneStep());
+  return loginCard(card);
 }
 
 // ---------------------------------------------------------------- shell

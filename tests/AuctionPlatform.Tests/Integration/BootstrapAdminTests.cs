@@ -22,7 +22,7 @@ public class BootstrapAdminTests
     public BootstrapAdminTests(DatabaseFixture fixture) => _fixture = fixture;
 
     [Fact]
-    public async Task The_bootstrap_address_is_promoted_once_and_never_again()
+    public async Task The_bootstrap_account_is_promoted_once_and_never_again()
     {
         await using var scope = _fixture.CreateScope();
         var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
@@ -35,8 +35,18 @@ public class BootstrapAdminTests
         (await seeder.PromoteBootstrapSuperAdminAsync("   ")).Should().BeFalse();
         (await seeder.PromoteBootstrapSuperAdminAsync($"{Guid.NewGuid():N}@nobody.local")).Should().BeFalse();
 
+        // Not a Saudi mobile number, and a valid one nobody holds: still no-one.
+        (await seeder.PromoteBootstrapSuperAdminAsync(null, "12345")).Should().BeFalse();
+        (await seeder.PromoteBootstrapSuperAdminAsync(null, "0599999990")).Should().BeFalse();
+
+        // People sign up in the app with their phone, so the first administrator is usually named
+        // by number — written here the way a person types it, not in the stored form.
         var first = await RegisterAsync(users);
-        (await seeder.PromoteBootstrapSuperAdminAsync(first.Email)).Should().BeTrue();
+        first.PhoneNumber = "+9665" + Random.Shared.NextInt64(10_000_000, 99_999_999);
+        (await users.UpdateAsync(first)).Succeeded.Should().BeTrue();
+
+        var typed = "0" + first.PhoneNumber[4..];
+        (await seeder.PromoteBootstrapSuperAdminAsync(null, typed)).Should().BeTrue();
         (await users.IsInRoleAsync(first, Roles.SuperAdmin)).Should().BeTrue();
 
         // A super administrator now exists, so pointing the setting at somebody else does nothing.

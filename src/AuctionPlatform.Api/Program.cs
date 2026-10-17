@@ -544,7 +544,8 @@ await using (var scope = app.Services.CreateAsyncScope())
 
             // The only way a fresh Production deployment gets its first administrator.
             await seeder.PromoteBootstrapSuperAdminAsync(
-                app.Configuration.GetValue<string>("Bootstrap:SuperAdminEmail"));
+                app.Configuration.GetValue<string>("Bootstrap:SuperAdminEmail"),
+                app.Configuration.GetValue<string>("Bootstrap:SuperAdminPhone"));
 
             // The products the store actually sells. Unlike the demonstration data this runs in
             // Production — it is the catalogue, not a sample of one — and it is safe to run on

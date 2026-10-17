@@ -98,10 +98,15 @@ public sealed class DatabaseSeeder
     /// setting does nothing, so leaving it configured cannot be used later to hand the role to
     /// whoever manages to register that address.
     /// </summary>
+    /// <remarks>
+    /// The account may be named by email or by Saudi mobile number. People sign up in the app with
+    /// their phone, so the number is usually the only identifier the first administrator has.
+    /// </remarks>
     /// <returns>True when an account was promoted.</returns>
-    public async Task<bool> PromoteBootstrapSuperAdminAsync(string? email, CancellationToken ct = default)
+    public async Task<bool> PromoteBootstrapSuperAdminAsync(
+        string? email, string? phone = null, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(email))
+        if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(phone))
         {
             return false;
         }
@@ -112,12 +117,30 @@ public sealed class DatabaseSeeder
             return false;
         }
 
-        var user = await _users.FindByEmailAsync(email.Trim());
+        ApplicationUser? user = null;
+
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            user = await _users.FindByEmailAsync(email.Trim());
+        }
+
+        if (user is null && !string.IsNullOrWhiteSpace(phone))
+        {
+            if (!SaudiPhone.TryNormalise(phone, out var canonical))
+            {
+                _logger.LogWarning("Bootstrap:SuperAdminPhone is not a Saudi mobile number; it was ignored.");
+            }
+            else
+            {
+                user = await _db.Users.FirstOrDefaultAsync(u => u.PhoneNumber == canonical, ct);
+            }
+        }
+
         if (user is null)
         {
             _logger.LogWarning(
-                "No super administrator exists yet. Register an account with the bootstrap address, " +
-                "then restart the app to promote it.");
+                "No super administrator exists yet. Sign up in the app with the bootstrap phone number " +
+                "(or register the bootstrap email), then restart the app to promote it.");
             return false;
         }
 
@@ -675,11 +698,19 @@ public sealed class DatabaseSeeder
     /// it can be bought. When a later version of the catalogue brings a price for a product still
     /// waiting at zero, that price is applied and the product goes on sale.
     /// </para>
+    /// <para>
+    /// When a later version reprices or renames a product (<see cref="AdomoCatalog.Previous"/>), the
+    /// change is applied only where the product still has exactly what the earlier version seeded:
+    /// a price, name or offer an administrator has set since is theirs and stands.
+    /// </para>
     /// </summary>
     public async Task SeedAdomoCatalogAsync(
-        IReadOnlyList<AdomoCatalog.Product>? products = null, CancellationToken ct = default)
+        IReadOnlyList<AdomoCatalog.Product>? products = null,
+        IReadOnlyList<AdomoCatalog.Superseded>? previous = null,
+        CancellationToken ct = default)
     {
         products ??= AdomoCatalog.Products;
+        var superseded = (previous ?? AdomoCatalog.Previous).ToDictionary(p => p.Sku);
 
         var slugs = AdomoCatalog.Departments.Select(d => d.Slug).ToList();
         var departments = await _db.StoreCategories
@@ -707,7 +738,7 @@ public sealed class DatabaseSeeder
             .Where(p => skus.Contains(p.Sku))
             .ToDictionaryAsync(p => p.Sku, ct);
 
-        int added = 0, priced = 0;
+        int added = 0, priced = 0, updated = 0;
 
         // Departments where something went on sale in this run. Only these are switched on, so a
         // department an administrator hid on purpose is not brought back by the next deployment.
@@ -728,6 +759,30 @@ public sealed class DatabaseSeeder
                     product.UpdatedAt = DateTime.UtcNow;
                     nowSelling.Add(item.Department);
                     priced++;
+                }
+                else if (superseded.TryGetValue(item.Sku, out var seeded))
+                {
+                    var changed = false;
+
+                    // An offer set on it means someone has been pricing it by hand.
+                    if (onSale && product.Price == seeded.Price && product.Price != item.Price &&
+                        product.CompareAtPrice is null)
+                    {
+                        product.Price = item.Price!.Value;
+                        changed = true;
+                    }
+
+                    if (seeded.Name is not null && product.Name == seeded.Name && product.Name != item.Name)
+                    {
+                        product.Name = item.Name;
+                        changed = true;
+                    }
+
+                    if (changed)
+                    {
+                        product.UpdatedAt = DateTime.UtcNow;
+                        updated++;
+                    }
                 }
 
                 continue;
@@ -786,12 +841,12 @@ public sealed class DatabaseSeeder
 
         await _db.SaveChangesAsync(ct);
 
-        if (added > 0 || priced > 0)
+        if (added > 0 || priced > 0 || updated > 0)
         {
             await _cache.RemoveByPrefixAsync("store:", ct);
             _logger.LogInformation(
-                "ADOMO CARE: {Added} products added, {Priced} put on sale with their new price.",
-                added, priced);
+                "ADOMO CARE: {Added} products added, {Priced} put on sale with their new price, {Updated} moved to the current price list.",
+                added, priced, updated);
         }
     }
 

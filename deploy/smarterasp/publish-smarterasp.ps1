@@ -23,6 +23,11 @@
     The site's public origin, https://example.com. CORS is not needed by the site's own pages, and
     only matters for browser clients served from somewhere else.
 
+.PARAMETER BootstrapAdminPhone
+    The Saudi mobile number of the first administrator, as they signed up with it in the app.
+    Staff sign in to /admin/ with their number, so this is usually the one to set rather than
+    -BootstrapAdminEmail. Either works; they are read only while no super administrator exists.
+
 .PARAMETER AllowPlaceholders
     Builds a package with placeholders left in place. For checking the package before the
     credentials exist, and for nothing else.
@@ -50,6 +55,7 @@ param(
     [string]$TawkedApiKey,
     [string]$PaymentWebhookSecret = 'not-configured',
     [string]$BootstrapAdminEmail,
+    [string]$BootstrapAdminPhone,
     [string]$SiteUrl,
     [string]$OutputPath,
     [switch]$AllowPlaceholders,
@@ -134,6 +140,7 @@ $siteUrl = Resolve-Placeholder $SiteUrl '__SITE_ORIGIN__' 'SiteUrl'
 # yet, and it promotes an account that already exists under that address — which cannot have
 # happened before the first upload. Leaving it empty leaves /admin/ reachable by nobody.
 $bootstrapAdminEmail = if ($BootstrapAdminEmail) { $BootstrapAdminEmail.Trim() } else { '' }
+$bootstrapAdminPhone = if ($BootstrapAdminPhone) { $BootstrapAdminPhone.Trim() } else { '' }
 
 $webConfig = Get-Content (Join-Path $templateDir 'web.config.template') -Raw
 $webConfig = $webConfig.Replace('__CONNECTION_STRING__', $connectionString)
@@ -141,6 +148,7 @@ $webConfig = $webConfig.Replace('__JWT_SECRET__', $jwtSecret)
 $webConfig = $webConfig.Replace('__TAWKED_API_KEY__', $tawkedApiKey)
 $webConfig = $webConfig.Replace('__PAYMENT_WEBHOOK_SECRET__', $PaymentWebhookSecret)
 $webConfig = $webConfig.Replace('__BOOTSTRAP_ADMIN_EMAIL__', $bootstrapAdminEmail)
+$webConfig = $webConfig.Replace('__BOOTSTRAP_ADMIN_PHONE__', $bootstrapAdminPhone)
 
 # Read from the template, written out under the name the application loads. The two names differ
 # on purpose: .gitignore already excludes any appsettings.Production.json, which is right for the
@@ -319,13 +327,14 @@ else {
     Write-Host "`nPackage is complete. See deploy\smarterasp\DEPLOYMENT-AR.md for the upload steps." -ForegroundColor Green
 }
 
-if (-not $bootstrapAdminEmail) {
+if (-not $bootstrapAdminEmail -and -not $bootstrapAdminPhone) {
     Write-Warning @'
 
-No Bootstrap__SuperAdminEmail was set, so nobody will be able to sign in to /admin/.
+No Bootstrap__SuperAdminPhone (or Bootstrap__SuperAdminEmail) was set, so nobody will be able to
+sign in to /admin/ on a fresh database.
 
-It is two steps, in this order: register an account in the app under that address first, and
-only then set the setting and restart — the application promotes an account that already exists,
-so an address nobody has registered yet is silently ignored.
+It is two steps, in this order: sign up in the app with that phone number first, and only then
+set the setting and restart — the application promotes an account that already exists, so a
+number nobody has signed up with is silently ignored.
 '@
 }
