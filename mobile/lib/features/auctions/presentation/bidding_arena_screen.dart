@@ -205,17 +205,20 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
                               child: _Notice(message: _notice!, kind: _noticeKind),
                             ),
                     ),
-                    LivePanel(state: live, snapshot: s),
-                    const SizedBox(height: 22),
+                    // Compact, so the leading bidders start on the first screen rather than
+                    // behind the bid bar.
+                    LivePanel(state: live, snapshot: s, compact: true),
+                    const SizedBox(height: AppTheme.space4),
                     TopBiddersPanel(
                       entries: s.leaderboard,
                       currency: s.currency,
                       participantCount: s.participantCount,
+                      dense: true,
                     ),
                   ],
                 ),
       bottomNavigationBar: s != null && !ended
-          ? BidBar(state: live, snapshot: s, auctionId: widget.auctionId)
+          ? BidBar(state: live, snapshot: s, auctionId: widget.auctionId, compact: true)
           : null,
     );
   }

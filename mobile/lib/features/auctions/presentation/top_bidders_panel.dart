@@ -18,6 +18,7 @@ class TopBiddersPanel extends StatefulWidget {
     required this.entries,
     required this.currency,
     required this.participantCount,
+    this.dense = false,
   });
 
   final List<LeaderboardEntry> entries;
@@ -25,6 +26,10 @@ class TopBiddersPanel extends StatefulWidget {
 
   /// Everyone in the auction, including those who have not bid.
   final int participantCount;
+
+  /// Tighter rows and no subtitle, for the live bidding screen, where the list shares a phone
+  /// screen with the price panel and the bid bar.
+  final bool dense;
 
   /// How many rows are shown before "show all".
   static const collapsedCount = 5;
@@ -63,10 +68,19 @@ class _TopBiddersPanelState extends State<TopBiddersPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t.topBidders,
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(t.topBiddersSubtitle, style: theme.textTheme.bodySmall),
+                  Text(
+                    t.topBidders,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (!widget.dense) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      t.topBiddersSubtitle,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -77,20 +91,28 @@ class _TopBiddersPanelState extends State<TopBiddersPanel> {
             ),
           ],
         ),
-        const SizedBox(height: AppTheme.space3),
+        SizedBox(height: widget.dense ? AppTheme.space2 : AppTheme.space3),
         SurfaceCard(
           padding: EdgeInsets.zero,
           child: bidders.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: AppTheme.space4, vertical: AppTheme.space6),
+                    horizontal: AppTheme.space4,
+                    vertical: AppTheme.space6,
+                  ),
                   child: Column(
                     children: [
-                      Icon(Icons.gavel_rounded,
-                          size: 28, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(
+                        Icons.gavel_rounded,
+                        size: 28,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(height: AppTheme.space2),
-                      Text(t.noBidsYet,
-                          textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+                      Text(
+                        t.noBidsYet,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium,
+                      ),
                     ],
                   ),
                 )
@@ -101,24 +123,43 @@ class _TopBiddersPanelState extends State<TopBiddersPanel> {
                         shown[i - 1].rank <= TopBiddersPanel.winningPlaces &&
                                 shown[i].rank > TopBiddersPanel.winningPlaces
                             ? _WinningLine(label: t.winningZoneEnds)
-                            : const Divider(height: 1, indent: AppTheme.space4,
-                                endIndent: AppTheme.space4),
-                      _BidderRow(entry: shown[i], currency: widget.currency),
+                            : const Divider(
+                                height: 1,
+                                indent: AppTheme.space4,
+                                endIndent: AppTheme.space4,
+                              ),
+                      _BidderRow(
+                        entry: shown[i],
+                        currency: widget.currency,
+                        dense: widget.dense,
+                      ),
                     ],
                     if (meHidden) ...[
                       const _Gap(),
-                      _BidderRow(entry: me, currency: widget.currency),
+                      _BidderRow(
+                        entry: me,
+                        currency: widget.currency,
+                        dense: widget.dense,
+                      ),
                     ],
                     if (bidders.length > TopBiddersPanel.collapsedCount) ...[
                       const Divider(height: 1),
                       TextButton.icon(
                         onPressed: () => setState(() => _expanded = !_expanded),
-                        icon: Icon(_expanded
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded),
-                        label: Text(_expanded ? t.showLess : t.showAllBidders(bidders.length)),
+                        icon: Icon(
+                          _expanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
+                        ),
+                        label: Text(
+                          _expanded
+                              ? t.showLess
+                              : t.showAllBidders(bidders.length),
+                        ),
                         style: TextButton.styleFrom(
-                          minimumSize: const Size.fromHeight(AppTheme.tapTarget),
+                          minimumSize: const Size.fromHeight(
+                            AppTheme.tapTarget,
+                          ),
                         ),
                       ),
                     ],
@@ -131,10 +172,15 @@ class _TopBiddersPanelState extends State<TopBiddersPanel> {
 }
 
 class _BidderRow extends StatelessWidget {
-  const _BidderRow({required this.entry, required this.currency});
+  const _BidderRow({
+    required this.entry,
+    required this.currency,
+    this.dense = false,
+  });
 
   final LeaderboardEntry entry;
   final String currency;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -144,19 +190,26 @@ class _BidderRow extends StatelessWidget {
     final winning = entry.rank <= TopBiddersPanel.winningPlaces;
 
     final row = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space4, vertical: AppTheme.space3),
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? AppTheme.space3 : AppTheme.space4,
+        vertical: dense ? AppTheme.space2 : AppTheme.space3,
+      ),
       child: Row(
         children: [
           _RankBadge(rank: entry.rank),
           const SizedBox(width: AppTheme.space3),
           CircleAvatar(
-            radius: 18,
-            backgroundColor: entry.isMe ? AppTheme.accentTint : theme.colorScheme.surfaceContainerHighest,
+            radius: dense ? 14 : 18,
+            backgroundColor: entry.isMe
+                ? AppTheme.accentTint
+                : theme.colorScheme.surfaceContainerHighest,
             child: Text(
               _initial(entry.displayName),
               style: TextStyle(
                 fontWeight: FontWeight.w800,
-                color: entry.isMe ? AppTheme.accentText : theme.colorScheme.onSurfaceVariant,
+                color: entry.isMe
+                    ? AppTheme.accentText
+                    : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -172,7 +225,9 @@ class _BidderRow extends StatelessWidget {
                         Fmt.name(entry.displayName),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     if (entry.isMe) ...[
@@ -236,9 +291,14 @@ class _RankBadge extends StatelessWidget {
     final medal = _medals[rank];
     final winning = rank <= TopBiddersPanel.winningPlaces;
 
-    final background = medal?.$1 ??
-        (winning ? AppTheme.gold.withValues(alpha: 0.18) : theme.colorScheme.surfaceContainerHighest);
-    final foreground = medal?.$2 ?? (winning ? AppTheme.onGold : theme.colorScheme.onSurfaceVariant);
+    final background =
+        medal?.$1 ??
+        (winning
+            ? AppTheme.gold.withValues(alpha: 0.18)
+            : theme.colorScheme.surfaceContainerHighest);
+    final foreground =
+        medal?.$2 ??
+        (winning ? AppTheme.onGold : theme.colorScheme.onSurfaceVariant);
 
     return Container(
       width: 30,
@@ -269,14 +329,16 @@ class _Tag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-        ),
-        child: Text(label,
-            style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
+    ),
+  );
 }
 
 /// Where the prize places end: everyone above this line would win if the auction ended now.
@@ -290,16 +352,29 @@ class _WinningLine extends StatelessWidget {
     final color = AppTheme.gold;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space4, vertical: AppTheme.space1),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.space4,
+        vertical: AppTheme.space1,
+      ),
       child: Row(
         children: [
-          Expanded(child: Divider(color: color.withValues(alpha: 0.5), thickness: 1)),
+          Expanded(
+            child: Divider(color: color.withValues(alpha: 0.5), thickness: 1),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppTheme.space2),
-            child: Text(label,
-                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
-          Expanded(child: Divider(color: color.withValues(alpha: 0.5), thickness: 1)),
+          Expanded(
+            child: Divider(color: color.withValues(alpha: 0.5), thickness: 1),
+          ),
         ],
       ),
     );
@@ -312,8 +387,11 @@ class _Gap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Icon(Icons.more_horiz_rounded,
-            size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Icon(
+      Icons.more_horiz_rounded,
+      size: 18,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    ),
+  );
 }
