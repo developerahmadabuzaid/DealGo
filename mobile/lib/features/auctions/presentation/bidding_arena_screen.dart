@@ -8,6 +8,7 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
+import 'auction_end_dialog.dart';
 import 'live_auction_controller.dart';
 import 'live_bidding_widgets.dart';
 import 'top_bidders_panel.dart';
@@ -112,6 +113,12 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
     final before = prev?.snapshot;
     final now = next.snapshot;
     if (now == null) return;
+
+    // The auction closed while the user was watching: say who won, and whether it was them.
+    if ((before?.isLive ?? false) && !now.isLive) {
+      announceAuctionEnd(context, before: before, now: now);
+      return;
+    }
 
     if (now.isFinalPhase && !_wasFinal) {
       _wasFinal = true;

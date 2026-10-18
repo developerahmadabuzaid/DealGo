@@ -13,6 +13,7 @@ import '../../../shared/auto_refresh.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
+import 'auction_end_dialog.dart';
 import 'auction_results_screen.dart';
 import 'bidding_arena_screen.dart';
 import 'live_auction_controller.dart';
@@ -72,6 +73,10 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
     final detailAsync = ref.watch(auctionDetailProvider(widget.auctionId));
 
     ref.listen(liveAuctionProvider(widget.auctionId), (prev, next) {
+      // The live bidding screen announces the end itself when it is the one open.
+      if (!_arenaOpen) {
+        announceAuctionEnd(context, before: prev?.snapshot, now: next.snapshot);
+      }
       if (next.rankMessage != null && next.rankMessage != prev?.rankMessage) {
         // The live bidding screen reports this itself, and clears it once shown.
         if (_arenaOpen) return;

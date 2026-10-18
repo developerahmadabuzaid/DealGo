@@ -227,6 +227,15 @@ class AppStrings {
   String prizeAmountDue(String amount) =>
       _t('المبلغ المستحق لاستلام الجائزة: $amount', 'Amount due to claim the prize: $amount');
   // ---- finished auctions
+  String congratsTo(String name) => _t('مبروك لـ $name', 'Congratulations to $name');
+  String get betterLuckNextTime =>
+      _t('انتهى هذا المزاد، حظاً أوفر في المزاد القادم', 'This auction is over. Better luck next time!');
+  String get congratsWinner => _t('مبروك! 🎉', 'Congratulations! 🎉');
+  String get youWonAuction => _t('لقد فزت بالمزاد', 'You won the auction');
+  String youWonPlace(int rank) => _t('حصلت على المركز $rank', 'You finished in place $rank');
+  String wonAuctionBody(String price) => _t(
+      'انتهى المزاد عند $price وأنت من الفائزين. تجد جائزتك في صفحة جوائزي لإكمال استلامها.',
+      'The auction closed at $price and you are among the winners. Your prize is waiting in My prizes.');
   String get ended => _t('منتهي', 'Ended');
   String get winner => _t('الفائز', 'Winner');
   String get auctionWinner => _t('الفائز بالمزاد', 'Auction winner');
