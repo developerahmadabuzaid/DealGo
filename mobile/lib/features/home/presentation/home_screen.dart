@@ -14,6 +14,7 @@ import '../../../shared/art_fallback.dart';
 import '../../../shared/brand.dart';
 import '../../../shared/widgets.dart';
 import '../../auctions/data/auction_models.dart';
+import '../../auctions/presentation/ended_auction_screen.dart';
 import '../../store/data/store_repository.dart';
 import '../data/ads_repository.dart';
 
@@ -40,6 +41,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.watch(auctionListProvider('live')).valueOrNull?.items ?? const <AuctionSummary>[];
     final upcoming =
         ref.watch(auctionListProvider('upcoming')).valueOrNull?.items ?? const <AuctionSummary>[];
+    final ended =
+        ref.watch(auctionListProvider('completed')).valueOrNull?.items ?? const <AuctionSummary>[];
 
     // The row under the advertisement. An administrator's picks, or whatever is running and
     // coming up until somebody picks any.
@@ -132,6 +135,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // The auctions about to start, each showing how close it is to filling up.
               if (upcoming.isNotEmpty)
                 SliverToBoxAdapter(child: _UpcomingAuctions(auctions: upcoming)),
+
+              // The latest auctions to close, with what each went for and who took it.
+              if (ended.isNotEmpty)
+                SliverToBoxAdapter(child: _EndedAuctions(auctions: ended.take(3).toList())),
               SliverToBoxAdapter(
                 child: _QuickTiles(
                   tiles: [
@@ -184,6 +191,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.invalidate(featuredAuctionsProvider);
     ref.invalidate(auctionListProvider('live'));
     ref.invalidate(auctionListProvider('upcoming'));
+    ref.invalidate(auctionListProvider('completed'));
     ref.invalidate(unreadCountProvider);
     ref.invalidate(appAdsProvider);
   }
@@ -1950,6 +1958,41 @@ class _StorePromo extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The last few auctions to close, the rest of them one tap away.
+class _EndedAuctions extends StatelessWidget {
+  const _EndedAuctions({required this.auctions});
+
+  final List<AuctionSummary> auctions;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppStrings.of(context);
+
+    return Container(
+      margin: const EdgeInsets.only(top: AppTheme.space1),
+      padding: const EdgeInsets.only(bottom: AppTheme.space3),
+      color: Theme.of(context).colorScheme.surface,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SectionHead(
+            icon: Icons.flag_rounded,
+            title: t.completedAuctions,
+            action: t.seeAll,
+            onTap: () => context.go('/auctions?tab=completed'),
+          ),
+          for (final a in auctions)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppTheme.space3, AppTheme.space1, AppTheme.space3, AppTheme.space2),
+              child: EndedAuctionCard(auction: a),
+            ),
+        ],
       ),
     );
   }

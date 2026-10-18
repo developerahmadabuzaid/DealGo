@@ -109,7 +109,21 @@ public sealed class AuctionService : IAuctionService
                 a.IsFeatured,
                 a.OriginalPrice, a.StartingPrice, a.CurrentPrice, a.TargetPrice,
                 a.EntryFee, a.Currency, a.ParticipantCount, a.RequiredParticipants,
-                a.Status, a.ScheduledStartAt, a.ActualStartedAt, a.DurationSeconds
+                a.Status, a.ScheduledStartAt, a.ActualStartedAt, a.DurationSeconds,
+                a.FinishedAt,
+                // Whoever stood highest when it closed. Only asked of a finished auction: on a running
+                // one the name would be a guess about an outcome nobody knows yet.
+                WinnerName = (a.Status == AuctionStatus.Finished ||
+                              a.Status == AuctionStatus.WinnersDeclared ||
+                              a.Status == AuctionStatus.PrizeClaim ||
+                              a.Status == AuctionStatus.Completed)
+                    ? _db.AuctionParticipants
+                        .Where(p => p.AuctionId == a.Id && p.BidCount > 0)
+                        .OrderByDescending(p => p.HighestPrice)
+                        .ThenBy(p => p.HighestPriceAt)
+                        .Select(p => p.User != null ? p.User.FullName : string.Empty)
+                        .FirstOrDefault()
+                    : null
             })
             .ToListAsync(ct);
 
@@ -121,7 +135,9 @@ public sealed class AuctionService : IAuctionService
             a.EntryFee, a.Currency, a.ParticipantCount, a.RequiredParticipants,
             a.Status, a.ScheduledStartAt, a.ActualStartedAt,
             RemainingSeconds(a.ActualStartedAt, a.DurationSeconds, a.Status, now),
-            a.CoverImageUrl, a.IsFeatured)).ToList();
+            a.CoverImageUrl, a.IsFeatured,
+            a.WinnerName is null ? null : BidService.MaskName(a.WinnerName),
+            a.FinishedAt)).ToList();
 
         return PagedResult<AuctionListItemDto>.Create(items, query.Page, query.PageSize, total);
     }
@@ -257,6 +273,29 @@ public sealed class AuctionService : IAuctionService
         return rows.Select((r, i) => new LeaderboardEntryDto(
             i + 1, r.Id, r.UserId, BidService.MaskName(r.Name), r.HighestPrice,
             r.HighestPriceAt, r.BidCount, userId.HasValue && r.UserId == userId.Value)).ToList();
+    }
+
+    public async Task<IReadOnlyList<BidHistoryEntryDto>> GetBidsAsync(
+        Guid auctionId, Guid? userId, int take, CancellationToken ct = default)
+    {
+        take = take is < 1 or > 500 ? 100 : take;
+
+        // Newest first: the closing bid at the top, then every one before it.
+        var rows = await _db.Bids
+            .AsNoTracking()
+            .Where(b => b.AuctionId == auctionId)
+            .OrderByDescending(b => b.SequenceNumber)
+            .Take(take)
+            .Select(b => new
+            {
+                b.SequenceNumber, b.NewPrice, b.ServerTimestamp, b.UserId,
+                Name = b.Participant != null && b.Participant.User != null ? b.Participant.User.FullName : null
+            })
+            .ToListAsync(ct);
+
+        return rows.Select(r => new BidHistoryEntryDto(
+            r.SequenceNumber, r.NewPrice, BidService.MaskName(r.Name), r.ServerTimestamp,
+            userId.HasValue && r.UserId == userId.Value)).ToList();
     }
 
     public async Task<IReadOnlyList<WinnerDto>> GetWinnersAsync(Guid auctionId, CancellationToken ct = default)

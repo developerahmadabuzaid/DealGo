@@ -33,7 +33,17 @@ public sealed record AuctionListItemDto(
     DateTime? ActualStartedAt,
     int? RemainingSeconds,
     string? CoverImageUrl,
-    bool IsFeatured);
+    bool IsFeatured,
+    string? WinnerName = null,
+    DateTime? FinishedAt = null);
+
+/// <summary>One accepted bid, as the public bid log of an auction shows it. Names are masked.</summary>
+public sealed record BidHistoryEntryDto(
+    long SequenceNumber,
+    decimal Price,
+    string DisplayName,
+    DateTime PlacedAt,
+    bool IsMe);
 
 /// <summary>
 /// Full auction detail. Fields prefixed My* are resolved from the caller's participation and are

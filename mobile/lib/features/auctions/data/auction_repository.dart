@@ -50,6 +50,12 @@ class AuctionRepository {
     return (data as List).map((e) => AuctionWinner.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// The auction's accepted bids, newest first.
+  Future<List<BidHistoryEntry>> bids(String id, {int take = 300}) async {
+    final data = await _api.get('/auctions/$id/bids', query: {'take': take});
+    return (data as List).map((e) => BidHistoryEntry.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<MyParticipation> join(String id, String idempotencyKey) async {
     final data = await _api.post('/auctions/$id/join', body: {'idempotencyKey': idempotencyKey});
     return MyParticipation.fromJson(data as Map<String, dynamic>);

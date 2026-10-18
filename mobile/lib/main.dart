@@ -8,6 +8,7 @@ import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auctions/presentation/auction_detail_screen.dart';
 import 'features/auctions/presentation/auction_results_screen.dart';
+import 'features/auctions/presentation/ended_auction_screen.dart';
 import 'features/auctions/presentation/auctions_screen.dart';
 import 'features/auth/presentation/complete_profile_screen.dart';
 import 'features/auth/presentation/login_screen.dart';
@@ -128,7 +129,10 @@ GoRouter _router(WidgetRef ref) {
             GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/auctions', builder: (_, _) => const AuctionsScreen()),
+            GoRoute(
+                path: '/auctions',
+                builder: (_, state) =>
+                    AuctionsScreen(initialTab: state.uri.queryParameters['tab'])),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
@@ -151,6 +155,11 @@ GoRouter _router(WidgetRef ref) {
         parentNavigatorKey: _rootKey,
         path: '/auctions/:id',
         builder: (_, state) => AuctionDetailScreen(auctionId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/auctions/:id/ended',
+        builder: (_, state) => EndedAuctionScreen(auctionId: state.pathParameters['id']!),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,

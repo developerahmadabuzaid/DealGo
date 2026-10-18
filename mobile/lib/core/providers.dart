@@ -256,6 +256,10 @@ final auctionDetailProvider = FutureProvider.autoDispose
 final auctionWinnersProvider = FutureProvider.autoDispose
     .family((ref, String id) => ref.watch(auctionRepositoryProvider).winners(id));
 
+/// A finished auction's bid log, newest first.
+final auctionBidsProvider = FutureProvider.autoDispose
+    .family((ref, String id) => ref.watch(auctionRepositoryProvider).bids(id));
+
 // ---------------------------------------------------------------- cart
 
 /// The cart is local and advisory. Prices, stock and the order total are all re-decided by the

@@ -226,6 +226,14 @@ class AppStrings {
   String youWonPrize(String prize) => _t('فزت بـ $prize', 'You won $prize');
   String prizeAmountDue(String amount) =>
       _t('المبلغ المستحق لاستلام الجائزة: $amount', 'Amount due to claim the prize: $amount');
+  // ---- finished auctions
+  String get ended => _t('منتهي', 'Ended');
+  String get winner => _t('الفائز', 'Winner');
+  String get auctionWinner => _t('الفائز بالمزاد', 'Auction winner');
+  String get finalPrice => _t('السعر النهائي', 'Final price');
+  String get noWinner => _t('بلا فائز', 'No winner');
+  String get bidHistory => _t('سجل المزايدات', 'Bid history');
+  String bidsLogged(int count) => _t('$count مزايدة', '$count bids');
   String get viewFullResults => _t('عرض النتائج الكاملة', 'View full results');
 
   /// A prize claim's state, from the server's status name.

@@ -11,9 +11,15 @@ import '../../../shared/auto_refresh.dart';
 import '../../../shared/art_fallback.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
+import 'ended_auction_screen.dart';
 
 class AuctionsScreen extends ConsumerStatefulWidget {
-  const AuctionsScreen({super.key});
+  const AuctionsScreen({super.key, this.initialTab});
+
+  /// Which list opens first: `live`, `upcoming` or `completed`.
+  final String? initialTab;
+
+  static int _indexOf(String? tab) => switch (tab) { 'upcoming' => 1, 'completed' => 2, _ => 0 };
 
   @override
   ConsumerState<AuctionsScreen> createState() => _AuctionsScreenState();
@@ -21,7 +27,17 @@ class AuctionsScreen extends ConsumerStatefulWidget {
 
 class _AuctionsScreenState extends ConsumerState<AuctionsScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 3, vsync: this);
+  late final TabController _tabs = TabController(
+      length: 3, vsync: this, initialIndex: AuctionsScreen._indexOf(widget.initialTab));
+
+  @override
+  void didUpdateWidget(covariant AuctionsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Opened again from a link that names a list, while this tab was already alive.
+    if (widget.initialTab != null && widget.initialTab != oldWidget.initialTab) {
+      _tabs.animateTo(AuctionsScreen._indexOf(widget.initialTab));
+    }
+  }
 
   @override
   void dispose() {
@@ -99,7 +115,9 @@ class _AuctionList extends ConsumerWidget {
                 AppTheme.space4, AppTheme.space4, AppTheme.space4, AppTheme.space8),
             itemCount: paged.items.length,
             separatorBuilder: (_, _) => const SizedBox(height: AppTheme.space3),
-            itemBuilder: (context, i) => AuctionCard(auction: paged.items[i]),
+            itemBuilder: (context, i) => group == 'completed'
+                ? EndedAuctionCard(auction: paged.items[i])
+                : AuctionCard(auction: paged.items[i]),
           ),
         );
       },
@@ -141,7 +159,8 @@ class AuctionCard extends StatelessWidget {
     return SurfaceCard(
       padding: EdgeInsets.zero,
       accent: auction.isLive ? accent : null,
-      onTap: () => context.push('/auctions/${auction.id}'),
+      onTap: () => context.push(
+          auction.isComplete ? '/auctions/${auction.id}/ended' : '/auctions/${auction.id}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -17,6 +17,9 @@ public interface IAuctionService
     Task<AuctionSnapshotDto> GetSnapshotAsync(Guid auctionId, Guid? userId, CancellationToken ct = default);
     Task<IReadOnlyList<LeaderboardEntryDto>> GetLeaderboardAsync(Guid auctionId, Guid? userId, int take, CancellationToken ct = default);
     Task<IReadOnlyList<WinnerDto>> GetWinnersAsync(Guid auctionId, CancellationToken ct = default);
+
+    /// <summary>The auction's accepted bids, newest first, with masked names.</summary>
+    Task<IReadOnlyList<BidHistoryEntryDto>> GetBidsAsync(Guid auctionId, Guid? userId, int take, CancellationToken ct = default);
     Task<PagedResult<ParticipantAdminDto>> GetParticipantsAsync(Guid auctionId, PagedQuery query, CancellationToken ct = default);
 }
 

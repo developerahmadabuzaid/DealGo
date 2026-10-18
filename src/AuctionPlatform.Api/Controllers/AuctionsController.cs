@@ -55,6 +55,13 @@ public sealed class AuctionsController : ApiControllerBase
     public async Task<ActionResult<IReadOnlyList<WinnerDto>>> Winners(Guid id, CancellationToken ct) =>
         Ok(await _auctions.GetWinnersAsync(id, ct));
 
+    /// <summary>The public bid log, newest first.</summary>
+    [HttpGet("{id:guid}/bids")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IReadOnlyList<BidHistoryEntryDto>>> Bids(
+        Guid id, [FromQuery] int take = 100, CancellationToken ct = default) =>
+        Ok(await _auctions.GetBidsAsync(id, CurrentUserIdOrNull, take, ct));
+
     [HttpGet("{id:guid}/participants")]
     [Authorize]
     public async Task<ActionResult<PagedResult<ParticipantAdminDto>>> Participants(

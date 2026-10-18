@@ -50,6 +50,8 @@ class AuctionSummary {
     required this.remainingSeconds,
     this.coverImageUrl,
     this.isFeatured = false,
+    this.winnerName,
+    this.finishedAt,
   });
 
   final String id;
@@ -64,6 +66,10 @@ class AuctionSummary {
 
   /// Picked by an administrator for the front page's featured row.
   final bool isFeatured;
+
+  /// Who stood highest when a finished auction closed, masked. Null while it runs, or when nobody bid.
+  final String? winnerName;
+  final DateTime? finishedAt;
   final double originalPrice;
   final double startingPrice;
   final double currentPrice;
@@ -111,6 +117,8 @@ class AuctionSummary {
         remainingSeconds: j['remainingSeconds'] as int?,
         coverImageUrl: j['coverImageUrl'] as String?,
         isFeatured: j['isFeatured'] as bool? ?? false,
+        winnerName: j['winnerName'] as String?,
+        finishedAt: _date(j['finishedAt']),
       );
 }
 
@@ -408,6 +416,31 @@ class LeaderboardEntry {
         displayName: j['displayName'] as String? ?? '',
         highestPrice: _num(j['highestPrice']),
         bidCount: j['bidCount'] as int? ?? 0,
+        isMe: j['isMe'] as bool? ?? false,
+      );
+}
+
+/// One accepted bid in an auction's public log.
+class BidHistoryEntry {
+  const BidHistoryEntry({
+    required this.sequenceNumber,
+    required this.price,
+    required this.displayName,
+    required this.placedAt,
+    required this.isMe,
+  });
+
+  final int sequenceNumber;
+  final double price;
+  final String displayName;
+  final DateTime? placedAt;
+  final bool isMe;
+
+  factory BidHistoryEntry.fromJson(Map<String, dynamic> j) => BidHistoryEntry(
+        sequenceNumber: (j['sequenceNumber'] as num?)?.toInt() ?? 0,
+        price: _num(j['price']),
+        displayName: j['displayName'] as String? ?? '',
+        placedAt: _date(j['placedAt']),
         isMe: j['isMe'] as bool? ?? false,
       );
 }
