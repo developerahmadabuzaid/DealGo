@@ -317,6 +317,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<int>("StartDelayAfterParticipantsSeconds")
                         .HasColumnType("integer");
 
+                    b.Property<decimal>("StartingPercentage")
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<decimal>("StartingPrice")
                         .HasColumnType("numeric(18,2)");
 

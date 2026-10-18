@@ -14,6 +14,7 @@ public sealed class AuctionOptions
     public int DefaultStartDelaySeconds { get; set; } = AuctionRules.DefaultStartDelaySeconds;
     public int DefaultDurationSeconds { get; set; } = AuctionRules.DefaultDurationSeconds;
     public decimal DefaultTargetPercentage { get; set; } = AuctionRules.DefaultTargetPercentage;
+    public decimal DefaultStartingPercentage { get; set; } = AuctionRules.DefaultStartingPercentage;
     public decimal DefaultFinalPhasePercentage { get; set; } = AuctionRules.DefaultFinalPhasePercentage;
     public decimal DefaultBidIncrement { get; set; } = AuctionRules.DefaultBidIncrement;
 

@@ -197,7 +197,8 @@ public sealed class AuctionService : IAuctionService
             me is not null, myRank, me?.HighestPrice, me?.BidCount,
             _clock.UtcNow,
             auction.CoverImageUrl,
-            auction.IsFeatured);
+            auction.IsFeatured,
+            auction.StartingPercentage);
     }
 
     /// <summary>

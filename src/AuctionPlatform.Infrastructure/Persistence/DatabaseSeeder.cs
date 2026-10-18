@@ -1067,7 +1067,7 @@ public sealed class DatabaseSeeder
             MainProductNameSnapshot = main.Name,
             MainImageSnapshot = main.PrimaryImageUrl,
             OriginalPrice = main.Price,
-            StartingPrice = Money.Round(main.Price * 0.2m),
+            StartingPercentage = AuctionRules.DefaultStartingPercentage,
             TargetPercentage = AuctionRules.DefaultTargetPercentage,
             FinalPhasePercentage = AuctionRules.DefaultFinalPhasePercentage,
             BidIncrement = AuctionRules.DefaultBidIncrement,
@@ -1081,6 +1081,7 @@ public sealed class DatabaseSeeder
 
         auction.TargetPrice = AuctionRules.CalculateTargetPrice(auction.OriginalPrice, auction.TargetPercentage);
         auction.FinalPhasePrice = AuctionRules.CalculateFinalPhasePrice(auction.OriginalPrice, auction.FinalPhasePercentage);
+        auction.StartingPrice = AuctionRules.CalculateStartingPrice(auction.TargetPrice, auction.StartingPercentage);
         auction.CurrentPrice = auction.StartingPrice;
 
         return auction;

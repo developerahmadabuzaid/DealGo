@@ -14,12 +14,22 @@ public static class AuctionRules
     public const int DefaultRequiredParticipants = 400;
     public const int DefaultDurationSeconds = 180;          // 3 minutes
     public const decimal DefaultTargetPercentage = 50m;
+
+    /// <summary>Where the price opens, as a share of the target price.</summary>
+    public const decimal DefaultStartingPercentage = 10m;
     public const decimal DefaultFinalPhasePercentage = 40m;
     public const decimal DefaultBidIncrement = 20m;
     public const int DefaultStartDelaySeconds = 7200;       // 2 hours
 
     public static decimal CalculateTargetPrice(decimal originalPrice, decimal targetPercentage) =>
         Money.Round(originalPrice * targetPercentage / 100m);
+
+    /// <summary>
+    /// The opening price: a share of the target price, so an auction always opens the same distance
+    /// below where it is meant to finish, whatever its prizes are worth.
+    /// </summary>
+    public static decimal CalculateStartingPrice(decimal targetPrice, decimal startingPercentage) =>
+        Money.Round(targetPrice * startingPercentage / 100m);
 
     public static decimal CalculateFinalPhasePrice(decimal originalPrice, decimal finalPhasePercentage) =>
         Money.Round(originalPrice * finalPhasePercentage / 100m);
@@ -55,6 +65,9 @@ public static class AuctionRules
 
         if (auction.TargetPercentage is <= 0 or > 100)
             errors.Add("TargetPercentage must be between 0 (exclusive) and 100.");
+
+        if (auction.StartingPercentage is <= 0 or >= 100)
+            errors.Add("StartingPercentage must be between 0 and 100 (both exclusive).");
 
         if (auction.FinalPhasePercentage is <= 0 or > 100)
             errors.Add("FinalPhasePercentage must be between 0 (exclusive) and 100.");

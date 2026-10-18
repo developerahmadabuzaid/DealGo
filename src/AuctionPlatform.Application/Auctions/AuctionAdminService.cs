@@ -64,6 +64,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
         var main = RequireMainPrize(request.Prizes);
 
         var targetPercentage = request.TargetPercentage ?? _options.DefaultTargetPercentage;
+        var startingPercentage = request.StartingPercentage ?? _options.DefaultStartingPercentage;
         var finalPhasePercentage = request.FinalPhasePercentage ?? _options.DefaultFinalPhasePercentage;
 
         var auction = new Auction
@@ -76,8 +77,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
             CoverImageUrl = Blank(request.CoverImageUrl),
             // The auction is worth what its first prize is worth.
             OriginalPrice = Money.Round(main.Price),
-            StartingPrice = Money.Round(request.StartingPrice),
-            CurrentPrice = Money.Round(request.StartingPrice),
+            StartingPercentage = startingPercentage,
             TargetPercentage = targetPercentage,
             FinalPhasePercentage = finalPhasePercentage,
             BidIncrement = request.BidIncrement ?? _options.DefaultBidIncrement,
@@ -100,6 +100,8 @@ public sealed class AuctionAdminService : IAuctionAdminService
         // from the live catalog price later.
         auction.TargetPrice = AuctionRules.CalculateTargetPrice(auction.OriginalPrice, targetPercentage);
         auction.FinalPhasePrice = AuctionRules.CalculateFinalPhasePrice(auction.OriginalPrice, finalPhasePercentage);
+        auction.StartingPrice = AuctionRules.CalculateStartingPrice(auction.TargetPrice, startingPercentage);
+        auction.CurrentPrice = auction.StartingPrice;
 
         _db.Auctions.Add(auction);
         await AttachPrizesAsync(auction, request.Prizes, ct);
@@ -306,11 +308,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
         if (request.Title is not null) auction.Title = request.Title;
         if (request.Description is not null) auction.Description = request.Description;
         if (request.CoverImageUrl is not null) auction.CoverImageUrl = Blank(request.CoverImageUrl);
-        if (request.StartingPrice.HasValue)
-        {
-            auction.StartingPrice = Money.Round(request.StartingPrice.Value);
-            if (auction.Status == AuctionStatus.Draft) auction.CurrentPrice = auction.StartingPrice;
-        }
+        if (request.StartingPercentage.HasValue) auction.StartingPercentage = request.StartingPercentage.Value;
         if (request.TargetPercentage.HasValue) auction.TargetPercentage = request.TargetPercentage.Value;
         if (request.FinalPhasePercentage.HasValue) auction.FinalPhasePercentage = request.FinalPhasePercentage.Value;
         if (request.BidIncrement.HasValue) auction.BidIncrement = request.BidIncrement.Value;
@@ -330,6 +328,9 @@ public sealed class AuctionAdminService : IAuctionAdminService
         // ladder has to be derived from the value that ends up stored.
         auction.TargetPrice = AuctionRules.CalculateTargetPrice(auction.OriginalPrice, auction.TargetPercentage);
         auction.FinalPhasePrice = AuctionRules.CalculateFinalPhasePrice(auction.OriginalPrice, auction.FinalPhasePercentage);
+        // The starting price follows the target: a new prize value or target share moves it too.
+        auction.StartingPrice = AuctionRules.CalculateStartingPrice(auction.TargetPrice, auction.StartingPercentage);
+        if (auction.Status == AuctionStatus.Draft) auction.CurrentPrice = auction.StartingPrice;
         auction.UpdatedAt = _clock.UtcNow;
 
         _db.AuctionEvents.Add(new AuctionEvent

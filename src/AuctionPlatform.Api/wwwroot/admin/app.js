@@ -1548,7 +1548,7 @@ async function openAuction(id) {
       section('التسعير', 'coins', 'gold',
         h('div', { class: 'stat-grid' },
           stat('السعر الأصلي', money(a.originalPrice, a.currency)),
-          stat('سعر البداية', money(a.startingPrice, a.currency)),
+          stat(`سعر البداية (${a.startingPercentage}% من المستهدف)`, money(a.startingPrice, a.currency)),
           stat('السعر الحالي', money(a.currentPrice, a.currency)),
           stat(`السعر المستهدف (${a.targetPercentage}%)`, money(a.targetPrice, a.currency)),
           stat(`سعر المرحلة النهائية (${a.finalPhasePercentage}%)`, money(a.finalPhasePrice, a.currency)),
@@ -2245,6 +2245,7 @@ async function viewAuctionForm() {
   const error = h('div', { class: 'err-text' });
   const preview = h('div', { class: 'hint' });
   const originalOut = h('div', { class: 'derived-value' }, '—');
+  const startingOut = h('div', { class: 'derived-value' }, '—');
   const prizeBody = h('div', {});
 
   /*
@@ -2297,11 +2298,14 @@ async function viewAuctionForm() {
     const original = Number(mainPrize()?.price || 0);
     const target = original * Number(f.targetPercentage?.value || 0) / 100;
     const finalPhase = original * Number(f.finalPhasePercentage?.value || 0) / 100;
+    // The opening price is a share of the target, worked out on the server the same way.
+    const starting = target * Number(f.startingPercentage?.value || 0) / 100;
 
     originalOut.textContent = original > 0 ? moneyText(original, 'SAR') : '—';
+    startingOut.textContent = original > 0 ? moneyText(starting, 'SAR') : '—';
     preview.textContent = original > 0
-      ? `السعر المستهدف ${moneyText(target, 'SAR')} · تبدأ المرحلة النهائية عند ${moneyText(finalPhase, 'SAR')}`
-        + ' · يجب أن يكون سعر البداية أقل من السعر المستهدف.'
+      ? `يبدأ المزاد عند ${moneyText(starting, 'SAR')} · السعر المستهدف ${moneyText(target, 'SAR')}`
+        + ` · تبدأ المرحلة النهائية عند ${moneyText(finalPhase, 'SAR')}`
       : 'أضف جائزة المركز الأول أولاً؛ من قيمتها تُحسب باقي الأسعار.';
   };
 
@@ -2392,7 +2396,7 @@ async function viewAuctionForm() {
     const body = {
       title: f.title.value.trim(),
       description: f.description.value.trim() || null,
-      startingPrice: Number(f.startingPrice.value),
+      startingPercentage: Number(f.startingPercentage.value),
       targetPercentage: Number(f.targetPercentage.value),
       finalPhasePercentage: Number(f.finalPhasePercentage.value),
       bidIncrement: Number(f.bidIncrement.value),
@@ -2505,14 +2509,19 @@ async function viewAuctionForm() {
         originalOut,
         h('div', { class: 'hint' }, 'مأخوذ من قيمة جائزة المركز الأول.')),
       h('div', { class: 'grid-2' },
-        field('startingPrice', 'Starting price',
-          { type: 'number', value: start('startingPrice', '1000'), step: '0.01' }),
-        field('bidIncrement', 'Bid increment',
-          { type: 'number', value: start('bidIncrement', '20'), step: '0.01' },
-          'Moves the price; it is not charged to the bidder.')),
-      h('div', { class: 'grid-2' },
         field('targetPercentage', 'Target %',
           { type: 'number', value: start('targetPercentage', '50'), step: '0.01' }),
+        field('startingPercentage', 'نسبة سعر البداية من المستهدف %',
+          { type: 'number', value: start('startingPercentage', '10'), step: '0.01', min: '0.01', max: '99.99' },
+          'يبدأ المزاد عند هذه النسبة من السعر المستهدف.')),
+      h('div', { class: 'derived' },
+        h('label', {}, 'سعر البداية'),
+        startingOut,
+        h('div', { class: 'hint' }, 'يُحسب تلقائياً من السعر المستهدف ونسبة البداية.')),
+      h('div', { class: 'grid-2' },
+        field('bidIncrement', 'Bid increment',
+          { type: 'number', value: start('bidIncrement', '20'), step: '0.01' },
+          'Moves the price; it is not charged to the bidder.'),
         field('finalPhasePercentage', 'Final phase %',
           { type: 'number', value: start('finalPhasePercentage', '40'), step: '0.01' })),
       preview),
@@ -2558,7 +2567,7 @@ async function viewAuctionForm() {
           editId ? 'حفظ التعديلات' : 'Create as draft'),
         h('button', { class: 'btn ghost', onclick: leave }, 'Cancel'))));
 
-  ['targetPercentage', 'finalPhasePercentage'].forEach((k) =>
+  ['targetPercentage', 'startingPercentage', 'finalPhasePercentage'].forEach((k) =>
     f[k].addEventListener('input', recompute));
 
   ['title', 'requiredParticipants'].forEach((k) =>

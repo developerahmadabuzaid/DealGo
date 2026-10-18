@@ -144,7 +144,7 @@ public class AuctionCompletionTests
             var created = await admin.CreateAsync(new CreateAuctionRequest(
                 Title: "مزاد الهاتف",
                 Description: null,
-                StartingPrice: 400m,
+                StartingPercentage: 10m,
                 TargetPercentage: 50m,
                 FinalPhasePercentage: 40m,
                 BidIncrement: 20m,
@@ -178,6 +178,8 @@ public class AuctionCompletionTests
         // 50% and 40% of the value that was actually stored.
         auction.TargetPrice.Should().Be(2000m);
         auction.FinalPhasePrice.Should().Be(1600m);
+        auction.StartingPrice.Should().Be(200m, "it opens at 10% of the target price");
+        auction.CurrentPrice.Should().Be(200m);
 
         var prizes = await db.AuctionPrizes.AsNoTracking()
             .Where(p => p.AuctionId == auctionId)
@@ -201,7 +203,7 @@ public class AuctionCompletionTests
         var act = async () => await admin.CreateAsync(new CreateAuctionRequest(
             Title: "مزاد بلا جائزة",
             Description: null,
-            StartingPrice: 400m,
+            StartingPercentage: 10m,
             TargetPercentage: 50m,
             FinalPhasePercentage: 40m,
             BidIncrement: 20m,

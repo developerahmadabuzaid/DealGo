@@ -52,6 +52,9 @@ public class Auction : AuditableEntity
 
     public decimal OriginalPrice { get; set; }
     public decimal StartingPrice { get; set; }
+
+    /// <summary>The starting price as a share of <see cref="TargetPrice"/>; the price is derived from it.</summary>
+    public decimal StartingPercentage { get; set; } = Rules.AuctionRules.DefaultStartingPercentage;
     public decimal CurrentPrice { get; set; }
 
     public decimal TargetPercentage { get; set; }

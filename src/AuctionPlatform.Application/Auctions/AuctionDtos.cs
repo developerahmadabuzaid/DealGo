@@ -88,7 +88,8 @@ public sealed record AuctionDetailDto(
     int? MyBidCount,
     DateTime ServerTime,
     string? CoverImageUrl,
-    bool IsFeatured);
+    bool IsFeatured,
+    decimal StartingPercentage);
 
 /// <summary>
 /// The authoritative state a reconnecting client resynchronises against. Clients never
@@ -191,7 +192,8 @@ public sealed class AuctionListQuery : PagedQuery
 public sealed record CreateAuctionRequest(
     string Title,
     string? Description,
-    decimal StartingPrice,
+    // A share of the target price; the starting price is worked out from it. Null means the default.
+    decimal? StartingPercentage,
     decimal? TargetPercentage,
     decimal? FinalPhasePercentage,
     decimal? BidIncrement,
@@ -218,7 +220,7 @@ public sealed record AuctionPrizeRequest(
 public sealed record UpdateAuctionRequest(
     string? Title,
     string? Description,
-    decimal? StartingPrice,
+    decimal? StartingPercentage,
     decimal? TargetPercentage,
     decimal? FinalPhasePercentage,
     decimal? BidIncrement,
