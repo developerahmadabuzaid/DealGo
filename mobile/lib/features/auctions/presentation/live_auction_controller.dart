@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/errors/api_exception.dart';
+import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
 import '../../../core/realtime/auction_hub_client.dart';
 import '../data/auction_models.dart';
@@ -301,8 +303,12 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
         await resync();
       }
       return null;
-    } catch (_) {
-      state = state.copyWith(isBidding: false, error: 'Could not place the bid.');
+    } catch (e) {
+      // Anything that is not the server's own answer: the reply could not be read, or the screen
+      // was refreshed under the bid. The bid may well have gone through, so pull the truth.
+      debugPrint('placeBid failed: $e');
+      state = state.copyWith(isBidding: false, error: AppStrings.genericBidError);
+      unawaited(resync());
       return null;
     }
   }

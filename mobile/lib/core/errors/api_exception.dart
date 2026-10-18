@@ -31,9 +31,9 @@ class ApiException implements Exception {
         message: 'No connection to the server.',
       );
 
-  /// What the user should read. [message] is the server's English text, kept for logs and
-  /// for any code that has no Arabic wording yet.
-  String get displayMessage => AppStrings.arabicError(code) ?? message;
+  /// What the user should read. [message] is the server's English text, kept for logs only: a
+  /// code with no Arabic wording yet shows a general Arabic message rather than English.
+  String get displayMessage => AppStrings.arabicError(code) ?? AppStrings.genericError;
 
   @override
   String toString() => '$code: $message';

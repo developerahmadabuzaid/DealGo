@@ -380,11 +380,17 @@ class AppStrings {
   /// Static so controllers and other code without a [BuildContext] can reach it.
   static String? arabicError(String code) => _errorsAr[code];
 
+  /// For a failure that has no code of its own. The server's English wording is never shown.
+  static const genericError = 'حدث خطأ غير متوقع. حاول مرة أخرى.';
+  static const genericBidError = 'تعذّرت المزايدة. حاول مرة أخرى.';
+
   static const _errorsAr = <String, String>{
     'AUCTION_NOT_FOUND': 'المزاد غير موجود.',
     'AUCTION_NOT_ACTIVE': 'المزاد غير نشط الآن.',
     'AUCTION_FINISHED': 'انتهى المزاد.',
     'AUCTION_NOT_READY': 'لم يكتمل عدد المشاركين بعد.',
+    'INVALID_AUCTION_STATE': 'حالة المزاد تغيّرت. حدّث الصفحة وحاول مرة أخرى.',
+    'INVALID_ORDER_STATE': 'حالة الطلب تغيّرت. حدّث الصفحة وحاول مرة أخرى.',
     'REGISTRATION_CLOSED': 'انتهى التسجيل في هذا المزاد.',
     'AUCTION_FULL': 'اكتمل عدد المشاركين.',
     'PARTICIPANT_NOT_FOUND': 'أنت غير مشترك في هذا المزاد.',

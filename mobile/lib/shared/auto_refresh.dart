@@ -38,6 +38,27 @@ class _AutoRefreshState extends State<AutoRefresh> with WidgetsBindingObserver {
     _timer = Timer.periodic(widget.interval, (_) => _tick());
   }
 
+  /// Whether the screen could be seen when last checked. Null until the first check.
+  bool? _wasVisible;
+
+  /// Refreshes straight away when the screen comes back into view: the user returns to it from a
+  /// page opened on top, or switches back to its tab. Waiting for the next tick left an auction
+  /// that had started meanwhile under "upcoming" for up to the whole interval, which reads as
+  /// "the list does not update until I restart the app".
+  ///
+  /// [TickerMode.valuesOf] and [ModalRoute.of] both register a dependency, so this runs whenever
+  /// either changes.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = _isVisible;
+    final cameBack = _wasVisible == false && visible;
+    _wasVisible = visible;
+
+    // After the frame: invalidating a provider while this subtree is building is not allowed.
+    if (cameBack) WidgetsBinding.instance.addPostFrameCallback((_) => _tick());
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final wasInForeground = _inForeground;
@@ -53,7 +74,10 @@ class _AutoRefreshState extends State<AutoRefresh> with WidgetsBindingObserver {
   }
 
   void _tick() {
-    if (mounted && _isVisible) widget.onRefresh();
+    if (!mounted) return;
+    final visible = _isVisible;
+    _wasVisible = visible;
+    if (visible) widget.onRefresh();
   }
 
   @override
