@@ -8,18 +8,21 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/app_header.dart';
+import '../../../shared/art_fallback.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
 
 /// Every participant's final place, in full.
 final auctionStandingsProvider = FutureProvider.autoDispose.family(
-    (ref, String id) => ref.watch(auctionRepositoryProvider).leaderboard(id, take: 100));
+  (ref, String id) =>
+      ref.watch(auctionRepositoryProvider).leaderboard(id, take: 100),
+);
 
 /// The results of a finished auction: how the user did, who won what, and where everyone ended.
 ///
 /// The user's own result comes first, because it is what they opened the page to learn — their
 /// place out of how many, and what follows from it: a prize to pay for, or an entry fee returned as
-/// store credit. Then the top three on a podium, the one flourish here, and the complete standings
+/// store credit. Then the four winning places, each with its device, and the complete standings
 /// with the user's row marked, so a sixth place is a place on a list rather than "you did not win".
 class AuctionResultsScreen extends ConsumerWidget {
   const AuctionResultsScreen({super.key, required this.auctionId});
@@ -39,7 +42,10 @@ class AuctionResultsScreen extends ConsumerWidget {
       ref.invalidate(auctionStandingsProvider(auctionId));
     }
 
-    final loading = detailAsync.isLoading || winnersAsync.isLoading || standingsAsync.isLoading;
+    final loading =
+        detailAsync.isLoading ||
+        winnersAsync.isLoading ||
+        standingsAsync.isLoading;
     final error = detailAsync.error ?? standingsAsync.error;
 
     Widget body;
@@ -51,7 +57,9 @@ class AuctionResultsScreen extends ConsumerWidget {
       );
     } else if (error != null && !loading) {
       body = ErrorView(
-        message: error is ApiException ? error.displayMessage : error.toString(),
+        message: error is ApiException
+            ? error.displayMessage
+            : error.toString(),
         onRetry: refresh,
       );
     } else {
@@ -66,7 +74,11 @@ class AuctionResultsScreen extends ConsumerWidget {
 }
 
 class _Results extends StatelessWidget {
-  const _Results({required this.detail, required this.winners, required this.standings});
+  const _Results({
+    required this.detail,
+    required this.winners,
+    required this.standings,
+  });
 
   final AuctionDetail detail;
   final List<AuctionWinner> winners;
@@ -85,7 +97,12 @@ class _Results extends StatelessWidget {
     final totalBids = bidders.fold<int>(0, (sum, e) => sum + e.bidCount);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(AppTheme.space4, AppTheme.space4, AppTheme.space4, 40),
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.space4,
+        AppTheme.space4,
+        AppTheme.space4,
+        40,
+      ),
       children: [
         Text(detail.title, style: theme.textTheme.headlineSmall),
         const SizedBox(height: 2),
@@ -99,7 +116,11 @@ class _Results extends StatelessWidget {
               Expanded(
                 child: Stat(
                   label: t.closingPrice,
-                  value: Fmt.money(detail.currentPrice, detail.currency, locale: locale),
+                  value: Fmt.money(
+                    detail.currentPrice,
+                    detail.currency,
+                    locale: locale,
+                  ),
                   align: CrossAxisAlignment.center,
                 ),
               ),
@@ -130,14 +151,27 @@ class _Results extends StatelessWidget {
 
         if (bidders.isNotEmpty) ...[
           const SizedBox(height: 22),
-          Text(t.winners, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            t.winners,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: AppTheme.space3),
-          _Podium(top: bidders.take(3).toList(), prizeByRank: prizeByRank, currency: detail.currency),
+          _WinnersList(
+            top: bidders.take(4).toList(),
+            prizes: {for (final p in detail.prizes) p.rank: p},
+            currency: detail.currency,
+          ),
         ],
 
         const SizedBox(height: 22),
-        Text(t.finalStandings,
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text(
+          t.finalStandings,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         const SizedBox(height: 2),
         Text(t.finalStandingsSubtitle, style: theme.textTheme.bodySmall),
         const SizedBox(height: AppTheme.space3),
@@ -162,8 +196,11 @@ class _Results extends StatelessWidget {
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.all(AppTheme.space3),
-                  child: Text(t.participantsWithoutBids(silent),
-                      style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
+                  child: Text(
+                    t.participantsWithoutBids(silent),
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ],
             ],
@@ -198,8 +235,12 @@ class MyResultCard extends StatelessWidget {
     final locale = Localizations.localeOf(context).languageCode;
 
     final myEntry = standings?.where((e) => e.isMe).firstOrNull;
-    final rank = myEntry?.bidCount == 0 ? null : (myEntry?.rank ?? detail.myRank);
-    final won = rank == null ? null : winners.where((w) => w.rank == rank).firstOrNull;
+    final rank = myEntry?.bidCount == 0
+        ? null
+        : (myEntry?.rank ?? detail.myRank);
+    final won = rank == null
+        ? null
+        : winners.where((w) => w.rank == rank).firstOrNull;
     final isWinner = won != null;
 
     final color = isWinner ? AppTheme.success : AppTheme.accent;
@@ -212,37 +253,61 @@ class MyResultCard extends StatelessWidget {
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.14), shape: BoxShape.circle),
-            child: Icon(isWinner ? Icons.emoji_events_rounded : Icons.flag_rounded,
-                color: color, size: 30),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isWinner ? Icons.emoji_events_rounded : Icons.flag_rounded,
+              color: color,
+              size: 30,
+            ),
           ),
           const SizedBox(height: AppTheme.space3),
           Text(t.yourFinalPlace, style: theme.textTheme.bodyMedium),
           const SizedBox(height: 2),
           Text(
-            rank == null ? t.noBidPlaced : t.placeOutOf(rank, detail.participantCount),
-            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, color: color),
+            rank == null
+                ? t.noBidPlaced
+                : t.placeOutOf(rank, detail.participantCount),
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
           ),
           const SizedBox(height: AppTheme.space3),
           if (isWinner) ...[
-            Text(t.youWonPrize(won.prizeName),
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+            Text(
+              t.youWonPrize(won.prizeName),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(t.prizeAmountDue(Fmt.money(won.prizeValue, won.currency, locale: locale)),
-                textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+            Text(
+              t.prizeAmountDue(
+                Fmt.money(won.prizeValue, won.currency, locale: locale),
+              ),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
             if (won.claimStatus == 'PaymentRequired') ...[
               const SizedBox(height: AppTheme.space4),
               FilledButton.icon(
                 onPressed: () => context.push('/prizes'),
                 icon: const Icon(Icons.payments_rounded),
                 label: Text(t.payForPrize),
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
               ),
             ],
           ] else ...[
             Text(
-              t.entryFeeReturned(Fmt.money(detail.entryFee, detail.currency, locale: locale)),
+              t.entryFeeReturned(
+                Fmt.money(detail.entryFee, detail.currency, locale: locale),
+              ),
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
             ),
@@ -251,7 +316,9 @@ class MyResultCard extends StatelessWidget {
               onPressed: () => context.go('/store'),
               icon: const Icon(Icons.storefront_rounded),
               label: Text(t.shopNow),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+              ),
             ),
           ],
           if (onShowResults != null) ...[
@@ -268,15 +335,47 @@ class MyResultCard extends StatelessWidget {
   }
 }
 
-/// The first three, second and third either side of the first, standing on steps.
-class _Podium extends StatelessWidget {
-  const _Podium({required this.top, required this.prizeByRank, required this.currency});
+/// The four winning places, one card each: what that place takes, at what price, and who took it.
+class _WinnersList extends StatelessWidget {
+  const _WinnersList({
+    required this.top,
+    required this.prizes,
+    required this.currency,
+  });
 
   final List<LeaderboardEntry> top;
-  final Map<int, AuctionWinner> prizeByRank;
+  final Map<int, AuctionPrize> prizes;
   final String currency;
 
-  static const _colors = {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < top.length; i++) ...[
+          if (i > 0) const SizedBox(height: AppTheme.space3),
+          _WinnerCard(
+            entry: top[i],
+            prize: prizes[top[i].rank],
+            currency: currency,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _WinnerCard extends StatelessWidget {
+  const _WinnerCard({
+    required this.entry,
+    required this.prize,
+    required this.currency,
+  });
+
+  final LeaderboardEntry entry;
+  final AuctionPrize? prize;
+  final String currency;
+
+  static const _medals = {
     1: Color(0xFFE9B10A),
     2: Color(0xFFAEB5C0),
     3: Color(0xFFCD8A4F),
@@ -284,120 +383,167 @@ class _Podium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    LeaderboardEntry? at(int rank) => top.where((e) => e.rank == rank).firstOrNull;
-
-    // Visual order, right to left in Arabic: second, first, third.
-    final order = [2, 1, 3];
-
-    return SurfaceCard(
-      padding: const EdgeInsets.fromLTRB(AppTheme.space3, AppTheme.space5, AppTheme.space3, 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final rank in order)
-            Expanded(
-              child: at(rank) == null
-                  ? const SizedBox.shrink()
-                  : _Step(
-                      entry: at(rank)!,
-                      prize: prizeByRank[rank],
-                      color: _colors[rank]!,
-                      height: switch (rank) { 1 => 96.0, 2 => 70.0, _ => 54.0 },
-                      currency: currency,
-                    ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Step extends StatelessWidget {
-  const _Step({
-    required this.entry,
-    required this.prize,
-    required this.color,
-    required this.height,
-    required this.currency,
-  });
-
-  final LeaderboardEntry entry;
-  final AuctionWinner? prize;
-  final Color color;
-  final double height;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context).languageCode;
-    final first = entry.rank == 1;
+    final medal = _medals[entry.rank] ?? AppTheme.gold;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (first) Icon(Icons.emoji_events_rounded, color: color, size: 26),
-          CircleAvatar(
-            radius: first ? 26 : 22,
-            backgroundColor: entry.isMe ? AppTheme.accentTint : color.withValues(alpha: 0.18),
-            child: Text(
-              entry.displayName.trim().isEmpty ? '؟' : entry.displayName.trim().characters.first,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: first ? 18 : 15,
-                color: entry.isMe ? AppTheme.accentText : theme.colorScheme.onSurface,
+    return SurfaceCard(
+      padding: const EdgeInsets.all(AppTheme.space3),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The device for this place, on a dark tile, with the place in its corner.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              child: Container(
+                width: 88,
+                constraints: const BoxConstraints(minHeight: 88),
+                color: const Color(0xFF0B0C0E),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ArtOrPicture(
+                      imageUrl: prize?.imageUrl,
+                      seed: 'place-${entry.rank}',
+                    ),
+                    PositionedDirectional(
+                      top: 6,
+                      start: 6,
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: medal,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '${entry.rank}',
+                          textDirection: TextDirection.ltr,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                            fontFeatures: AppTheme.numeric,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            entry.isMe ? t.you : Fmt.name(entry.displayName),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: entry.isMe ? AppTheme.accentText : null,
-            ),
-          ),
-          Text(
-            Fmt.money(entry.highestPrice, currency, locale: locale),
-            style: theme.textTheme.bodySmall?.copyWith(fontFeatures: AppTheme.numeric),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            height: height,
-            width: double.infinity,
-            alignment: Alignment.topCenter,
-            padding: const EdgeInsets.only(top: 8),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [color.withValues(alpha: 0.85), color.withValues(alpha: 0.55)],
+            const SizedBox(width: AppTheme.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    prize?.productName.isNotEmpty == true
+                        ? prize!.productName
+                        : t.prizeRank(entry.rank),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    t.prizeRank(entry.rank),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const Spacer(),
+                  Divider(
+                    height: AppTheme.space3,
+                    color: theme.colorScheme.outline,
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              t.finalPrice,
+                              style: theme.textTheme.labelSmall,
+                            ),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: AlignmentDirectional.centerStart,
+                              child: Text(
+                                Fmt.money(
+                                  entry.highestPrice,
+                                  currency,
+                                  locale: locale,
+                                ),
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: AppTheme.brand,
+                                  fontWeight: FontWeight.w800,
+                                  fontFeatures: AppTheme.numeric,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: AppTheme.space2),
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.workspace_premium_rounded,
+                                  size: 15,
+                                  color: medal,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  t.winner,
+                                  style: theme.textTheme.labelSmall,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              entry.isMe ? t.you : Fmt.name(entry.displayName),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: entry.isMe
+                                    ? AppTheme.accentText
+                                    : theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.radiusMd)),
             ),
-            child: Text(
-              '${entry.rank}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                fontFeatures: AppTheme.numeric,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 class _StandingRow extends StatelessWidget {
-  const _StandingRow({required this.entry, required this.prize, required this.currency});
+  const _StandingRow({
+    required this.entry,
+    required this.prize,
+    required this.currency,
+  });
 
   final LeaderboardEntry entry;
   final AuctionWinner? prize;
@@ -411,7 +557,10 @@ class _StandingRow extends StatelessWidget {
     final winner = prize != null;
 
     final row = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space4, vertical: AppTheme.space3),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.space4,
+        vertical: AppTheme.space3,
+      ),
       child: Row(
         children: [
           SizedBox(
@@ -421,7 +570,9 @@ class _StandingRow extends StatelessWidget {
               textDirection: TextDirection.ltr,
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w800,
-                color: winner ? AppTheme.gold : theme.colorScheme.onSurfaceVariant,
+                color: winner
+                    ? AppTheme.gold
+                    : theme.colorScheme.onSurfaceVariant,
                 fontFeatures: AppTheme.numeric,
               ),
             ),
@@ -438,7 +589,9 @@ class _StandingRow extends StatelessWidget {
                         Fmt.name(entry.displayName),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     if (entry.isMe) ...[
@@ -449,7 +602,9 @@ class _StandingRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  winner ? '${t.bidsCount(entry.bidCount)} · ${prize!.prizeName}' : t.bidsCount(entry.bidCount),
+                  winner
+                      ? '${t.bidsCount(entry.bidCount)} · ${prize!.prizeName}'
+                      : t.bidsCount(entry.bidCount),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall,
@@ -471,7 +626,9 @@ class _StandingRow extends StatelessWidget {
 
     if (!entry.isMe && !winner) return row;
     return ColoredBox(
-      color: entry.isMe ? AppTheme.accentSoft : AppTheme.gold.withValues(alpha: 0.05),
+      color: entry.isMe
+          ? AppTheme.accentSoft
+          : AppTheme.gold.withValues(alpha: 0.05),
       child: row,
     );
   }
