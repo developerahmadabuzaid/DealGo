@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/auction_music.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
 import 'auction_end_dialog.dart';
@@ -23,19 +24,28 @@ import 'top_bidders_panel.dart';
 /// It draws from the same [liveAuctionProvider] as the auction page, so nothing here decides a
 /// price, a rank or a winner: the server's snapshot and its pushed events are the only source.
 class BiddingArenaScreen extends ConsumerStatefulWidget {
-  const BiddingArenaScreen({super.key, required this.auctionId, required this.title});
+  const BiddingArenaScreen({
+    super.key,
+    required this.auctionId,
+    required this.title,
+  });
 
   final String auctionId;
   final String title;
 
   /// Opens the screen over everything else. Completes with true when the user asked to see the
   /// results of an auction that ended while it was open.
-  static Future<bool?> open(BuildContext context,
-      {required String auctionId, required String title}) {
-    return Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<bool>(
-      fullscreenDialog: true,
-      builder: (_) => BiddingArenaScreen(auctionId: auctionId, title: title),
-    ));
+  static Future<bool?> open(
+    BuildContext context, {
+    required String auctionId,
+    required String title,
+  }) {
+    return Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<bool>(
+        fullscreenDialog: true,
+        builder: (_) => BiddingArenaScreen(auctionId: auctionId, title: title),
+      ),
+    );
   }
 
   @override
@@ -45,7 +55,8 @@ class BiddingArenaScreen extends ConsumerStatefulWidget {
 /// What a notice is about, which sets its colour and icon.
 enum _NoticeKind { good, warning, info }
 
-class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
+class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen>
+    with WidgetsBindingObserver {
   Timer? _clock;
   Timer? _noticeTimer;
 
@@ -54,9 +65,15 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
 
   bool _wasFinal = false;
 
+  /// What the music should be doing; null is silence.
+  AuctionTrack? _track;
+
+  final _music = AuctionMusic.instance;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Repaints the countdown. The time itself comes from the server's end time.
     _clock = Timer.periodic(const Duration(milliseconds: 500), (_) {
@@ -65,7 +82,12 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _wasFinal = ref.read(liveAuctionProvider(widget.auctionId)).snapshot?.isFinalPhase ?? false;
+      _wasFinal =
+          ref
+              .read(liveAuctionProvider(widget.auctionId))
+              .snapshot
+              ?.isFinalPhase ??
+          false;
     });
   }
 
@@ -104,8 +126,10 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
     // The controller reports the rank changes the user's own bid caused.
     if (next.rankMessage != null && next.rankMessage != prev?.rankMessage) {
       final joined = next.rankMessage == 'inTopFour';
-      _say(joined ? t.inTopFour : t.lostFourthPlace,
-          joined ? _NoticeKind.good : _NoticeKind.warning);
+      _say(
+        joined ? t.inTopFour : t.lostFourthPlace,
+        joined ? _NoticeKind.good : _NoticeKind.warning,
+      );
       notifier.clearRankMessage();
       return;
     }
@@ -132,7 +156,10 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
     // Someone else's bid moved me in or out of the prize places.
     final rankBefore = _myRank(before);
     final rankNow = _myRank(now);
-    if (rankBefore != null && rankBefore <= 4 && rankNow != null && rankNow > 4) {
+    if (rankBefore != null &&
+        rankBefore <= 4 &&
+        rankNow != null &&
+        rankNow > 4) {
       _say(t.lostFourthPlace, _NoticeKind.warning);
       return;
     }
@@ -144,8 +171,32 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
     }
   }
 
+  /// The music follows the auction: the steady loop while it runs, the faster one for the final
+  /// phase (فترة الحسم), and silence once it ends. Asking again for the same track does nothing.
+  void _followAuction(AuctionSnapshot? s) {
+    final want = s == null || !s.isLive
+        ? null
+        : (s.isFinalPhase ? AuctionTrack.finalPhase : AuctionTrack.live);
+    if (want == _track) return;
+    _track = want;
+    unawaited(_music.play(want));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // No music from a phone in a pocket.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_music.resume());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_music.pause());
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_music.stop());
     _clock?.cancel();
     _noticeTimer?.cancel();
     super.dispose();
@@ -159,10 +210,12 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
 
     final s = live.snapshot;
     final ended = s != null && !s.isLive;
+    _followAuction(s);
 
     return Scaffold(
-      backgroundColor:
-          (s?.isFinalPhase ?? false) ? AppTheme.urgentDeep.withValues(alpha: 0.04) : null,
+      backgroundColor: (s?.isFinalPhase ?? false)
+          ? AppTheme.urgentDeep.withValues(alpha: 0.04)
+          : null,
       appBar: AppBar(
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -172,14 +225,31 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
         title: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            Text(t.liveBidding,
-                style: Theme.of(context).textTheme.labelSmall),
+            Text(
+              widget.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            Text(t.liveBidding, style: Theme.of(context).textTheme.labelSmall),
           ],
         ),
         centerTitle: true,
-        actions: [ConnectionIndicator(status: live.hubStatus), const SizedBox(width: 8)],
+        actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: _music.muted,
+            builder: (context, muted, _) => IconButton(
+              tooltip: muted ? t.musicOn : t.musicOff,
+              onPressed: () => _music.setMuted(!muted),
+              icon: Icon(
+                muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                size: 21,
+              ),
+            ),
+          ),
+          ConnectionIndicator(status: live.hubStatus),
+          const SizedBox(width: 8),
+        ],
       ),
       body: s == null
           ? Center(
@@ -193,39 +263,50 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen> {
               ),
             )
           : ended
-              ? _Ended(onResults: () => Navigator.of(context).pop(true))
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppTheme.space4, AppTheme.space3, AppTheme.space4, AppTheme.space6),
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 250),
-                      transitionBuilder: (child, animation) => SizeTransition(
-                        sizeFactor: animation,
-                        child: FadeTransition(opacity: animation, child: child),
-                      ),
-                      child: _notice == null
-                          ? const SizedBox(width: double.infinity)
-                          : Padding(
-                              key: ValueKey(_notice),
-                              padding: const EdgeInsets.only(bottom: AppTheme.space3),
-                              child: _Notice(message: _notice!, kind: _noticeKind),
-                            ),
-                    ),
-                    // Compact, so the leading bidders start on the first screen rather than
-                    // behind the bid bar.
-                    LivePanel(state: live, snapshot: s, compact: true),
-                    const SizedBox(height: AppTheme.space4),
-                    TopBiddersPanel(
-                      entries: s.leaderboard,
-                      currency: s.currency,
-                      participantCount: s.participantCount,
-                      dense: true,
-                    ),
-                  ],
+          ? _Ended(onResults: () => Navigator.of(context).pop(true))
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppTheme.space4,
+                AppTheme.space3,
+                AppTheme.space4,
+                AppTheme.space6,
+              ),
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  transitionBuilder: (child, animation) => SizeTransition(
+                    sizeFactor: animation,
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: _notice == null
+                      ? const SizedBox(width: double.infinity)
+                      : Padding(
+                          key: ValueKey(_notice),
+                          padding: const EdgeInsets.only(
+                            bottom: AppTheme.space3,
+                          ),
+                          child: _Notice(message: _notice!, kind: _noticeKind),
+                        ),
                 ),
+                // Compact, so the leading bidders start on the first screen rather than
+                // behind the bid bar.
+                LivePanel(state: live, snapshot: s, compact: true),
+                const SizedBox(height: AppTheme.space4),
+                TopBiddersPanel(
+                  entries: s.leaderboard,
+                  currency: s.currency,
+                  participantCount: s.participantCount,
+                  dense: true,
+                ),
+              ],
+            ),
       bottomNavigationBar: s != null && !ended
-          ? BidBar(state: live, snapshot: s, auctionId: widget.auctionId, compact: true)
+          ? BidBar(
+              state: live,
+              snapshot: s,
+              auctionId: widget.auctionId,
+              compact: true,
+            )
           : null,
     );
   }
@@ -247,7 +328,10 @@ class _Notice extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space3, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.space3,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
@@ -258,8 +342,14 @@ class _Notice extends StatelessWidget {
           Icon(icon, size: 20, color: color),
           const SizedBox(width: AppTheme.space2),
           Expanded(
-            child: Text(message,
-                style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13.5)),
+            child: Text(
+              message,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+              ),
+            ),
           ),
         ],
       ),
@@ -293,19 +383,28 @@ class _Ended extends StatelessWidget {
                   color: AppTheme.gold.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.emoji_events_rounded, size: 34, color: AppTheme.gold),
+                child: const Icon(
+                  Icons.emoji_events_rounded,
+                  size: 34,
+                  color: AppTheme.gold,
+                ),
               ),
               const SizedBox(height: AppTheme.space4),
               Text(t.auctionFinished, style: theme.textTheme.titleLarge),
               const SizedBox(height: AppTheme.space2),
-              Text(t.auctionEndedBody,
-                  textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+              Text(
+                t.auctionEndedBody,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
+              ),
               const SizedBox(height: AppTheme.space5),
               FilledButton.icon(
                 onPressed: onResults,
                 icon: const Icon(Icons.leaderboard_rounded),
                 label: Text(t.viewResults),
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
               ),
             ],
           ),

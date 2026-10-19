@@ -22,6 +22,12 @@ try {
     # Flutter leaves earlier output in build/web; clearing it keeps stale files out of the copy.
     if (Test-Path 'build/web') { Get-ChildItem -Path 'build/web' -Force | Remove-Item -Recurse -Force }
 
+    # Flutter caches the web plugin registrant here and does not always notice when a plugin is
+    # added or removed. A stale one builds cleanly and fails at run time: a removed plugin breaks
+    # the build, an added one is silently missing (the auction music never played). Clearing it
+    # costs nothing, since a release web build compiles everything anyway.
+    if (Test-Path '.dart_tool/flutter_build') { Remove-Item '.dart_tool/flutter_build' -Recurse -Force }
+
     # Flutter's own service worker no longer caches anything, so it is switched off and
     # web/sw.js takes over.
     flutter build web --release --base-href=/app/ --pwa-strategy=none

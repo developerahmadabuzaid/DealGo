@@ -37,6 +37,9 @@ dependencies:
   # An advertisement may point at an address outside the app; this opens it in the phone browser.
   url_launcher: ^6.3.1
 
+  # The live bidding screen's music: a steady loop, and a faster one for the final phase.
+  audioplayers: ^6.8.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -51,6 +54,8 @@ flutter:
     - assets/images/
     # Advertisement artwork. A folder is not covered by the line above, which is one level only.
     - assets/images/ads/
+    # The live bidding screen's two music loops.
+    - assets/audio/
 
   fonts:
     # The Saudi Riyal sign. Ordinary fonts do not carry it yet, so it is drawn from this one:
