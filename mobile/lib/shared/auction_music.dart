@@ -7,8 +7,8 @@ enum AuctionTrack {
   /// The auction is running: a steady one-bar loop.
   live('audio/auction_live.wav'),
 
-  /// The final phase (فترة الحسم): one bar from the piece's climb to its climax, which builds
-  /// up again on every repeat.
+  /// The final phase (فترة الحسم): three beats from the top of the piece's climb, just before
+  /// its final hit.
   finalPhase('audio/auction_final.wav');
 
   const AuctionTrack(this.asset);
