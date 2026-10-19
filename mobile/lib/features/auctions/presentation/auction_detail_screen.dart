@@ -373,21 +373,56 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
 }
 
 /// The threshold is met and the start is scheduled.
-class _WaitingPanel extends StatelessWidget {
+class _WaitingPanel extends StatefulWidget {
   const _WaitingPanel({required this.detail});
 
   final AuctionDetail detail;
 
   @override
+  State<_WaitingPanel> createState() => _WaitingPanelState();
+}
+
+class _WaitingPanelState extends State<_WaitingPanel> {
+  Timer? _tick;
+
+  /// serverTime − deviceTime, taken once when a detail arrives. Working it out again on every
+  /// build cancelled "now" out of the sum, and the clock stood still between refreshes.
+  late Duration _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _measureOffset();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void didUpdateWidget(_WaitingPanel old) {
+    super.didUpdateWidget(old);
+    // A refresh brings a fresh server time; measure against that one.
+    if (old.detail.serverTime != widget.detail.serverTime) _measureOffset();
+  }
+
+  void _measureOffset() =>
+      _offset = widget.detail.serverTime.difference(DateTime.now().toUtc());
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
+    final detail = widget.detail;
 
-    // The countdown is measured against the server's scheduled start, corrected by the offset
-    // captured when the detail was fetched.
-    final offset = detail.serverTime.difference(DateTime.now().toUtc());
+    // The countdown is measured against the server's scheduled start, read on the server's clock.
     final until = detail.scheduledStartAt == null
         ? Duration.zero
-        : detail.scheduledStartAt!.difference(DateTime.now().toUtc().add(offset));
+        : detail.scheduledStartAt!.difference(DateTime.now().toUtc().add(_offset));
 
     return Card(
       child: Padding(
