@@ -16,7 +16,12 @@ import '../data/auction_models.dart';
 
 /// The red band across the corner of anything that has closed.
 class CornerRibbon extends StatelessWidget {
-  const CornerRibbon({super.key, required this.label, this.size = 64, this.color = _red});
+  const CornerRibbon({
+    super.key,
+    required this.label,
+    this.size = 64,
+    this.color = _red,
+  });
 
   static const _red = Color(0xFFE5303E);
 
@@ -50,7 +55,11 @@ class CornerRibbon extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: color,
                       boxShadow: const [
-                        BoxShadow(color: Color(0x33000000), blurRadius: 3, offset: Offset(0, 1)),
+                        BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
                       ],
                     ),
                     child: Center(
@@ -104,7 +113,10 @@ class EndedAuctionCard extends StatelessWidget {
                     width: 96,
                     constraints: const BoxConstraints(minHeight: 96),
                     color: const Color(0xFF0B0C0E),
-                    child: ArtOrPicture(imageUrl: auction.imageUrl, seed: auction.auctionNumber),
+                    child: ArtOrPicture(
+                      imageUrl: auction.imageUrl,
+                      seed: auction.auctionNumber,
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppTheme.space3),
@@ -116,7 +128,9 @@ class EndedAuctionCard extends StatelessWidget {
                         auction.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -135,14 +149,20 @@ class EndedAuctionCard extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(t.finalPrice, style: theme.textTheme.labelSmall),
+                                Text(
+                                  t.finalPrice,
+                                  style: theme.textTheme.labelSmall,
+                                ),
                                 const SizedBox(height: 2),
                                 FittedBox(
                                   fit: BoxFit.scaleDown,
                                   alignment: AlignmentDirectional.centerStart,
                                   child: Text(
-                                    Fmt.money(auction.currentPrice, auction.currency,
-                                        locale: locale),
+                                    Fmt.money(
+                                      auction.currentPrice,
+                                      auction.currency,
+                                      locale: locale,
+                                    ),
                                     style: theme.textTheme.titleSmall?.copyWith(
                                       color: AppTheme.brand,
                                       fontWeight: FontWeight.w800,
@@ -161,15 +181,23 @@ class EndedAuctionCard extends StatelessWidget {
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.workspace_premium_rounded,
-                                        size: 15, color: Color(0xFFE9B10A)),
+                                    const Icon(
+                                      Icons.workspace_premium_rounded,
+                                      size: 15,
+                                      color: Color(0xFFE9B10A),
+                                    ),
                                     const SizedBox(width: 3),
-                                    Text(t.winner, style: theme.textTheme.labelSmall),
+                                    Text(
+                                      t.winner,
+                                      style: theme.textTheme.labelSmall,
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  winner == null ? t.noWinner : Fmt.name(winner),
+                                  winner == null
+                                      ? t.noWinner
+                                      : Fmt.name(winner),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
@@ -233,18 +261,28 @@ class EndedAuctionScreen extends ConsumerWidget {
       ref.invalidate(auctionBidsProvider(auctionId));
     }
 
-    final error = detailAsync.error ?? bidsAsync.error;
+    // The bid log is the extra, not the page. When it cannot be had — a server that predates it
+    // answered 405, and the whole page used to turn into "server error" — the auction is still
+    // shown, just without its log.
+    final bidsSettled =
+        bidsAsync.hasValue || (bidsAsync.hasError && !bidsAsync.isLoading);
+    final error = detailAsync.error;
 
     Widget body;
-    if (detailAsync.hasValue && bidsAsync.hasValue) {
+    if (detailAsync.hasValue && bidsSettled) {
       body = RefreshIndicator(
         onRefresh: refresh,
-        child: _EndedBody(detail: detailAsync.requireValue, bids: bidsAsync.requireValue),
+        child: _EndedBody(
+          detail: detailAsync.requireValue,
+          bids: bidsAsync.valueOrNull ?? const <BidHistoryEntry>[],
+        ),
       );
-    } else if (error != null && !detailAsync.isLoading && !bidsAsync.isLoading) {
+    } else if (error != null && !detailAsync.isLoading) {
       body = SafeArea(
         child: ErrorView(
-          message: error is ApiException ? error.displayMessage : error.toString(),
+          message: error is ApiException
+              ? error.displayMessage
+              : error.toString(),
           onRetry: refresh,
         ),
       );
@@ -265,7 +303,8 @@ class EndedAuctionScreen extends ConsumerWidget {
               shape: const CircleBorder(),
               child: IconButton(
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => context.canPop() ? context.pop() : context.go('/auctions'),
+                onPressed: () =>
+                    context.canPop() ? context.pop() : context.go('/auctions'),
                 icon: const BackButtonIcon(),
                 color: Colors.white,
               ),
@@ -303,19 +342,32 @@ class _EndedBody extends StatelessWidget {
               // The stage: the product, alone, on black.
               Container(
                 height: _stage + top,
-                padding: EdgeInsets.fromLTRB(AppTheme.space8, top + AppTheme.space4,
-                    AppTheme.space8, _overlap + AppTheme.space2),
+                padding: EdgeInsets.fromLTRB(
+                  AppTheme.space8,
+                  top + AppTheme.space4,
+                  AppTheme.space8,
+                  _overlap + AppTheme.space2,
+                ),
                 decoration: const BoxDecoration(
                   color: Color(0xFF0B0C0E),
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(AppTheme.radiusXl)),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(AppTheme.radiusXl),
+                  ),
                 ),
                 child: Center(
-                  child: _StageImage(url: detail.imageUrl, seed: detail.auctionNumber),
+                  child: _StageImage(
+                    url: detail.imageUrl,
+                    seed: detail.auctionNumber,
+                  ),
                 ),
               ),
               Padding(
                 padding: EdgeInsets.fromLTRB(
-                    AppTheme.space4, _stage + top - _overlap, AppTheme.space4, 0),
+                  AppTheme.space4,
+                  _stage + top - _overlap,
+                  AppTheme.space4,
+                  0,
+                ),
                 child: _SummaryCard(detail: detail, winner: winner),
               ),
             ],
@@ -325,24 +377,43 @@ class _EndedBody extends StatelessWidget {
         if (winner != null) ...[
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(
-                AppTheme.space4, AppTheme.space5, AppTheme.space4, 0),
+              AppTheme.space4,
+              AppTheme.space5,
+              AppTheme.space4,
+              0,
+            ),
             sliver: SliverToBoxAdapter(
               child: _WinnerBanner(bid: winner, currency: detail.currency),
             ),
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(
-                AppTheme.space4, AppTheme.space5, AppTheme.space4, AppTheme.space2),
+              AppTheme.space4,
+              AppTheme.space5,
+              AppTheme.space4,
+              AppTheme.space2,
+            ),
             sliver: SliverToBoxAdapter(
               child: Row(
                 children: [
-                  const Icon(Icons.history_rounded, size: 18, color: AppTheme.brand),
+                  const Icon(
+                    Icons.history_rounded,
+                    size: 18,
+                    color: AppTheme.brand,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(t.bidHistory,
-                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                    child: Text(
+                      t.bidHistory,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                  Text(t.bidsLogged(bids.length), style: theme.textTheme.bodySmall),
+                  Text(
+                    t.bidsLogged(bids.length),
+                    style: theme.textTheme.bodySmall,
+                  ),
                 ],
               ),
             ),
@@ -351,27 +422,39 @@ class _EndedBody extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppTheme.space4),
             sliver: SliverList.separated(
               itemCount: rest.length,
-              separatorBuilder: (_, _) => const SizedBox(height: AppTheme.space2),
-              itemBuilder: (_, i) => _BidRow(bid: rest[i], currency: detail.currency),
+              separatorBuilder: (_, _) =>
+                  const SizedBox(height: AppTheme.space2),
+              itemBuilder: (_, i) =>
+                  _BidRow(bid: rest[i], currency: detail.currency),
             ),
           ),
         ] else
           SliverPadding(
             padding: const EdgeInsets.all(AppTheme.space6),
             sliver: SliverToBoxAdapter(
-              child: Text(t.noBidsInAuction,
-                  textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+              child: Text(
+                t.noBidsInAuction,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
           ),
 
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(AppTheme.space4, AppTheme.space4, AppTheme.space4, 40),
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.space4,
+            AppTheme.space4,
+            AppTheme.space4,
+            40,
+          ),
           sliver: SliverToBoxAdapter(
             child: OutlinedButton.icon(
               onPressed: () => context.push('/auctions/${detail.id}/results'),
               icon: const Icon(Icons.leaderboard_rounded),
               label: Text(t.viewFullResults),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+              ),
             ),
           ),
         ),
@@ -417,13 +500,21 @@ class _SummaryCard extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(
-              AppTheme.space5, AppTheme.space5, AppTheme.space5, AppTheme.space4),
+            AppTheme.space5,
+            AppTheme.space5,
+            AppTheme.space5,
+            AppTheme.space4,
+          ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(AppTheme.radiusLg),
             border: Border.all(color: theme.colorScheme.outline),
             boxShadow: const [
-              BoxShadow(color: Color(0x26000000), blurRadius: 18, offset: Offset(0, 6)),
+              BoxShadow(
+                color: Color(0x26000000),
+                blurRadius: 18,
+                offset: Offset(0, 6),
+              ),
             ],
           ),
           child: Column(
@@ -431,13 +522,18 @@ class _SummaryCard extends StatelessWidget {
               Text(
                 detail.title,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               if (detail.mainProductName.isNotEmpty &&
                   detail.mainProductName != detail.title) ...[
                 const SizedBox(height: 2),
-                Text(detail.mainProductName,
-                    textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
+                Text(
+                  detail.mainProductName,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
               ],
               const SizedBox(height: AppTheme.space4),
               Wrap(
@@ -449,12 +545,18 @@ class _SummaryCard extends StatelessWidget {
                     color: AppTheme.brand,
                     icon: Icons.workspace_premium_rounded,
                     iconColor: const Color(0xFFE9B10A),
-                    label: winner == null ? t.noWinner : Fmt.name(winner!.displayName),
+                    label: winner == null
+                        ? t.noWinner
+                        : Fmt.name(winner!.displayName),
                   ),
                   _Chip(
                     color: AppTheme.success,
                     icon: Icons.sell_rounded,
-                    label: Fmt.money(detail.currentPrice, detail.currency, locale: locale),
+                    label: Fmt.money(
+                      detail.currentPrice,
+                      detail.currency,
+                      locale: locale,
+                    ),
                     numeric: true,
                   ),
                 ],
@@ -503,7 +605,10 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space3, vertical: 7),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.space3,
+        vertical: 7,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
@@ -549,17 +654,30 @@ class _WinnerBanner extends StatelessWidget {
     final rtl = Directionality.of(context) == TextDirection.rtl;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(AppTheme.space3, AppTheme.space3, AppTheme.space4, AppTheme.space3),
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.space3,
+        AppTheme.space3,
+        AppTheme.space4,
+        AppTheme.space3,
+      ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppTheme.radiusLg),
         gradient: LinearGradient(
           begin: rtl ? Alignment.centerRight : Alignment.centerLeft,
           end: rtl ? Alignment.centerLeft : Alignment.centerRight,
-          colors: const [Color(0xFFC98A12), Color(0xFF8A6A2C), Color(0xFF3B4250)],
+          colors: const [
+            Color(0xFFC98A12),
+            Color(0xFF8A6A2C),
+            Color(0xFF3B4250),
+          ],
           stops: const [0, 0.45, 1],
         ),
         boxShadow: const [
-          BoxShadow(color: Color(0x40C98A12), blurRadius: 16, offset: Offset(0, 6)),
+          BoxShadow(
+            color: Color(0x40C98A12),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
         ],
       ),
       child: Row(
@@ -579,7 +697,9 @@ class _WinnerBanner extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 6)],
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x55000000), blurRadius: 6),
+                    ],
                   ),
                   padding: const EdgeInsets.all(3),
                   child: CircleAvatar(
@@ -587,7 +707,10 @@ class _WinnerBanner extends StatelessWidget {
                     child: Text(
                       _initial(bid.displayName),
                       style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -597,7 +720,11 @@ class _WinnerBanner extends StatelessWidget {
                   child: CircleAvatar(
                     radius: 12,
                     backgroundColor: Colors.white,
-                    child: Icon(Icons.emoji_events_rounded, size: 16, color: _gold),
+                    child: Icon(
+                      Icons.emoji_events_rounded,
+                      size: 16,
+                      color: _gold,
+                    ),
                   ),
                 ),
               ],
@@ -611,7 +738,10 @@ class _WinnerBanner extends StatelessWidget {
                 Text(
                   t.auctionWinner,
                   style: const TextStyle(
-                      color: Color(0xFFFFE7A8), fontSize: 11, fontWeight: FontWeight.w700),
+                    color: Color(0xFFFFE7A8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -619,12 +749,18 @@ class _WinnerBanner extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _when(bid.placedAt, locale),
-                  style: const TextStyle(color: Color(0xE6FFFFFF), fontSize: 11.5),
+                  style: const TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontSize: 11.5,
+                  ),
                 ),
               ],
             ),
@@ -660,15 +796,23 @@ class _BidRow extends StatelessWidget {
     final mine = bid.isMe;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space3, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.space3,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: mine
             ? AppTheme.accentSoft
             : Color.alphaBlend(
-                theme.colorScheme.onSurface.withValues(alpha: 0.04), theme.colorScheme.surface),
+                theme.colorScheme.onSurface.withValues(alpha: 0.04),
+                theme.colorScheme.surface,
+              ),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(
-            color: mine ? AppTheme.accent.withValues(alpha: 0.4) : theme.colorScheme.outline),
+          color: mine
+              ? AppTheme.accent.withValues(alpha: 0.4)
+              : theme.colorScheme.outline,
+        ),
       ),
       child: Row(
         children: [
@@ -701,7 +845,10 @@ class _BidRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 1),
-                Text(_when(bid.placedAt, locale), style: theme.textTheme.bodySmall),
+                Text(
+                  _when(bid.placedAt, locale),
+                  style: theme.textTheme.bodySmall,
+                ),
               ],
             ),
           ),
