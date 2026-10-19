@@ -1283,11 +1283,17 @@ class _FeaturedAuctionTile extends StatelessWidget {
                                     color: AppTheme.danger,
                                   ),
                                 )
-                              : _Chip(
-                                  icon: Icons.schedule_rounded,
-                                  label: t.upcomingAuctions,
-                                  color: AppTheme.ink,
-                                ),
+                              : a.hasJoined
+                                  ? _Chip(
+                                      icon: Icons.check_circle_rounded,
+                                      label: t.joinedBadge,
+                                      color: AppTheme.success,
+                                    )
+                                  : _Chip(
+                                      icon: Icons.schedule_rounded,
+                                      label: t.upcomingAuctions,
+                                      color: AppTheme.ink,
+                                    ),
                         ),
                       ),
                       if (counting) ...[

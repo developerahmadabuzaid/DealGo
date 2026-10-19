@@ -316,6 +316,11 @@ class AuctionCard extends StatelessWidget {
           color: Theme.of(context).colorScheme.onSurfaceVariant,
           icon: Icons.check_circle_rounded);
     }
+    // Not started yet, but the user is already in it: that is the fact worth showing.
+    if (auction.hasJoined) {
+      return StatusPill(t.joinedBadge,
+          color: AppTheme.success, icon: Icons.check_circle_rounded, filled: true);
+    }
     return StatusPill(t.upcomingAuctions,
         color: Theme.of(context).colorScheme.primary,
         icon: Icons.schedule_rounded,

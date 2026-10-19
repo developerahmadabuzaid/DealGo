@@ -35,7 +35,10 @@ public sealed record AuctionListItemDto(
     string? CoverImageUrl,
     bool IsFeatured,
     string? WinnerName = null,
-    DateTime? FinishedAt = null);
+    DateTime? FinishedAt = null,
+    // Whether the signed-in user is a participant, so a list can mark the auctions they are in.
+    // Always false for an anonymous request.
+    bool HasJoined = false);
 
 /// <summary>One accepted bid, as the public bid log of an auction shows it. Names are masked.</summary>
 public sealed record BidHistoryEntryDto(

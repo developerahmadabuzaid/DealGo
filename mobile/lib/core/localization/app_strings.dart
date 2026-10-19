@@ -141,6 +141,9 @@ class AppStrings {
   String get prizes => _t('الجوائز', 'Prizes');
   String get joinAuction => _t('اشترك في المزاد', 'Join auction');
   String get joined => _t('أنت مشترك', 'You have joined');
+
+  /// The badge on an upcoming auction the user has joined, in place of "upcoming".
+  String get joinedBadge => _t('مشترك', 'Joined');
   String get yourRank => _t('ترتيبك', 'Your rank');
   String get yourHighest => _t('أعلى سعر لك', 'Your highest price');
   String get leaderboard => _t('المتصدرون', 'Leaderboard');

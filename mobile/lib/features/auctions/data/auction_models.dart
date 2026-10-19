@@ -52,6 +52,7 @@ class AuctionSummary {
     this.isFeatured = false,
     this.winnerName,
     this.finishedAt,
+    this.hasJoined = false,
   });
 
   final String id;
@@ -70,6 +71,10 @@ class AuctionSummary {
   /// Who stood highest when a finished auction closed, masked. Null while it runs, or when nobody bid.
   final String? winnerName;
   final DateTime? finishedAt;
+
+  /// The signed-in user is a participant.
+  final bool hasJoined;
+
   final double originalPrice;
   final double startingPrice;
   final double currentPrice;
@@ -119,6 +124,7 @@ class AuctionSummary {
         isFeatured: j['isFeatured'] as bool? ?? false,
         winnerName: j['winnerName'] as String?,
         finishedAt: _date(j['finishedAt']),
+        hasJoined: j['hasJoined'] as bool? ?? false,
       );
 }
 

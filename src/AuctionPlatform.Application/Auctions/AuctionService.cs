@@ -123,7 +123,10 @@ public sealed class AuctionService : IAuctionService
                         .ThenBy(p => p.HighestPriceAt)
                         .Select(p => p.User != null ? p.User.FullName : string.Empty)
                         .FirstOrDefault()
-                    : null
+                    : null,
+                // The same test the auction page uses: any participant row of theirs.
+                HasJoined = userId != null &&
+                            _db.AuctionParticipants.Any(p => p.AuctionId == a.Id && p.UserId == userId)
             })
             .ToListAsync(ct);
 
@@ -137,7 +140,8 @@ public sealed class AuctionService : IAuctionService
             RemainingSeconds(a.ActualStartedAt, a.DurationSeconds, a.Status, now),
             a.CoverImageUrl, a.IsFeatured,
             a.WinnerName is null ? null : BidService.MaskName(a.WinnerName),
-            a.FinishedAt)).ToList();
+            a.FinishedAt,
+            a.HasJoined)).ToList();
 
         return PagedResult<AuctionListItemDto>.Create(items, query.Page, query.PageSize, total);
     }
