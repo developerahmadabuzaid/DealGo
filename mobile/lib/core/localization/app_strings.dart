@@ -107,7 +107,7 @@ class AppStrings {
   String offersIn(String category) => _t('عروض $category', '$category offers');
   String get priceBeforeOffer => _t('قبل الخصم', 'Before the offer');
   String discountOff(int percent) => _t('خصم $percent%', '$percent% off');
-  String get myPrizes => _t('جوائزي', 'My prizes');
+  String get myPrizes => _t('أجهزتي', 'My devices');
   String get couldNotOpenLink => _t('تعذّر فتح الرابط.', 'Could not open the link.');
 
   // ---- the featured auction on the front page
@@ -138,7 +138,7 @@ class AppStrings {
   String get startingPrice => _t('سعر البداية', 'Starting price');
   String get entryFee => _t('رسوم الاشتراك', 'Entry fee');
   String get participants => _t('المشاركون', 'Participants');
-  String get prizes => _t('الجوائز', 'Prizes');
+  String get prizes => _t('الأجهزة', 'Devices');
   String get joinAuction => _t('اشترك في المزاد', 'Join auction');
   String get joined => _t('أنت مشترك', 'You have joined');
 
@@ -194,7 +194,7 @@ class AppStrings {
       );
   String afterDiscount(String percent) => _t('بعد خصم $percent', 'after a $percent discount');
   String get discountAppliesToAll => _t(
-        'نسبة الخصم تُطبّق على جميع الجوائز.',
+        'نسبة الخصم تُطبّق على جميع الأجهزة.',
         'The discount applies to every prize.',
       );
   String prizeRank(int rank) => _t('المركز $rank', 'Place $rank');
@@ -231,7 +231,7 @@ class AppStrings {
       _t('المركز $rank من $count', 'Place $rank of $count');
   String youWonPrize(String prize) => _t('فزت بـ $prize', 'You won $prize');
   String prizeAmountDue(String amount) =>
-      _t('المبلغ المستحق لاستلام الجائزة: $amount', 'Amount due to claim the prize: $amount');
+      _t('المبلغ المستحق لاستلام الجهاز: $amount', 'Amount due to claim the prize: $amount');
   // ---- finished auctions
   String congratsTo(String name) => _t('مبروك لـ $name', 'Congratulations to $name');
   String get betterLuckNextTime =>
@@ -240,7 +240,7 @@ class AppStrings {
   String get youWonAuction => _t('لقد فزت بالمزاد', 'You won the auction');
   String youWonPlace(int rank) => _t('حصلت على المركز $rank', 'You finished in place $rank');
   String wonAuctionBody(String price) => _t(
-      'انتهى المزاد عند $price وأنت من الفائزين. تجد جائزتك في صفحة جوائزي لإكمال استلامها.',
+      'انتهى المزاد عند $price وأنت من الفائزين. تجد جهازك في صفحة أجهزتي لإكمال استلامه.',
       'The auction closed at $price and you are among the winners. Your prize is waiting in My prizes.');
   String get ended => _t('منتهي', 'Ended');
   String get winner => _t('الفائز', 'Winner');
@@ -295,10 +295,10 @@ class AppStrings {
         'Your $amount entry fee was returned as shopping credit.',
       );
   String get shopNow => _t('تسوق الآن', 'Shop now');
-  String get payForPrize => _t('ادفع قيمة الجائزة', 'Pay for prize');
+  String get payForPrize => _t('ادفع قيمة الجهاز', 'Pay for the device');
   String get paymentRequired => _t('الدفع مطلوب', 'Payment required');
-  String get prizeValue => _t('قيمة الجائزة', 'Prize value');
-  String get myWins => _t('جوائزي', 'My wins');
+  String get prizeValue => _t('قيمة الجهاز', 'Device value');
+  String get myWins => _t('أجهزتي', 'My devices');
 
   // ---- wallets
   String get mainWallet => _t('المحفظة الرئيسية', 'Main Wallet');
@@ -358,7 +358,7 @@ class AppStrings {
   String get houseAdAuctionHeadline =>
       _t('زايد اليوم واربح جهازك بأقل سعر', 'Bid today and win for less');
   String get houseAdAuctionBody =>
-      _t('مزادات مباشرة وجوائز فورية', 'Live auctions, prizes on the spot');
+      _t('مزادات مباشرة على أحدث الأجهزة', 'Live auctions on the latest devices');
   String get houseAdAuctionAction => _t('شارك الآن', 'Join now');
   String get checkout => _t('إتمام الشراء', 'Checkout');
   String get subtotal => _t('المجموع الفرعي', 'Subtotal');
@@ -465,7 +465,7 @@ class AppStrings {
     'CATEGORY_NOT_FOUND': 'القسم غير موجود.',
     'PRIZE_CLAIM_NOT_FOUND': 'المطالبة غير موجودة.',
     'PRIZE_CLAIM_NOT_PAYABLE': 'لا يمكن دفع هذه المطالبة الآن.',
-    'PRIZE_CLAIM_NOT_CLAIMABLE': 'لا يمكن استلام هذه الجائزة الآن.',
+    'PRIZE_CLAIM_NOT_CLAIMABLE': 'لا يمكن استلام هذا الجهاز الآن.',
   };
 }
 

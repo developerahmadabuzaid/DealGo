@@ -65,7 +65,7 @@ void main() {
     expect(find.text('لقد فزت بالمزاد'), findsOneWidget);
     expect(find.text('مبروك! 🎉'), findsOneWidget);
     expect(find.textContaining('403.00'), findsOneWidget);
-    expect(find.text('جوائزي'), findsOneWidget);
+    expect(find.text('أجهزتي'), findsOneWidget);
     expect(find.textContaining('حظاً أوفر'), findsNothing);
   });
 

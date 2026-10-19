@@ -53,7 +53,7 @@ void main() {
 
     expect(find.text('المركز 6 من 8'), findsOneWidget);
     expect(find.textContaining('رصيد تسوق'), findsOneWidget);
-    expect(find.text('ادفع قيمة الجائزة'), findsNothing);
+    expect(find.text('ادفع قيمة الجهاز'), findsNothing);
   });
 
   testWidgets('a winner sees the prize and how to pay for it', (tester) async {
@@ -61,6 +61,6 @@ void main() {
 
     expect(find.text('المركز 2 من 8'), findsOneWidget);
     expect(find.text('فزت بـ سماعات'), findsOneWidget);
-    expect(find.text('ادفع قيمة الجائزة'), findsOneWidget);
+    expect(find.text('ادفع قيمة الجهاز'), findsOneWidget);
   });
 }

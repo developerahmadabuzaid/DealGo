@@ -439,7 +439,7 @@ class _TransactionSection extends ConsumerWidget {
       'Deposit' => ar ? 'إيداع' : 'Deposit',
       'Withdrawal' => ar ? 'سحب' : 'Withdrawal',
       'AuctionEntryFee' => ar ? 'رسوم اشتراك مزاد' : 'Auction entry fee',
-      'PrizePayment' => ar ? 'دفع قيمة جائزة' : 'Prize payment',
+      'PrizePayment' => ar ? 'دفع قيمة جهاز' : 'Prize payment',
       'ShoppingCredit' => ar ? 'رصيد تسوق' : 'Shopping credit',
       'StorePurchase' => ar ? 'شراء من المتجر' : 'Store purchase',
       'Refund' => ar ? 'استرداد' : 'Refund',

@@ -33,10 +33,10 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.YouLostBody] = "لم تكن ضمن الأربعة الأوائل. تمت إعادة رسوم الاشتراك كرصيد تسوق.",
             [NotificationKeys.ShoppingCreditAddedTitle] = "تمت إضافة رصيد تسوق",
             [NotificationKeys.ShoppingCreditAddedBody] = "تمت إضافة {0} إلى محفظة التسوق. يمكن استخدامه في المتجر فقط.",
-            [NotificationKeys.PrizeClaimAvailableTitle] = "جائزتك جاهزة للاستلام",
-            [NotificationKeys.PrizeClaimAvailableBody] = "أكمل الدفع لاستلام جائزتك.",
-            [NotificationKeys.PrizePaymentReminderTitle] = "تذكير بدفع قيمة الجائزة",
-            [NotificationKeys.PrizePaymentReminderBody] = "تبقى وقت محدود لدفع قيمة جائزتك.",
+            [NotificationKeys.PrizeClaimAvailableTitle] = "جهازك جاهز للاستلام",
+            [NotificationKeys.PrizeClaimAvailableBody] = "أكمل الدفع لاستلام جهازك.",
+            [NotificationKeys.PrizePaymentReminderTitle] = "تذكير بدفع قيمة الجهاز",
+            [NotificationKeys.PrizePaymentReminderBody] = "تبقى وقت محدود لدفع قيمة جهازك.",
             [NotificationKeys.StoreOrderCreatedTitle] = "تم إنشاء الطلب",
             [NotificationKeys.StoreOrderCreatedBody] = "تم استلام طلبك رقم {0}.",
             [NotificationKeys.OrderShippedTitle] = "تم شحن طلبك",
@@ -53,7 +53,7 @@ public sealed class LocalizationService : ILocalizationService
             [OtpMessageKeys.Login] = "رمز الدخول الخاص بك هو {0}. صالح لمدة {1} دقائق. لا تشاركه مع أحد.",
             [OtpMessageKeys.Withdrawal] = "رمز تأكيد السحب هو {0}. صالح لمدة {1} دقائق. إذا لم تطلب سحباً، تجاهل هذه الرسالة.",
             [OtpMessageKeys.VerifyContact] = "رمز التحقق هو {0}. صالح لمدة {1} دقائق.",
-            [OtpMessageKeys.PrizePayment] = "رمز تأكيد دفع الجائزة هو {0}. صالح لمدة {1} دقائق."
+            [OtpMessageKeys.PrizePayment] = "رمز تأكيد دفع قيمة الجهاز هو {0}. صالح لمدة {1} دقائق."
         },
         ["en"] = new Dictionary<string, string>
         {
