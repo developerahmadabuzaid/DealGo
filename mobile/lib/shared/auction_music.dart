@@ -4,11 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// What the live bidding screen is playing.
 enum AuctionTrack {
-  /// The auction is running: a steady one-bar loop.
+  /// The auction is running: one steady bar, repeated to about 30 seconds.
   live('audio/auction_live.wav'),
 
   /// The final phase (فترة الحسم): three beats from the top of the piece's climb, just before
-  /// its final hit.
+  /// its final hit, repeated to about 30 seconds.
   finalPhase('audio/auction_final.wav');
 
   const AuctionTrack(this.asset);
@@ -19,9 +19,11 @@ enum AuctionTrack {
 
 /// The music behind live bidding.
 ///
-/// Both loops were cut on the piece's bar lines (120 BPM, one bar every two seconds), so they
-/// repeat without a seam, and they are WAV because compressed formats pad the start and end with
-/// silence that would be heard as a gap on every repeat.
+/// Both loops were cut on the piece's beat (120 BPM), so they repeat without a seam in the music,
+/// and they are WAV because compressed formats pad the start and end with silence that would be
+/// heard as a gap on every repeat. Each file holds about 30 seconds of its loop, already repeated
+/// sample for sample: a phone's player can still pause for a moment when it rewinds a file, and a
+/// short file made that pause come every second or two.
 ///
 /// Music is decoration. A phone on silent, a browser that will not play before the page has been
 /// touched, a missing file: none of these may get in the way of a bid, so every call is wrapped
