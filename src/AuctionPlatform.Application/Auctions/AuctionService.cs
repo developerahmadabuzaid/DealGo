@@ -315,6 +315,11 @@ public sealed class AuctionService : IAuctionService
                 PrizeName = w.Prize != null ? w.Prize.ProductNameSnapshot : string.Empty,
                 PrizeImage = w.Prize != null ? w.Prize.ProductImageSnapshot : null,
                 PrizeValue = w.Prize != null ? w.Prize.OriginalPrice : 0m,
+                // The discounted amount the claim charges, fixed when the auction closed.
+                PaymentAmount = _db.PrizeClaims
+                    .Where(c => c.WinnerId == w.Id)
+                    .Select(c => (decimal?)c.PaymentAmount)
+                    .FirstOrDefault(),
                 Name = w.Participant != null && w.Participant.User != null ? w.Participant.User.FullName : null,
                 w.PrizeClaimId,
                 // PrizeClaim.WinnerId owns the relationship, so the status is read from there.
@@ -329,7 +334,7 @@ public sealed class AuctionService : IAuctionService
         return rows.Select(r => new WinnerDto(
             r.Id, r.Rank, r.UserId, BidService.MaskName(r.Name), r.HighestPrice, r.HighestPriceAt,
             r.PrizeId, r.PrizeName, r.PrizeImage, r.PrizeValue, r.Currency,
-            r.PrizeClaimId, r.ClaimStatus)).ToList();
+            r.PrizeClaimId, r.ClaimStatus, r.PaymentAmount ?? r.PrizeValue)).ToList();
     }
 
     public async Task<PagedResult<ParticipantAdminDto>> GetParticipantsAsync(

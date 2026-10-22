@@ -176,7 +176,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 winner.Id, rank, participant.UserId,
                 BidService.MaskName(null), participant.HighestPrice, participant.HighestPriceAt,
                 prize.Id, prize.ProductNameSnapshot, prize.ProductImageSnapshot,
-                prize.OriginalPrice, auction.Currency, claim.Id, claim.Status));
+                prize.OriginalPrice, auction.Currency, claim.Id, claim.Status, claim.PaymentAmount));
         }
 
         foreach (var p in ranked.Where(p => !winnerParticipantIds.Contains(p.Id)))

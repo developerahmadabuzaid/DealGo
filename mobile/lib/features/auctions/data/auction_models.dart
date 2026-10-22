@@ -505,6 +505,7 @@ class AuctionWinner {
     required this.currency,
     required this.prizeClaimId,
     required this.claimStatus,
+    this.paymentAmount,
   });
 
   final int rank;
@@ -518,6 +519,10 @@ class AuctionWinner {
   final String? prizeClaimId;
   final String? claimStatus;
 
+  /// What the winner pays: [prizeValue] after the auction's discount. Null from a server that
+  /// does not send it yet.
+  final double? paymentAmount;
+
   factory AuctionWinner.fromJson(Map<String, dynamic> j) => AuctionWinner(
         rank: j['rank'] as int? ?? 0,
         userId: j['userId'] as String? ?? '',
@@ -529,6 +534,7 @@ class AuctionWinner {
         currency: j['currency'] as String? ?? 'USD',
         prizeClaimId: j['prizeClaimId'] as String?,
         claimStatus: j['claimStatus'] as String?,
+        paymentAmount: j['paymentAmount'] == null ? null : _num(j['paymentAmount']),
       );
 }
 

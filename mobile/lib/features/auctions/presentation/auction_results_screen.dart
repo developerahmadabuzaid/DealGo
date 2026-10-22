@@ -105,8 +105,6 @@ class _Results extends StatelessWidget {
       ),
       children: [
         Text(detail.title, style: theme.textTheme.headlineSmall),
-        const SizedBox(height: 2),
-        LtrText(detail.auctionNumber, style: theme.textTheme.bodySmall),
         const SizedBox(height: AppTheme.space4),
 
         // The figures of the auction as a whole.
@@ -285,12 +283,28 @@ class MyResultCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
+            // The winner pays the device's price after the auction's discount, not the full price.
+            // The server sends the exact amount it will charge; an older one does not, and the same
+            // rule is applied here instead.
+            Text(
+              t.devicePrice(Fmt.money(won.prizeValue, won.currency, locale: locale)),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                decoration: TextDecoration.lineThrough,
+              ),
+            ),
+            const SizedBox(height: 2),
             Text(
               t.prizeAmountDue(
-                Fmt.money(won.prizeValue, won.currency, locale: locale),
+                Fmt.money(
+                  won.paymentAmount ??
+                      prizePriceAt(won.prizeValue, detail.currentPrice, detail.originalPrice),
+                  won.currency,
+                  locale: locale,
+                ),
               ),
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             if (won.claimStatus == 'PaymentRequired') ...[
               const SizedBox(height: AppTheme.space4),

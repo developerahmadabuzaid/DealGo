@@ -98,6 +98,16 @@ public class AuctionCompletionTests
             claim.PaymentAmount.Should().Be(Money.Round(prizePrices[claim.PrizeId] / 2));
         }
 
+        // The winners list the app reads says the same: the discounted amount to pay, beside the
+        // full price. Showing the full price as "amount due" told a winner they owed double.
+        var listed = await verify.ServiceProvider.GetRequiredService<IAuctionService>()
+            .GetWinnersAsync(auctionId);
+        foreach (var w in listed)
+        {
+            w.PrizeValue.Should().Be(prizePrices[w.PrizeId]);
+            w.PaymentAmount.Should().Be(Money.Round(prizePrices[w.PrizeId] / 2));
+        }
+
         foreach (var winner in winners)
         {
             var wallet = await db2.Wallets.AsNoTracking()

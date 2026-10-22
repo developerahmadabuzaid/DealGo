@@ -172,7 +172,10 @@ public sealed record WinnerDto(
     decimal PrizeValue,
     string Currency,
     Guid? PrizeClaimId,
-    PrizeClaimStatus? ClaimStatus);
+    PrizeClaimStatus? ClaimStatus,
+    // What the winner pays: PrizeValue with the auction's discount applied. PrizeValue is the
+    // device's full price, shown crossed out beside it.
+    decimal PaymentAmount);
 
 public sealed class AuctionListQuery : PagedQuery
 {

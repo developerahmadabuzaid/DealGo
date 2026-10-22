@@ -174,58 +174,12 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
                     ),
                   ),
 
-                // The product, with its number set on the image rather than stacked above the
-                // title, so the eye reaches the name without stepping over an id first.
-                Stack(
-                  children: [
-                    // The auction's own picture; the first prize's picture when it has none.
-                    RemoteImage(
-                      detail.imageUrl,
-                      height: 210,
-                      width: double.infinity,
-                      radius: AppTheme.radiusLg,
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(
-                            AppTheme.radiusLg,
-                          ),
-                          gradient: const LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [Color(0x73000000), Color(0x00000000)],
-                            stops: [0, 0.5],
-                          ),
-                        ),
-                      ),
-                    ),
-                    PositionedDirectional(
-                      bottom: AppTheme.space3,
-                      start: AppTheme.space3,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(
-                            AppTheme.radiusPill,
-                          ),
-                        ),
-                        child: LtrText(
-                          detail.auctionNumber,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                // The auction's own picture; the first prize's picture when it has none.
+                RemoteImage(
+                  detail.imageUrl,
+                  height: 210,
+                  width: double.infinity,
+                  radius: AppTheme.radiusLg,
                 ),
                 const SizedBox(height: AppTheme.space4),
 
@@ -278,11 +232,12 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
                   ),
                 ],
 
-                // The devices and what each will cost are what someone deciding to join or bid needs.
-                // Once the auction is over that is settled, and the results above say who took what.
-                if (!detail.isComplete &&
-                    detail.status != 'Cancelled' &&
-                    detail.status != 'Expired') ...[
+                // While it is open: the devices large, with what each could cost. Once it has closed:
+                // the same devices as compact cards, at the price their winners now pay.
+                if (detail.isComplete) ...[
+                  const SizedBox(height: 22),
+                  _EndedDeviceList(detail: detail),
+                ] else if (detail.status != 'Cancelled' && detail.status != 'Expired') ...[
                   const SizedBox(height: 22),
                   _PrizeList(detail: detail),
                 ],
@@ -599,6 +554,141 @@ class _ResultsPanel extends ConsumerWidget {
   }
 }
 
+/// A closed auction's devices, laid out like the finished-auctions list: the picture on a dark tile
+/// with its place, the name, and the full price crossed out beside what the winner pays after the
+/// auction's discount.
+class _EndedDeviceList extends StatelessWidget {
+  const _EndedDeviceList({required this.detail});
+
+  final AuctionDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppStrings.of(context);
+    final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final prizes = [...detail.prizes]..sort((a, b) => a.rank.compareTo(b.rank));
+    final discount = discountAt(detail.currentPrice, detail.originalPrice);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${t.prizes} (${prizes.length})',
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 10),
+        for (final p in prizes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppTheme.space3),
+            child: SurfaceCard(
+              padding: const EdgeInsets.all(AppTheme.space3),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      child: Container(
+                        width: 88,
+                        constraints: const BoxConstraints(minHeight: 88),
+                        color: const Color(0xFF0B0C0E),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            RemoteImage(p.imageUrl, height: 88, width: 88, radius: 0),
+                            PositionedDirectional(
+                              top: 6,
+                              start: 6,
+                              child: StatusPill(
+                                t.prizeRank(p.rank),
+                                color: AppTheme.gold,
+                                filled: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppTheme.space3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.productName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const Spacer(),
+                          Divider(height: AppTheme.space3, color: theme.colorScheme.outline),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(t.finalPrice, style: theme.textTheme.labelSmall),
+                                    const SizedBox(height: 2),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: AlignmentDirectional.centerStart,
+                                      child: Text(
+                                        Fmt.money(
+                                          prizePriceAt(
+                                            p.originalPrice,
+                                            detail.currentPrice,
+                                            detail.originalPrice,
+                                          ),
+                                          p.currency,
+                                          locale: locale,
+                                        ),
+                                        style: theme.textTheme.titleSmall?.copyWith(
+                                          color: AppTheme.brand,
+                                          fontWeight: FontWeight.w800,
+                                          fontFeatures: AppTheme.numeric,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: AppTheme.space2),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  if (discount > 0)
+                                    Text(
+                                      t.afterDiscount(Fmt.percent(discount)),
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(color: AppTheme.success),
+                                    ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    Fmt.money(p.originalPrice, p.currency, locale: locale),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      decoration: TextDecoration.lineThrough,
+                                      fontFeatures: AppTheme.numeric,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
 class _PrizeList extends StatelessWidget {
   const _PrizeList({required this.detail});
 
