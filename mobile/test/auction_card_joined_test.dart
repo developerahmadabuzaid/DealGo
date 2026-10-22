@@ -38,12 +38,12 @@ void main() {
   testWidgets('a joined upcoming auction is marked as joined', (tester) async {
     await show(tester, upcoming(joined: true));
     expect(find.text('مشترك'), findsOneWidget);
-    expect(find.text('مزادات قادمة'), findsNothing);
+    expect(find.text('قادم'), findsNothing);
   });
 
   testWidgets('an upcoming auction the user is not in stays upcoming', (tester) async {
     await show(tester, upcoming(joined: false));
-    expect(find.text('مزادات قادمة'), findsOneWidget);
+    expect(find.text('قادم'), findsOneWidget);
     expect(find.text('مشترك'), findsNothing);
   });
 }

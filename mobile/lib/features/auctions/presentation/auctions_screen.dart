@@ -130,6 +130,9 @@ class _AuctionList extends ConsumerWidget {
   }
 }
 
+/// One running or upcoming auction in a list, laid out like a finished one: the picture on a dark
+/// tile with the auction's state across its corner, and beside it the name, the price that matters
+/// now, and one figure of context.
 class AuctionCard extends StatelessWidget {
   const AuctionCard({super.key, required this.auction});
 
@@ -140,190 +143,152 @@ class AuctionCard extends StatelessWidget {
     final t = AppStrings.of(context);
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context).languageCode;
+    final (ribbon, ribbonColor) = _ribbon(context, t);
 
-    final accent = AppTheme.statusColor(
-      theme.brightness,
-      isLive: auction.isLive,
-      isFinal: auction.isFinalPhase,
-    );
+    // Before it starts, what it opens at; once it is running, where it stands now.
+    final priceLabel = auction.isLive ? t.currentPrice : t.startingPrice;
+    final price = auction.isLive ? auction.currentPrice : auction.startingPrice;
 
-    // The price that matters depends on the phase: before it starts, what it opens at; once it
-    // is running, where it stands now.
-    final headlineLabel = auction.isLive ? t.currentPrice : t.startingPrice;
-    final headlineAmount = Fmt.money(
-      auction.isLive ? auction.currentPrice : auction.startingPrice,
-      auction.currency,
-      locale: locale,
-    );
+    // The second figure: how far it can go while it runs, what it costs to join before.
+    final sideLabel = auction.isLive ? t.targetPrice : t.entryFee;
+    final side = auction.isLive ? auction.targetPrice : auction.entryFee;
 
-    return SurfaceCard(
-      padding: EdgeInsets.zero,
-      accent: auction.isLive ? accent : null,
-      onTap: () => context.push(
-          auction.isComplete ? '/auctions/${auction.id}/ended' : '/auctions/${auction.id}'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.radiusLg)),
-            child: Stack(
+    final progress = auction.isLive
+        ? (auction.targetPrice > auction.startingPrice
+            ? ((auction.currentPrice - auction.startingPrice) /
+                    (auction.targetPrice - auction.startingPrice))
+                .clamp(0.0, 1.0)
+            : 1.0)
+        : auction.fillProgress;
+
+    return Stack(
+      children: [
+        SurfaceCard(
+          padding: const EdgeInsets.all(AppTheme.space3),
+          onTap: () => context.push('/auctions/${auction.id}'),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // The auction's own picture; the first prize's picture when it has none.
-                SizedBox(
-                  height: 156,
-                  width: double.infinity,
-                  child: ArtOrPicture(imageUrl: auction.imageUrl, seed: auction.auctionNumber),
-                ),
-
-                // A scrim under the badge so it stays legible over any photograph.
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0x59000000), Color(0x00000000)],
-                        stops: [0, 0.55],
-                      ),
-                    ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  child: Container(
+                    width: 96,
+                    constraints: const BoxConstraints(minHeight: 96),
+                    color: const Color(0xFF0B0C0E),
+                    child: ArtOrPicture(imageUrl: auction.imageUrl, seed: auction.id),
                   ),
                 ),
-
-                PositionedDirectional(top: 12, start: 12, child: _statusPill(context, t)),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(AppTheme.space4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  auction.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  auction.mainProductName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall,
-                ),
-
-                const SizedBox(height: AppTheme.space4),
-
-                // The live price is the one figure that gets size and colour. The other two are
-                // context, so they stay quiet and keep the card from reading as a data table.
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(width: AppTheme.space3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        auction.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        auction.mainProductName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: AppTheme.space2),
+                      Divider(height: 1, color: theme.colorScheme.outline),
+                      const SizedBox(height: AppTheme.space2),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
-                            headlineLabel.toUpperCase(),
-                            style: theme.textTheme.labelSmall
-                                ?.copyWith(fontSize: 10.5, letterSpacing: 0.7),
+                          Expanded(
+                            child: _Figure(
+                              label: priceLabel,
+                              value: Fmt.money(price, auction.currency, locale: locale),
+                              color: auction.isLive ? ribbonColor : AppTheme.brand,
+                            ),
                           ),
-                          const SizedBox(height: 1),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: AlignmentDirectional.centerStart,
-                            child: Text(
-                              headlineAmount,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontSize: 23,
-                                color: auction.isLive ? accent : theme.colorScheme.onSurface,
-                                fontFeatures: AppTheme.numeric,
-                              ),
+                          const SizedBox(width: AppTheme.space2),
+                          Flexible(
+                            child: _Figure(
+                              label: sideLabel,
+                              value: Fmt.money(side, auction.currency, locale: locale),
+                              end: true,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: AppTheme.space2),
-                    Expanded(
-                      flex: 4,
-                      child: Stat(
-                        label: t.targetPrice,
-                        value: Fmt.money(auction.targetPrice, auction.currency, locale: locale),
+                      const SizedBox(height: AppTheme.space2),
+                      // Filling up before it starts; climbing toward the target once it runs.
+                      TargetProgressBar(
+                        progress: progress,
+                        urgent: auction.isFinalPhase,
+                        height: 5,
                       ),
-                    ),
-                    const SizedBox(width: AppTheme.space2),
-                    Expanded(
-                      flex: 4,
-                      child: Stat(
-                        label: t.entryFee,
-                        value: Fmt.money(auction.entryFee, auction.currency, locale: locale),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppTheme.space4),
-
-                // Before the threshold, filling the participant bar is the story. The bar alone:
-                // the app does not show participant numbers.
-                if (auction.acceptsRegistration) ...[
-                  Row(
-                    children: [
-                      Icon(Icons.group_rounded,
-                          size: 15, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 5),
-                      Text(t.participantsFilling, style: theme.textTheme.bodySmall),
                     ],
                   ),
-                  const SizedBox(height: AppTheme.space2),
-                  TargetProgressBar(progress: auction.fillProgress, height: 7),
-                ] else if (auction.isLive) ...[
-                  TargetProgressBar(
-                    progress: auction.targetPrice > auction.startingPrice
-                        ? (auction.currentPrice - auction.startingPrice) /
-                            (auction.targetPrice - auction.startingPrice)
-                        : 1,
-                    urgent: auction.isFinalPhase,
-                    height: 7,
-                  ),
-                ],
+                ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+        PositionedDirectional(
+          top: 0,
+          start: 0,
+          child: ClipRRect(
+            borderRadius: const BorderRadiusDirectional.only(
+              topStart: Radius.circular(AppTheme.radiusLg),
+            ).resolve(Directionality.of(context)),
+            child: CornerRibbon(label: ribbon, size: 58, color: ribbonColor),
+          ),
+        ),
+      ],
     );
   }
 
-  /// The badge carries an icon and a word as well as a colour, so the state is never signalled
-  /// by hue alone.
-  Widget _statusPill(BuildContext context, AppStrings t) {
-    if (auction.isFinalPhase) {
-      return StatusPill(t.finalPhase,
-          color: AppTheme.finalPhase,
-          icon: Icons.local_fire_department_rounded,
-          filled: true,
-          pulse: true);
-    }
-    if (auction.isLive) {
-      return StatusPill(t.liveAuctions,
-          color: AppTheme.live, icon: Icons.circle, filled: true, pulse: true);
-    }
-    if (auction.isComplete) {
-      return StatusPill(t.auctionFinished,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          icon: Icons.check_circle_rounded);
-    }
+  /// The state, as a word and a colour, so it is never signalled by hue alone.
+  (String, Color) _ribbon(BuildContext context, AppStrings t) {
+    if (auction.isFinalPhase) return (t.ribbonFinal, AppTheme.finalPhase);
+    if (auction.isLive) return (t.ribbonLive, AppTheme.live);
     // Not started yet, but the user is already in it: that is the fact worth showing.
-    if (auction.hasJoined) {
-      return StatusPill(t.joinedBadge,
-          color: AppTheme.success, icon: Icons.check_circle_rounded, filled: true);
-    }
-    return StatusPill(t.upcomingAuctions,
-        color: Theme.of(context).colorScheme.primary,
-        icon: Icons.schedule_rounded,
-        filled: true);
+    if (auction.hasJoined) return (t.joinedBadge, AppTheme.success);
+    return (t.ribbonUpcoming, Theme.of(context).colorScheme.primary);
+  }
+}
+
+/// A small label over a figure, as the finished-auction card has them.
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.value, this.color, this.end = false});
+
+  final String label;
+  final String value;
+  final Color? color;
+  final bool end;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: end ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.labelSmall),
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: end ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+          child: Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: color ?? theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w800,
+              fontFeatures: AppTheme.numeric,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

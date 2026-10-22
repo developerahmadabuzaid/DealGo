@@ -243,6 +243,11 @@ class AppStrings {
       'انتهى المزاد عند $price وأنت من الفائزين. تجد جهازك في صفحة أجهزتي لإكمال استلامه.',
       'The auction closed at $price and you are among the winners. Your prize is waiting in My prizes.');
   String get ended => _t('منتهي', 'Ended');
+
+  // The corner ribbons on auction cards: a word each, to fit the band.
+  String get ribbonLive => _t('مباشر', 'Live');
+  String get ribbonFinal => _t('الحسم', 'Final');
+  String get ribbonUpcoming => _t('قادم', 'Soon');
   String get winner => _t('الفائز', 'Winner');
   String get auctionWinner => _t('الفائز بالمزاد', 'Auction winner');
   String get finalPrice => _t('السعر النهائي', 'Final price');
