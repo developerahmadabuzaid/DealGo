@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
@@ -100,15 +99,15 @@ class ProfileScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: Text(t.termsOfUse),
-                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                  onTap: () => openLegalPage(context, AppConfig.termsUrl),
+                  trailing: const Icon(Icons.chevron_left_rounded),
+                  onTap: () => openTerms(context),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.privacy_tip_outlined),
                   title: Text(t.privacyPolicy),
-                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                  onTap: () => openLegalPage(context, AppConfig.privacyUrl),
+                  trailing: const Icon(Icons.chevron_left_rounded),
+                  onTap: () => openTerms(context, privacy: true),
                 ),
               ],
             ),

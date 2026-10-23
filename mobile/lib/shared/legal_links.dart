@@ -1,23 +1,17 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:go_router/go_router.dart';
 
-import '../core/config/app_config.dart';
 import '../core/localization/app_strings.dart';
+import '../features/legal/terms_document.dart';
 
-/// Opens one of the policy pages in the browser, and says so when nothing could open it.
-Future<void> openLegalPage(BuildContext context, String address) async {
-  try {
-    final opened =
-        await launchUrl(Uri.parse(address), mode: LaunchMode.externalApplication);
-    if (opened || !context.mounted) return;
-  } catch (_) {
-    if (!context.mounted) return;
-  }
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(AppStrings.of(context).couldNotOpenLink)),
-  );
+/// Opens the terms and policies inside the app. The privacy policy is a section of the same
+/// document, so [privacy] opens it at that section.
+void openTerms(BuildContext context, {bool privacy = false}) {
+  context.push(Uri(
+    path: '/terms',
+    queryParameters: privacy ? {'section': TermsDocument.privacyHeading} : null,
+  ).toString());
 }
 
 /// "By continuing you agree to the terms of use and the privacy policy", with both linked.
@@ -33,10 +27,8 @@ class LegalConsentText extends StatefulWidget {
 
 class _LegalConsentTextState extends State<LegalConsentText> {
   // Recognizers own gesture state and must be disposed with the widget.
-  late final _terms = TapGestureRecognizer()
-    ..onTap = () => openLegalPage(context, AppConfig.termsUrl);
-  late final _privacy = TapGestureRecognizer()
-    ..onTap = () => openLegalPage(context, AppConfig.privacyUrl);
+  late final _terms = TapGestureRecognizer()..onTap = () => openTerms(context);
+  late final _privacy = TapGestureRecognizer()..onTap = () => openTerms(context, privacy: true);
 
   @override
   void dispose() {

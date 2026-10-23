@@ -30,10 +30,6 @@ class AppConfig {
   /// The brand logo, served as a static file by the API and shared with the admin console.
   static String get logoUrl => '$apiBaseUrl/brand/logo.png';
 
-  /// The policy pages, served by the API beside the landing page.
-  static String get privacyUrl => '$apiBaseUrl/privacy.html';
-  static String get termsUrl => '$apiBaseUrl/terms.html';
-
   /*
    * Turns a stored image path into an address this client can actually fetch.
    *

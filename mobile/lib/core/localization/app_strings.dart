@@ -244,6 +244,11 @@ class AppStrings {
       'The auction closed at $price and you are among the winners. Your prize is waiting in My prizes.');
   String get ended => _t('منتهي', 'Ended');
 
+  // Accepting the terms while creating an account: "I have read [the terms] and agree to them".
+  String get acceptTermsBefore => _t('قرأت ', 'I have read ');
+  String get acceptTermsLink => _t('الشروط والأحكام وسياسة الخصوصية', 'the terms and privacy policy');
+  String get acceptTermsAfter => _t(' وأوافق عليها', ' and agree to them');
+
   // The corner ribbons on auction cards: a word each, to fit the band.
   String get ribbonLive => _t('مباشر', 'Live');
   String get ribbonFinal => _t('الحسم', 'Final');

@@ -13,6 +13,7 @@ import 'features/auctions/presentation/auctions_screen.dart';
 import 'features/auth/presentation/complete_profile_screen.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/home_screen.dart';
+import 'features/legal/terms_screen.dart';
 import 'features/prizes/presentation/prizes_screen.dart';
 import 'features/profile/presentation/profile_screen.dart';
 import 'features/store/presentation/cart_screen.dart';
@@ -107,6 +108,9 @@ GoRouter _router(WidgetRef ref) {
       final atLogin = state.matchedLocation == '/login';
       final atProfile = state.matchedLocation == '/complete-profile';
 
+      // The terms are read before an account exists, from sign-in and from the name step.
+      if (state.matchedLocation == '/terms') return null;
+
       if (!auth.isSignedIn) return atLogin ? null : '/login';
 
       // An account created by phone sign-in has no name until the user gives one.
@@ -120,6 +124,11 @@ GoRouter _router(WidgetRef ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(
           path: '/complete-profile', builder: (_, _) => const CompleteProfileScreen()),
+      GoRoute(
+        path: '/terms',
+        parentNavigatorKey: _rootKey,
+        builder: (_, state) => TermsScreen(section: state.uri.queryParameters['section']),
+      ),
 
       // The five main tabs, per the specification's navigation.
       StatefulShellRoute.indexedStack(

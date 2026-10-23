@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,12 +7,14 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/brand.dart';
+import '../../../shared/legal_links.dart';
 import '../../../shared/widgets.dart';
 
-/// Asks a newly created account for its name.
+/// Asks a newly created account for its name, and for its agreement to the terms.
 ///
 /// An account made by verifying a new phone number starts with no name. The router keeps the
-/// user here until one is saved, so every account that reaches the app has a name.
+/// user here until one is saved, so every account that reaches the app has a name, and nobody
+/// gets past this step without ticking that they have read and accept the terms.
 class CompleteProfileScreen extends ConsumerStatefulWidget {
   const CompleteProfileScreen({super.key});
 
@@ -21,19 +24,22 @@ class CompleteProfileScreen extends ConsumerStatefulWidget {
 
 class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   final _name = TextEditingController();
+  late final _readTerms = TapGestureRecognizer()..onTap = () => openTerms(context);
 
+  bool _accepted = false;
   String? _error;
   bool _busy = false;
 
   @override
   void dispose() {
     _name.dispose();
+    _readTerms.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty || !_accepted) return;
 
     setState(() {
       _busy = true;
@@ -108,9 +114,43 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                               textAlign: TextAlign.center,
                               style: TextStyle(color: theme.colorScheme.error)),
                         ],
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
+                        // Unticked by default: agreement has to be given, not assumed.
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Checkbox(
+                              value: _accepted,
+                              onChanged: _busy
+                                  ? null
+                                  : (v) => setState(() => _accepted = v ?? false),
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Text.rich(
+                                  TextSpan(children: [
+                                    TextSpan(text: t.acceptTermsBefore),
+                                    TextSpan(
+                                      text: t.acceptTermsLink,
+                                      recognizer: _readTerms,
+                                      style: TextStyle(
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.w700,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                    TextSpan(text: t.acceptTermsAfter),
+                                  ]),
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
                         FilledButton(
-                          onPressed: _busy || _name.text.trim().isEmpty ? null : _save,
+                          onPressed: _busy || _name.text.trim().isEmpty || !_accepted ? null : _save,
                           child: _busy
                               ? const SizedBox(
                                   height: 20, width: 20,
