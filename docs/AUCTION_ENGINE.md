@@ -247,7 +247,7 @@ Rank 4 → Prize 4
 ```
 
 Each winner gets a `PrizeClaim` in `PaymentRequired` with `PaymentAmount` = the prize's snapshot
-value and a deadline of `PrizeClaimPaymentDays`. **Winning grants the right to the prize, not the
+value and a deadline of `PrizeClaimPaymentHours` (24 hours, as the terms of use state). **Winning grants the right to the prize, not the
 prize itself** — the value is still owed, and it is paid from the Main wallet only.
 
 ## Entry fee refunds

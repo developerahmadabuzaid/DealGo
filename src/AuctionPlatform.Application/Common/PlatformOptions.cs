@@ -29,8 +29,11 @@ public sealed class AuctionOptions
 
     public string DefaultCurrency { get; set; } = Money.DefaultCurrency;
 
-    /// <summary>Days a winner has to pay for their prize before the claim expires.</summary>
-    public int PrizeClaimPaymentDays { get; set; } = 7;
+    /// <summary>
+    /// Hours a winner has to pay for their device, counted from when the auction closes. The terms
+    /// of use promise 24; change both together.
+    /// </summary>
+    public int PrizeClaimPaymentHours { get; set; } = 24;
 
     /// <summary>Maximum bids a single participant may submit per second.</summary>
     public int BidRateLimitPerSecond { get; set; } = 5;

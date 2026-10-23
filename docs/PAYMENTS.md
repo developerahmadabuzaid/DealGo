@@ -30,7 +30,7 @@ COMMIT
 ## Prize payment
 
 Winning grants the right to a prize, not the prize itself. Each winner gets a `PrizeClaim` in
-`PaymentRequired` for the prize's snapshot value, with a deadline of `PrizeClaimPaymentDays`.
+`PaymentRequired` for the prize's snapshot value, with a deadline of `PrizeClaimPaymentHours` (24 hours, as the terms of use state).
 
 ```text
 Winner declared → PrizeClaim (PaymentRequired) → user pays → Paid → Claimed → Fulfilled

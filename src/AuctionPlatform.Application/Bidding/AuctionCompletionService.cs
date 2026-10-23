@@ -164,7 +164,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 Currency = auction.Currency,
                 CreatedAt = now,
                 PaymentRequiredAt = now,
-                PaymentDeadlineAt = now.AddDays(_options.PrizeClaimPaymentDays)
+                PaymentDeadlineAt = now.AddHours(_options.PrizeClaimPaymentHours)
             };
 
             winner.PrizeClaimId = claim.Id;

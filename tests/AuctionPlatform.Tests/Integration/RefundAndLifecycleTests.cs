@@ -87,6 +87,10 @@ public class AuctionCompletionTests
         claims.Should().OnlyContain(c => c.Status == PrizeClaimStatus.PaymentRequired);
         claims.Should().OnlyContain(c => c.PaymentAmount > 0);
 
+        // The terms of use give a winner 24 hours to pay.
+        claims.Should().OnlyContain(c =>
+            c.PaymentDeadlineAt != null && c.PaymentDeadlineAt.Value - c.CreatedAt == TimeSpan.FromHours(24));
+
         // The auction closed at 2500 on a 5000 value, so every prize, not only the first, is
         // owed at half its price.
         var prizePrices = await db2.AuctionPrizes.AsNoTracking()
