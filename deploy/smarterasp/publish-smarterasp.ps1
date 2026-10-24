@@ -150,6 +150,28 @@ $webConfig = $webConfig.Replace('__PAYMENT_WEBHOOK_SECRET__', $PaymentWebhookSec
 $webConfig = $webConfig.Replace('__BOOTSTRAP_ADMIN_EMAIL__', $bootstrapAdminEmail)
 $webConfig = $webConfig.Replace('__BOOTSTRAP_ADMIN_PHONE__', $bootstrapAdminPhone)
 
+# Phone numbers that sign in with a fixed code and no SMS: for store reviewers and for testing from
+# outside Saudi Arabia. Set as $OtpTestAccounts in local-secrets.ps1, number => code, so the codes
+# never enter the repository. Sign-in only: withdrawals and payments still need a real SMS.
+$testAccountLines = @()
+if ($OtpTestAccounts) {
+    foreach ($number in ($OtpTestAccounts.Keys | Sort-Object)) {
+        $digits = ($number -replace '\D', '')
+        $code = "$($OtpTestAccounts[$number])".Trim()
+        if ($digits -notmatch '^0?5\d{8}$' -and $digits -notmatch '^9665\d{8}$') {
+            throw "OtpTestAccounts: '$number' is not a Saudi mobile number such as 0500000001."
+        }
+        if ($code -notmatch '^\d{4,8}$') {
+            throw "OtpTestAccounts: the code for $number must be 4 to 8 digits; the server ignores any other."
+        }
+        $testAccountLines += "<environmentVariable name=""Otp__TestAccounts__$digits"" value=""$code"" />"
+    }
+}
+$marker = '<!-- __OTP_TEST_ACCOUNTS__ -->'
+$markerLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($marker) } | Select-Object -First 1
+$indent = if ($markerLine) { $markerLine.Substring(0, $markerLine.IndexOf($marker)) } else { '' }
+$webConfig = $webConfig.Replace($marker, ($testAccountLines -join "`n$indent"))
+
 # Read from the template, written out under the name the application loads. The two names differ
 # on purpose: .gitignore already excludes any appsettings.Production.json, which is right for the
 # uploaded file and wrong for a template that holds nothing secret.
