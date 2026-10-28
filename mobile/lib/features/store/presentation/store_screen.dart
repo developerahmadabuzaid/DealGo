@@ -1228,6 +1228,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
+        // A snack bar with a button stays up until dismissed unless told otherwise, and this one
+        // followed the user back to the store list. A quick confirmation is all it needs to be.
+        duration: const Duration(seconds: 2),
+        persist: false,
         content: Row(
           children: [
             const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 20),
