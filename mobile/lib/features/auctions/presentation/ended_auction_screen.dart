@@ -13,6 +13,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/art_fallback.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
+import 'auction_devices_strip.dart';
 
 /// The red band across the corner of anything that has closed.
 class CornerRibbon extends StatelessWidget {
@@ -102,119 +103,131 @@ class EndedAuctionCard extends StatelessWidget {
         SurfaceCard(
           padding: const EdgeInsets.all(AppTheme.space3),
           onTap: () => context.push('/auctions/${auction.id}/ended'),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // The picture, on a dark ground so a product shot on black or white both sit well.
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                  child: Container(
-                    width: 96,
-                    constraints: const BoxConstraints(minHeight: 96),
-                    color: const Color(0xFF0B0C0E),
-                    child: ArtOrPicture(
-                      imageUrl: auction.imageUrl,
-                      seed: auction.auctionNumber,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppTheme.space3),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        auction.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // The picture, on a dark ground so a product shot on black or white both sit well.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      child: Container(
+                        width: 96,
+                        constraints: const BoxConstraints(minHeight: 96),
+                        color: const Color(0xFF0B0C0E),
+                        child: ArtOrPicture(
+                          imageUrl: auction.imageUrl,
+                          seed: auction.auctionNumber,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        auction.mainProductName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: AppTheme.space2),
-                      Divider(height: 1, color: theme.colorScheme.outline),
-                      const SizedBox(height: AppTheme.space2),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                    ),
+                    const SizedBox(width: AppTheme.space3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  t.finalPrice,
-                                  style: theme.textTheme.labelSmall,
-                                ),
-                                const SizedBox(height: 2),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: AlignmentDirectional.centerStart,
-                                  child: Text(
-                                    Fmt.money(
-                                      auction.currentPrice,
-                                      auction.currency,
-                                      locale: locale,
-                                    ),
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      color: AppTheme.brand,
-                                      fontWeight: FontWeight.w800,
-                                      fontFeatures: AppTheme.numeric,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          Text(
+                            auction.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(width: AppTheme.space2),
-                          Flexible(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
+                          const SizedBox(height: 2),
+                          Text(
+                            auction.mainProductName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: AppTheme.space2),
+                          Divider(height: 1, color: theme.colorScheme.outline),
+                          const SizedBox(height: AppTheme.space2),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(
-                                      Icons.workspace_premium_rounded,
-                                      size: 15,
-                                      color: Color(0xFFE9B10A),
-                                    ),
-                                    const SizedBox(width: 3),
                                     Text(
-                                      t.winner,
+                                      t.finalPrice,
                                       style: theme.textTheme.labelSmall,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment:
+                                          AlignmentDirectional.centerStart,
+                                      child: Text(
+                                        Fmt.money(
+                                          auction.currentPrice,
+                                          auction.currency,
+                                          locale: locale,
+                                        ),
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              color: AppTheme.brand,
+                                              fontWeight: FontWeight.w800,
+                                              fontFeatures: AppTheme.numeric,
+                                            ),
+                                      ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  winner == null
-                                      ? t.noWinner
-                                      : Fmt.name(winner),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
+                              ),
+                              const SizedBox(width: AppTheme.space2),
+                              Flexible(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.workspace_premium_rounded,
+                                          size: 15,
+                                          color: Color(0xFFE9B10A),
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          t.winner,
+                                          style: theme.textTheme.labelSmall,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      winner == null
+                                          ? t.noWinner
+                                          : Fmt.name(winner),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            color: theme.colorScheme.onSurface,
+                                          ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+              ),
+              if (auction.prizes.isNotEmpty) ...[
+                const SizedBox(height: AppTheme.space3),
+                AuctionDevicesStrip(prizes: auction.prizes),
               ],
-            ),
+            ],
           ),
         ),
         PositionedDirectional(

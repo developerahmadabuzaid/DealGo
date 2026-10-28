@@ -11,6 +11,7 @@ import '../../../shared/auto_refresh.dart';
 import '../../../shared/art_fallback.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
+import 'auction_devices_strip.dart';
 import 'ended_auction_screen.dart';
 
 class AuctionsScreen extends ConsumerStatefulWidget {
@@ -19,7 +20,11 @@ class AuctionsScreen extends ConsumerStatefulWidget {
   /// Which list opens first: `live`, `upcoming` or `completed`.
   final String? initialTab;
 
-  static int _indexOf(String? tab) => switch (tab) { 'upcoming' => 1, 'completed' => 2, _ => 0 };
+  static int _indexOf(String? tab) => switch (tab) {
+    'upcoming' => 1,
+    'completed' => 2,
+    _ => 0,
+  };
 
   @override
   ConsumerState<AuctionsScreen> createState() => _AuctionsScreenState();
@@ -28,13 +33,17 @@ class AuctionsScreen extends ConsumerStatefulWidget {
 class _AuctionsScreenState extends ConsumerState<AuctionsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(
-      length: 3, vsync: this, initialIndex: AuctionsScreen._indexOf(widget.initialTab));
+    length: 3,
+    vsync: this,
+    initialIndex: AuctionsScreen._indexOf(widget.initialTab),
+  );
 
   @override
   void didUpdateWidget(covariant AuctionsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Opened again from a link that names a list, while this tab was already alive.
-    if (widget.initialTab != null && widget.initialTab != oldWidget.initialTab) {
+    if (widget.initialTab != null &&
+        widget.initialTab != oldWidget.initialTab) {
       _tabs.animateTo(AuctionsScreen._indexOf(widget.initialTab));
     }
   }
@@ -91,7 +100,11 @@ class _AuctionList extends ConsumerWidget {
       // Cards in outline, so the list does not jump when the real ones arrive.
       loading: () => ListView.separated(
         padding: const EdgeInsets.fromLTRB(
-            AppTheme.space4, AppTheme.space4, AppTheme.space4, AppTheme.space8),
+          AppTheme.space4,
+          AppTheme.space4,
+          AppTheme.space4,
+          AppTheme.space8,
+        ),
         itemCount: 3,
         separatorBuilder: (_, _) => const SizedBox(height: AppTheme.space3),
         itemBuilder: (_, _) => const SkeletonCard(),
@@ -112,7 +125,11 @@ class _AuctionList extends ConsumerWidget {
           onRefresh: () async => ref.invalidate(auctionListProvider(group)),
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(
-                AppTheme.space4, AppTheme.space4, AppTheme.space4, AppTheme.space8),
+              AppTheme.space4,
+              AppTheme.space4,
+              AppTheme.space4,
+              AppTheme.space8,
+            ),
             itemCount: paged.items.length,
             separatorBuilder: (_, _) => const SizedBox(height: AppTheme.space3),
             itemBuilder: (context, i) => group == 'completed'
@@ -155,10 +172,10 @@ class AuctionCard extends StatelessWidget {
 
     final progress = auction.isLive
         ? (auction.targetPrice > auction.startingPrice
-            ? ((auction.currentPrice - auction.startingPrice) /
-                    (auction.targetPrice - auction.startingPrice))
-                .clamp(0.0, 1.0)
-            : 1.0)
+              ? ((auction.currentPrice - auction.startingPrice) /
+                        (auction.targetPrice - auction.startingPrice))
+                    .clamp(0.0, 1.0)
+              : 1.0)
         : auction.fillProgress;
 
     return Stack(
@@ -166,72 +183,96 @@ class AuctionCard extends StatelessWidget {
         SurfaceCard(
           padding: const EdgeInsets.all(AppTheme.space3),
           onTap: () => context.push('/auctions/${auction.id}'),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                  child: Container(
-                    width: 96,
-                    constraints: const BoxConstraints(minHeight: 96),
-                    color: const Color(0xFF0B0C0E),
-                    child: ArtOrPicture(imageUrl: auction.imageUrl, seed: auction.id),
-                  ),
-                ),
-                const SizedBox(width: AppTheme.space3),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        auction.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      child: Container(
+                        width: 96,
+                        constraints: const BoxConstraints(minHeight: 96),
+                        color: const Color(0xFF0B0C0E),
+                        child: ArtOrPicture(
+                          imageUrl: auction.imageUrl,
+                          seed: auction.id,
+                        ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        auction.mainProductName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: AppTheme.space2),
-                      Divider(height: 1, color: theme.colorScheme.outline),
-                      const SizedBox(height: AppTheme.space2),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                    ),
+                    const SizedBox(width: AppTheme.space3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: _Figure(
-                              label: priceLabel,
-                              value: Fmt.money(price, auction.currency, locale: locale),
-                              color: auction.isLive ? ribbonColor : AppTheme.brand,
+                          Text(
+                            auction.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(width: AppTheme.space2),
-                          Flexible(
-                            child: _Figure(
-                              label: sideLabel,
-                              value: Fmt.money(side, auction.currency, locale: locale),
-                              end: true,
-                            ),
+                          const SizedBox(height: 2),
+                          Text(
+                            auction.mainProductName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: AppTheme.space2),
+                          Divider(height: 1, color: theme.colorScheme.outline),
+                          const SizedBox(height: AppTheme.space2),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: _Figure(
+                                  label: priceLabel,
+                                  value: Fmt.money(
+                                    price,
+                                    auction.currency,
+                                    locale: locale,
+                                  ),
+                                  color: auction.isLive
+                                      ? ribbonColor
+                                      : AppTheme.brand,
+                                ),
+                              ),
+                              const SizedBox(width: AppTheme.space2),
+                              Flexible(
+                                child: _Figure(
+                                  label: sideLabel,
+                                  value: Fmt.money(
+                                    side,
+                                    auction.currency,
+                                    locale: locale,
+                                  ),
+                                  end: true,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: AppTheme.space2),
+                          // Filling up before it starts; climbing toward the target once it runs.
+                          TargetProgressBar(
+                            progress: progress,
+                            urgent: auction.isFinalPhase,
+                            height: 5,
                           ),
                         ],
                       ),
-                      const SizedBox(height: AppTheme.space2),
-                      // Filling up before it starts; climbing toward the target once it runs.
-                      TargetProgressBar(
-                        progress: progress,
-                        urgent: auction.isFinalPhase,
-                        height: 5,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+              ),
+              if (auction.prizes.isNotEmpty) ...[
+                const SizedBox(height: AppTheme.space3),
+                AuctionDevicesStrip(prizes: auction.prizes),
               ],
-            ),
+            ],
           ),
         ),
         PositionedDirectional(
@@ -260,7 +301,12 @@ class AuctionCard extends StatelessWidget {
 
 /// A small label over a figure, as the finished-auction card has them.
 class _Figure extends StatelessWidget {
-  const _Figure({required this.label, required this.value, this.color, this.end = false});
+  const _Figure({
+    required this.label,
+    required this.value,
+    this.color,
+    this.end = false,
+  });
 
   final String label;
   final String value;
@@ -272,13 +318,17 @@ class _Figure extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Column(
-      crossAxisAlignment: end ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: end
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         Text(label, style: theme.textTheme.labelSmall),
         const SizedBox(height: 2),
         FittedBox(
           fit: BoxFit.scaleDown,
-          alignment: end ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+          alignment: end
+              ? AlignmentDirectional.centerEnd
+              : AlignmentDirectional.centerStart,
           child: Text(
             value,
             style: theme.textTheme.titleSmall?.copyWith(

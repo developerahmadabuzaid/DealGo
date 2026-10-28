@@ -38,7 +38,12 @@ public sealed record AuctionListItemDto(
     DateTime? FinishedAt = null,
     // Whether the signed-in user is a participant, so a list can mark the auctions they are in.
     // Always false for an anonymous request.
-    bool HasJoined = false);
+    bool HasJoined = false,
+    // The devices the auction awards, by place, so a list can show them under each auction.
+    IReadOnlyList<AuctionListPrizeDto>? Prizes = null);
+
+/// <summary>One device an auction awards, as a list shows it: its place, name and picture.</summary>
+public sealed record AuctionListPrizeDto(int Rank, string Name, string? ImageUrl, decimal OriginalPrice);
 
 /// <summary>One accepted bid, as the public bid log of an auction shows it. Names are masked.</summary>
 public sealed record BidHistoryEntryDto(

@@ -126,7 +126,12 @@ public sealed class AuctionService : IAuctionService
                     : null,
                 // The same test the auction page uses: any participant row of theirs.
                 HasJoined = userId != null &&
-                            _db.AuctionParticipants.Any(p => p.AuctionId == a.Id && p.UserId == userId)
+                            _db.AuctionParticipants.Any(p => p.AuctionId == a.Id && p.UserId == userId),
+                // Read in the same query rather than one request per card.
+                Prizes = a.Prizes
+                    .OrderBy(p => p.Rank)
+                    .Select(p => new { p.Rank, p.ProductNameSnapshot, p.ProductImageSnapshot, p.OriginalPrice })
+                    .ToList()
             })
             .ToListAsync(ct);
 
@@ -141,7 +146,11 @@ public sealed class AuctionService : IAuctionService
             a.CoverImageUrl, a.IsFeatured,
             a.WinnerName is null ? null : BidService.MaskName(a.WinnerName),
             a.FinishedAt,
-            a.HasJoined)).ToList();
+            a.HasJoined,
+            a.Prizes
+                .Select(p => new AuctionListPrizeDto(
+                    p.Rank, p.ProductNameSnapshot, p.ProductImageSnapshot, p.OriginalPrice))
+                .ToList())).ToList();
 
         return PagedResult<AuctionListItemDto>.Create(items, query.Page, query.PageSize, total);
     }

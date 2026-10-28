@@ -53,6 +53,7 @@ class AuctionSummary {
     this.winnerName,
     this.finishedAt,
     this.hasJoined = false,
+    this.prizes = const [],
   });
 
   final String id;
@@ -74,6 +75,9 @@ class AuctionSummary {
 
   /// The signed-in user is a participant.
   final bool hasJoined;
+
+  /// The devices the auction awards, by place, for the strip under its card.
+  final List<AuctionListPrize> prizes;
 
   final double originalPrice;
   final double startingPrice;
@@ -125,6 +129,32 @@ class AuctionSummary {
         winnerName: j['winnerName'] as String?,
         finishedAt: _date(j['finishedAt']),
         hasJoined: j['hasJoined'] as bool? ?? false,
+        prizes: [
+          for (final p in (j['prizes'] as List?) ?? const [])
+            AuctionListPrize.fromJson(p as Map<String, dynamic>),
+        ]..sort((a, b) => a.rank.compareTo(b.rank)),
+      );
+}
+
+/// One device an auction awards, as a list shows it.
+class AuctionListPrize {
+  const AuctionListPrize({
+    required this.rank,
+    required this.name,
+    required this.imageUrl,
+    required this.originalPrice,
+  });
+
+  final int rank;
+  final String name;
+  final String? imageUrl;
+  final double originalPrice;
+
+  factory AuctionListPrize.fromJson(Map<String, dynamic> j) => AuctionListPrize(
+        rank: j['rank'] as int? ?? 0,
+        name: j['name'] as String? ?? '',
+        imageUrl: j['imageUrl'] as String?,
+        originalPrice: _num(j['originalPrice']),
       );
 }
 
