@@ -73,6 +73,9 @@ public sealed class SiteContentConfiguration : IEntityTypeConfiguration<SiteCont
         b.Property(s => s.SnapchatUrl).HasMaxLength(1024);
         b.Property(s => s.WhatsappUrl).HasMaxLength(1024);
 
+        b.Property(s => s.SupportWhatsapp).HasMaxLength(32).IsRequired()
+            .HasDefaultValue(SiteContent.DefaultSupportWhatsapp);
+
         b.Property(s => s.MetaTitle).HasMaxLength(200);
         b.Property(s => s.MetaDescription).HasMaxLength(500);
     }

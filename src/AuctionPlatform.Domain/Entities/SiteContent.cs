@@ -109,6 +109,17 @@ public class SiteContent : AuditableEntity
     public string? SnapchatUrl { get; set; }
     public string? WhatsappUrl { get; set; }
 
+    // ------------------------------------------------------------------ support
+
+    /// <summary>
+    /// The WhatsApp number the app's support button opens a chat with, in international form
+    /// ("+966…"). Kept apart from <see cref="WhatsappUrl"/>, which is the landing page's social
+    /// link: the support line is answered by staff and may well be a different number.
+    /// </summary>
+    public string SupportWhatsapp { get; set; } = DefaultSupportWhatsapp;
+
+    public const string DefaultSupportWhatsapp = "+966533851110";
+
     // ------------------------------------------------------------------ search engines
 
     public string? MetaTitle { get; set; }

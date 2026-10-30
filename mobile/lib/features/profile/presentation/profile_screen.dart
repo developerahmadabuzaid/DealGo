@@ -11,6 +11,7 @@ import '../../../shared/legal_links.dart';
 import '../../../shared/otp_input.dart';
 import '../../../shared/widgets.dart';
 import '../../auth/data/auth_repository.dart' show OtpChallenge;
+import '../../support/support.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -91,6 +92,18 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () => context.push('/notifications'),
                 ),
               ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Card(
+            child: ListTile(
+              leading: const WhatsAppIcon(),
+              title: Text(t.whatsappSupport),
+              subtitle: Text(t.whatsappSupportHint),
+              trailing: const Icon(Icons.chevron_left_rounded),
+              onTap: () => openWhatsAppSupport(context, ref),
             ),
           ),
 

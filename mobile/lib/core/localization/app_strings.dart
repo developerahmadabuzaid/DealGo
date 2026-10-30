@@ -416,6 +416,9 @@ class AppStrings {
   String get inStock => _t('متوفر', 'In stock');
   String get myOrders => _t('طلباتي', 'My orders');
   String get privacyPolicy => _t('سياسة الخصوصية', 'Privacy policy');
+  String get whatsappSupport => _t('الدعم عبر واتساب', 'WhatsApp support');
+  String get whatsappSupportHint =>
+      _t('تواصل مع فريق الدعم مباشرة', 'Chat with the support team');
   String get termsOfUse => _t('الشروط والأحكام', 'Terms of use');
   String get agreeToTermsPrefix =>
       _t('بالمتابعة فإنك توافق على', 'By continuing you agree to the');

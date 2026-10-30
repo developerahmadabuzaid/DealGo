@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/auth/data/auth_repository.dart';
 import '../features/auctions/data/auction_repository.dart';
 import '../features/home/data/ads_repository.dart';
+import '../features/support/support.dart';
 import '../features/prizes/data/prize_repository.dart';
 import '../features/store/data/store_repository.dart';
 import '../features/wallets/data/wallet_repository.dart';
@@ -49,6 +50,9 @@ final storeRepositoryProvider =
     Provider((ref) => StoreRepository(ref.watch(apiClientProvider)));
 
 final adsRepositoryProvider = Provider((ref) => AdsRepository(ref.watch(apiClientProvider)));
+
+final supportRepositoryProvider =
+    Provider((ref) => SupportRepository(ref.watch(apiClientProvider)));
 
 final prizeRepositoryProvider =
     Provider((ref) => PrizeRepository(ref.watch(apiClientProvider)));
@@ -252,6 +256,11 @@ final auctionListProvider = FutureProvider.autoDispose
 /// the front page: with none, the app advertises the auctions and products it already has.
 final appAdsProvider = FutureProvider.autoDispose(
     (ref) => ref.watch(adsRepositoryProvider).list());
+
+/// The WhatsApp number support answers on. Read when the button is tapped, so a number changed in
+/// the console reaches the app without an update.
+final supportWhatsappProvider = FutureProvider.autoDispose(
+    (ref) => ref.watch(supportRepositoryProvider).whatsappNumber());
 
 /// The auctions an administrator picked out for the front page.
 final featuredAuctionsProvider = FutureProvider.autoDispose(

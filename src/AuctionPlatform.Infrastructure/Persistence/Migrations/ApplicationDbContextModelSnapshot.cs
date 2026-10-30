@@ -1493,6 +1493,13 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
+                    b.Property<string>("SupportWhatsapp")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("+966533851110");
+
                     b.Property<string>("TermsUrl")
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");

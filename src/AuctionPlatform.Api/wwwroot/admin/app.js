@@ -341,6 +341,11 @@ const AR = {
 
   // wallets and users
   'Withdrawals': 'طلبات السحب',
+
+  // support
+  'Support': 'الدعم الفني', 'WhatsApp support': 'دعم واتساب', 'WhatsApp number': 'رقم واتساب',
+  'Support number saved.': 'تم حفظ رقم الدعم.', 'Save number': 'حفظ الرقم',
+  'Open chat': 'فتح المحادثة',
   'Bank transfers waiting to be made. The money has already left the user’s wallet.':
     'تحويلات بنكية بانتظار التنفيذ. المبلغ خُصم من محفظة المستخدم عند الطلب.',
   'To pay': 'بانتظار الدفع', 'Paid': 'مدفوعة', 'Refused': 'مرفوضة', 'All': 'الكل',
@@ -425,6 +430,7 @@ const ICONS = {
   help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.7 9.6a2.4 2.4 0 1 1 3.1 2.6c-.6.2-.8.7-.8 1.3v.4"/><path d="M12 17.2h.01"/>',
   image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.2"/><circle cx="8.7" cy="9.7" r="1.5"/><path d="m4.2 17.4 4.8-4.4 3.2 2.9 2.8-2.4 4.6 4"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.8h.01"/>',
+  chat: '<path d="M12 3.5a8.5 8.5 0 0 0-7.4 12.7L3.5 20.5l4.4-1.1A8.5 8.5 0 1 0 12 3.5z"/><path d="M9 9.2c0 3 2.4 5.6 5.6 5.8l1.1-1.3-1.7-.9-.8.8a4 4 0 0 1-2.2-2.2l.8-.8-.9-1.7z"/>',
   arrowUp: '<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>',
   arrowDown: '<path d="M12 5v14"/><path d="m6 13 6 6 6-6"/>',
 };
@@ -985,6 +991,10 @@ const NAV = [
     ],
   },
   {
+    group: 'Support',
+    items: [{ id: 'support', label: 'WhatsApp support', icon: 'chat' }],
+  },
+  {
     group: 'System',
     items: [
       { id: 'users', label: 'Users', icon: 'users' },
@@ -1081,6 +1091,7 @@ function routeView(route) {
     'site-testimonials': viewSiteTestimonials,
     'site-faqs': viewSiteFaqs,
     'app-ads': viewAppAds,
+    'support': viewSupport,
     'users': viewUsers,
     'audit': viewAudit,
   };
@@ -3985,6 +3996,44 @@ async function viewStoreSettings() {
         'Credit is only ever expired through an explicit ledger entry, so a balance always matches its history.')),
 
     h('div', { class: 'card' }, h('button', { class: 'btn', onclick: save }, 'Save settings')));
+}
+
+// ---------------------------------------------------------------- support
+
+/*
+ * The support line. The app's WhatsApp button opens a chat with this number; the server keeps it
+ * in one form, +9665XXXXXXXX, whatever way it was typed here.
+ */
+async function viewSupport() {
+  const s = await api('/admin/support');
+
+  const input = h('input', { type: 'tel', dir: 'ltr', value: s.whatsappNumber, placeholder: '05XXXXXXXX' });
+  const link = h('a', { class: 'btn ghost', target: '_blank', rel: 'noopener' }, 'Open chat');
+  const setLink = (n) => { link.href = `https://wa.me/${String(n).replace(/\D/g, '')}`; };
+  setLink(s.whatsappNumber);
+
+  const save = async () => {
+    try {
+      const saved = await api('/admin/support', {
+        method: 'PUT',
+        body: JSON.stringify({ whatsappNumber: input.value }),
+      });
+      input.value = saved.whatsappNumber;
+      setLink(saved.whatsappNumber);
+      toast('Support number saved.', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  };
+
+  return h('div', {},
+    pageHead('WhatsApp support', 'الرقم الذي يفتحه زر واتساب في التطبيق للتواصل مع الدعم.'),
+    h('div', { class: 'card' },
+      h('div', { class: 'field' },
+        h('label', {}, 'WhatsApp number'),
+        input,
+        h('div', { class: 'hint' }, 'رقم جوال سعودي، مثل 0533851110 أو ‎+966533851110.')),
+      h('div', { style: 'display:flex;gap:8px;margin-top:12px' },
+        h('button', { class: 'btn', onclick: save }, 'Save number'),
+        link)));
 }
 
 // ---------------------------------------------------------------- finance

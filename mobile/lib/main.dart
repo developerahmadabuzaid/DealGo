@@ -18,6 +18,7 @@ import 'features/prizes/presentation/prizes_screen.dart';
 import 'features/profile/presentation/profile_screen.dart';
 import 'features/store/presentation/cart_screen.dart';
 import 'features/store/presentation/store_screen.dart';
+import 'features/support/support.dart';
 import 'features/wallets/presentation/wallet_screen.dart';
 import 'shared/app_header.dart';
 
@@ -237,6 +238,8 @@ class _MainShell extends ConsumerWidget {
     return Scaffold(
       // One bar for the whole app: it is drawn above the tabs' own pages and never scrolls away.
       body: Column(children: [const AppHeader(), Expanded(child: shell)]),
+      // Support is one tap away on every tab.
+      floatingActionButton: const WhatsAppSupportButton(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),

@@ -43,5 +43,8 @@ public enum AuditActionType
     WithdrawalPaid = 27,
 
     /// <summary>Staff refused a withdrawal; the amount went back to the user's main wallet.</summary>
-    WithdrawalRejected = 28
+    WithdrawalRejected = 28,
+
+    /// <summary>The support WhatsApp number shown in the app was changed.</summary>
+    SupportSettingsChanged = 29
 }
