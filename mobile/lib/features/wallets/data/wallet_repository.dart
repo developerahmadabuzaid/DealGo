@@ -110,13 +110,27 @@ class WalletRepository {
     return Paged.fromJson(data as Map<String, dynamic>, WalletTransaction.fromJson);
   }
 
-  Future<void> deposit(double amount, String idempotencyKey) =>
-      _api.post('/wallet/deposit', body: {
-        'amount': amount,
-        'currency': null,
-        'provider': 'SANDBOX',
-        'idempotencyKey': idempotencyKey,
-      });
+  /// Opens a card, mada or Apple Pay payment for a top-up, and returns the page to pay it on. The
+  /// wallet is credited when Paymob confirms the payment to the server, never by this call.
+  Future<TopUp> startTopUp(double amount) async {
+    final data = await _api.post('/wallet/topups', body: {'amount': amount});
+    final j = data as Map<String, dynamic>;
+    return TopUp(
+      paymentId: j['paymentId'] as String,
+      amount: (j['amount'] as num).toDouble(),
+      currency: j['currency'] as String? ?? 'SAR',
+      checkoutUrl: j['checkoutUrl'] as String,
+    );
+  }
+
+  /// "Pending", "Processing", "Completed" or "Failed", as the server last heard from Paymob.
+  Future<TopUpStatus> topUpStatus(String paymentId) async {
+    final j = await _api.get('/wallet/topups/$paymentId') as Map<String, dynamic>;
+    return TopUpStatus(
+      status: j['status'] as String? ?? 'Pending',
+      failureReason: j['failureReason'] as String?,
+    );
+  }
 
   /// Sends the code that confirms a specific withdrawal.
   ///
@@ -147,4 +161,28 @@ class WalletRepository {
         'destination': destination,
         'otpCode': otpCode,
       });
+}
+
+class TopUp {
+  const TopUp({
+    required this.paymentId,
+    required this.amount,
+    required this.currency,
+    required this.checkoutUrl,
+  });
+
+  final String paymentId;
+  final double amount;
+  final String currency;
+  final String checkoutUrl;
+}
+
+class TopUpStatus {
+  const TopUpStatus({required this.status, this.failureReason});
+
+  final String status;
+  final String? failureReason;
+
+  bool get isDone => status == 'Completed';
+  bool get isFailed => status == 'Failed' || status == 'Cancelled';
 }

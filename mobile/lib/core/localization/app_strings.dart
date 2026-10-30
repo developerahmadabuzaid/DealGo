@@ -249,6 +249,23 @@ class AppStrings {
   String get acceptTermsLink => _t('الشروط والأحكام وسياسة الخصوصية', 'the terms and privacy policy');
   String get acceptTermsAfter => _t(' وأوافق عليها', ' and agree to them');
 
+  // Topping up the wallet through Paymob.
+  String get topUpTitle => _t('شحن المحفظة', 'Top up wallet');
+  String get topUpHint => _t(
+      'تتم عملية الدفع في صفحة Paymob الآمنة بالبطاقة أو مدى أو Apple Pay، ولا تمر بيانات بطاقتك بتطبيقنا.',
+      'You pay on Paymob\'s secure page by card, mada or Apple Pay; your card details never reach our app.');
+  String topUpMinimum(String amount) =>
+      _t('أقل مبلغ للشحن $amount', 'The smallest top-up is $amount');
+  String get payNow => _t('ادفع الآن', 'Pay now');
+  String get waitingForPayment => _t('بانتظار تأكيد الدفع…', 'Waiting for the payment to be confirmed…');
+  String get waitingForPaymentHint => _t(
+      'أكمل الدفع في الصفحة التي فُتحت، ثم عُد إلى التطبيق. سيُضاف المبلغ تلقائيًا فور التأكيد.',
+      'Finish paying on the page that opened, then come back. The amount is added as soon as it is confirmed.');
+  String get openPaymentAgain => _t('فتح صفحة الدفع مرة أخرى', 'Open the payment page again');
+  String topUpDone(String amount) => _t('تم شحن محفظتك بمبلغ $amount', 'Your wallet was topped up with $amount');
+  String get topUpFailed => _t('لم تتم عملية الدفع، ولم يُخصم أي مبلغ.', 'The payment did not go through; nothing was charged.');
+  String get tryAgain => _t('المحاولة مرة أخرى', 'Try again');
+
   // The corner ribbons on auction cards: a word each, to fit the band.
   String get ribbonLive => _t('مباشر', 'Live');
   String get ribbonFinal => _t('الحسم', 'Final');

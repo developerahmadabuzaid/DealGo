@@ -11,6 +11,7 @@ import '../../../shared/widgets.dart';
 import '../../../shared/otp_input.dart';
 import '../../auth/data/auth_repository.dart' show OtpChallenge;
 import '../data/wallet_repository.dart';
+import 'top_up_sheet.dart';
 
 /// The two balances, shown as two separate cards.
 ///
@@ -107,58 +108,11 @@ class _MainWalletCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _depositSheet(BuildContext context, WidgetRef ref) async {
-    final t = AppStrings.of(context);
-    final controller = TextEditingController();
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 20, 20, MediaQuery.of(sheetContext).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(t.deposit, style: Theme.of(sheetContext).textTheme.titleLarge),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: t.amount, suffixText: wallet.currency),
-              autofocus: true,
-            ),
-            const SizedBox(height: 18),
-            FilledButton(
-              onPressed: () async {
-                final amount = double.tryParse(controller.text.trim());
-                if (amount == null || amount <= 0) return;
-
-                Navigator.of(sheetContext).pop();
-
-                // The key makes a retried request safe if the response is lost in transit.
-                final key = 'dep-${DateTime.now().microsecondsSinceEpoch}';
-
-                try {
-                  await ref.read(walletRepositoryProvider).deposit(amount, key);
-                  ref.invalidate(walletsProvider);
-                } on ApiException catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(e.displayMessage), backgroundColor: AppTheme.urgentDeep),
-                    );
-                  }
-                }
-              },
-              child: Text(t.confirm),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Future<void> _depositSheet(BuildContext context, WidgetRef ref) => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => TopUpSheet(currency: wallet.currency),
+      );
 }
 
 /// Withdrawal, in two steps: enter the amount, then confirm with a code sent to the account's
