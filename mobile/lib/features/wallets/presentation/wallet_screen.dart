@@ -146,6 +146,12 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
 
   double? get _parsedAmount => double.tryParse(_amount.text.trim());
 
+  /// The IBAN as the server will read it: spaces dropped, upper case.
+  String get _iban => _destination.text.replaceAll(RegExp(r'[\s-]'), '').toUpperCase();
+
+  /// Shape only; the server checks the check digits and says so in Arabic when they are wrong.
+  bool get _ibanLooksValid => RegExp(r'^SA\d{22}$').hasMatch(_iban);
+
   Future<void> _requestCode() async {
     final amount = _parsedAmount;
     if (amount == null || amount <= 0) return;
@@ -158,7 +164,7 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
     try {
       final challenge = await ref.read(walletRepositoryProvider).requestWithdrawalOtp(
             amount,
-            destination: _destination.text.trim().isEmpty ? null : _destination.text.trim(),
+            destination: _iban,
           );
       setState(() => _challenge = challenge);
     } on ApiException catch (e) {
@@ -181,7 +187,7 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
       await ref.read(walletRepositoryProvider).withdraw(
             amount,
             'wd-${DateTime.now().microsecondsSinceEpoch}',
-            destination: _destination.text.trim().isEmpty ? null : _destination.text.trim(),
+            destination: _iban,
             otpCode: code,
           );
 
@@ -233,7 +239,14 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
             const SizedBox(height: 12),
             TextField(
               controller: _destination,
-              decoration: InputDecoration(labelText: t.withdrawalDestination),
+              textDirection: TextDirection.ltr,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                labelText: t.withdrawalDestination,
+                hintText: 'SA00 0000 0000 0000 0000 0000',
+                helperText: t.withdrawalDestinationHint,
+              ),
+              onChanged: (_) => setState(() {}),
             ),
 
             if (_error != null) ...[
@@ -246,7 +259,8 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
               onPressed: _busy ||
                       _parsedAmount == null ||
                       _parsedAmount! <= 0 ||
-                      _parsedAmount! > widget.wallet.balance
+                      _parsedAmount! > widget.wallet.balance ||
+                      !_ibanLooksValid
                   ? null
                   : _requestCode,
               child: _busy
@@ -266,7 +280,7 @@ class _WithdrawSheetState extends ConsumerState<WithdrawSheet> {
               child: Text(
                 t.withdrawalSummary(
                   Fmt.money(_parsedAmount, widget.wallet.currency, locale: locale),
-                  _destination.text.trim().isEmpty ? '-' : _destination.text.trim(),
+                  _iban,
                 ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontWeight: FontWeight.w600),

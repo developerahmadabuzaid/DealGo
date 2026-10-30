@@ -37,5 +37,11 @@ public enum AuditActionType
     AppAdChanged = 25,
 
     /// <summary>A user deleted their own account. Their personal details were removed.</summary>
-    AccountDeleted = 26
+    AccountDeleted = 26,
+
+    /// <summary>Staff marked a withdrawal as paid after making the bank transfer.</summary>
+    WithdrawalPaid = 27,
+
+    /// <summary>Staff refused a withdrawal; the amount went back to the user's main wallet.</summary>
+    WithdrawalRejected = 28
 }

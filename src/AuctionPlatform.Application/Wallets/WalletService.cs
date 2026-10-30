@@ -278,6 +278,9 @@ public sealed class WalletService : IWalletService
         var currency = request.Currency ?? _options.DefaultCurrency;
         WalletRules.EnsurePositiveAmount(request.Amount);
 
+        // Withdrawals are paid by bank transfer, so the destination must be an IBAN a bank accepts.
+        var iban = SaudiIban.Normalise(request.Destination);
+
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw new DomainException(ErrorCodes.NotFound, "User not found.");
 
@@ -293,7 +296,7 @@ public sealed class WalletService : IWalletService
             Destination = destination,
             Purpose = OtpPurpose.Withdrawal,
             UserId = userId,
-            OperationBinding = WithdrawalBinding(request.Amount, currency, request.Destination),
+            OperationBinding = WithdrawalBinding(request.Amount, currency, iban),
             Language = user.Language
         }, ct);
     }
@@ -304,6 +307,8 @@ public sealed class WalletService : IWalletService
 
         // Withdrawals are Main-wallet only. Shopping credit is never part of a withdrawable total.
         WalletRules.EnsureWithdrawable(WalletType.Main);
+
+        var iban = SaudiIban.Normalise(request.Destination);
 
         // A withdrawal moves real money out of the platform, so a stolen access token alone must
         // not be enough: confirm with a code bound to this exact transfer.
@@ -327,7 +332,7 @@ public sealed class WalletService : IWalletService
                 Purpose = OtpPurpose.Withdrawal,
                 Code = request.OtpCode!,
                 UserId = userId,
-                OperationBinding = WithdrawalBinding(request.Amount, currency, request.Destination)
+                OperationBinding = WithdrawalBinding(request.Amount, currency, iban)
             }, ct);
         }
 
@@ -341,9 +346,7 @@ public sealed class WalletService : IWalletService
             Currency = currency,
             TransactionType = WalletTransactionType.Withdrawal,
             ReferenceType = "Withdrawal",
-            Description = request.Destination is null
-                ? "Wallet withdrawal"
-                : $"Wallet withdrawal to {request.Destination}",
+            Description = $"Wallet withdrawal to {iban}",
             IdempotencyKey = request.IdempotencyKey
         }, ct);
 
@@ -355,9 +358,12 @@ public sealed class WalletService : IWalletService
                 PaymentType = PaymentType.Withdrawal,
                 Amount = Money.Round(request.Amount),
                 Currency = currency,
-                Provider = "SANDBOX",
+                // Paid by hand: staff make the bank transfer, then mark it paid or refuse it in
+                // the admin console's withdrawal queue.
+                Provider = "MANUAL",
                 Status = PaymentStatus.Processing,
                 IdempotencyKey = request.IdempotencyKey,
+                Metadata = $"iban:{iban}",
                 CreatedAt = _clock.UtcNow
             });
             await _db.SaveChangesAsync(ct);

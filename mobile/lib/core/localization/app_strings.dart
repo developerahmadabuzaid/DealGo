@@ -98,8 +98,12 @@ class AppStrings {
         'سحب $amount إلى $destination',
         'Withdraw $amount to $destination',
       );
-  String get withdrawalDestination => _t('حساب الاستلام', 'Destination account');
-  String get withdrawalSent => _t('تم تنفيذ طلب السحب', 'Withdrawal submitted');
+  String get withdrawalDestination => _t('رقم الآيبان (IBAN)', 'IBAN');
+  String get withdrawalDestinationHint => _t(
+      'SA ثم ٢٢ رقماً، كما يظهر في تطبيق البنك', 'SA followed by 22 digits, as shown in your bank app');
+  String get withdrawalSent => _t(
+      'تم استلام طلب السحب. سيُحوَّل المبلغ إلى حسابك البنكي بعد مراجعة الطلب.',
+      'Withdrawal requested. The amount will be transferred to your bank account after review.');
   String get offlineSessionKept => _t(
         'لا يوجد اتصال. جلستك محفوظة.',
         'No connection. Your session is saved.',
@@ -481,6 +485,8 @@ class AppStrings {
     'OTP_DESTINATION_INVALID': 'البريد الإلكتروني أو رقم الهاتف غير صحيح.',
     'PHONE_NUMBER_INVALID': 'أدخل رقم جوال سعودي صحيح يبدأ بـ 5، مثل 05XXXXXXXX.',
     'PHONE_NUMBER_TAKEN': 'رقم الجوال هذا مرتبط بحساب آخر.',
+    'IBAN_INVALID': 'رقم الآيبان غير صحيح. يبدأ بـ SA ويتكون من ٢٤ خانة.',
+    'WITHDRAWAL_NOT_PENDING': 'تمت معالجة طلب السحب هذا من قبل.',
     'ACCOUNT_HAS_BALANCE': 'اسحب رصيد المحفظة الرئيسية أولاً، ثم احذف الحساب.',
     'ACCOUNT_HAS_OPEN_ACTIVITY':
         'لا يمكن حذف الحساب الآن: لديك مزاد أو جهاز أو طلب أو عملية دفع لم تكتمل بعد.',

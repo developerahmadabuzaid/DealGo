@@ -126,6 +126,7 @@ public sealed class ExceptionHandlingMiddleware
             or ErrorCodes.DuplicateSku or ErrorCodes.AuctionFull
             or ErrorCodes.ConsecutiveBidNotAllowed
             or ErrorCodes.AccountHasBalance or ErrorCodes.AccountHasOpenActivity
+            or ErrorCodes.WithdrawalNotPending
             => StatusCodes.Status409Conflict,
 
         ErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,

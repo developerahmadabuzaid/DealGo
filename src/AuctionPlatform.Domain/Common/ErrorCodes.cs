@@ -77,6 +77,8 @@ public static class ErrorCodes
     public const string PhoneNumberTaken = "PHONE_NUMBER_TAKEN";
     public const string AccountHasBalance = "ACCOUNT_HAS_BALANCE";
     public const string AccountHasOpenActivity = "ACCOUNT_HAS_OPEN_ACTIVITY";
+    public const string IbanInvalid = "IBAN_INVALID";
+    public const string WithdrawalNotPending = "WITHDRAWAL_NOT_PENDING";
 
     // Generic
     public const string ValidationFailed = "VALIDATION_FAILED";

@@ -159,6 +159,7 @@ public static class DependencyInjection
 
         services.AddScoped<IWalletService, WalletService>();
         services.AddScoped<IAdminWalletService, AdminWalletService>();
+        services.AddScoped<IAdminWithdrawalService, AdminWithdrawalService>();
 
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<IAuctionService, AuctionService>();

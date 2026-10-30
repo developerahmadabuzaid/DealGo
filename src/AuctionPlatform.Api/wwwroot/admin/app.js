@@ -340,6 +340,23 @@ const AR = {
   'Change (+ to restock, − to remove)': 'التغيير (+ للإضافة، − للخصم)',
 
   // wallets and users
+  'Withdrawals': 'طلبات السحب',
+  'Bank transfers waiting to be made. The money has already left the user’s wallet.':
+    'تحويلات بنكية بانتظار التنفيذ. المبلغ خُصم من محفظة المستخدم عند الطلب.',
+  'To pay': 'بانتظار الدفع', 'Paid': 'مدفوعة', 'Refused': 'مرفوضة', 'All': 'الكل',
+  'Requested': 'تاريخ الطلب', 'IBAN': 'الآيبان', 'Phone': 'الجوال', 'Amount': 'المبلغ',
+  'Status': 'الحالة', 'Bank reference': 'مرجع التحويل', 'Note': 'ملاحظة',
+  'Mark paid': 'تم التحويل', 'Refuse': 'رفض',
+  'Bank transfer reference': 'مرجع التحويل البنكي',
+  'Withdrawal marked as paid.': 'تم تسجيل السحب كمدفوع.',
+  'Withdrawal refused and refunded.': 'تم رفض السحب وإعادة المبلغ إلى المحفظة.',
+  'Refuse withdrawal': 'رفض طلب السحب',
+  'The full amount goes back to the user’s main wallet.': 'سيعود المبلغ كاملاً إلى المحفظة الرئيسية للمستخدم.',
+  'Copy': 'نسخ', 'Copied.': 'تم النسخ.',
+  'Enter the bank transfer reference.': 'أدخل مرجع التحويل البنكي.',
+  'This withdrawal has already been settled.': 'تمت معالجة هذا السحب من قبل.',
+  'Withdrawal not found.': 'طلب السحب غير موجود.',
+  'A reason is required.': 'السبب مطلوب.',
   'Main (withdrawable)': 'الرئيسية (قابلة للسحب)',
   'Shopping (store only)': 'التسوق (للمتجر فقط)',
   'Main wallet only': 'المحفظة الرئيسية فقط', 'Shopping wallet only': 'محفظة التسوق فقط',
@@ -953,6 +970,7 @@ const NAV = [
     group: 'Finance',
     items: [
       { id: 'wallets', label: 'Wallets', icon: 'wallet' },
+      { id: 'withdrawals', label: 'Withdrawals', icon: 'receipt' },
       { id: 'shopping-credits', label: 'Shopping credits', icon: 'gift' },
     ],
   },
@@ -1056,6 +1074,7 @@ function routeView(route) {
     'store-orders': viewOrders,
     'store-settings': viewStoreSettings,
     'wallets': viewWallets,
+    'withdrawals': viewWithdrawals,
     'shopping-credits': viewShoppingCredits,
     'site-content': viewSiteContent,
     'site-cards': viewSiteCards,
@@ -4061,6 +4080,82 @@ async function openWallet(w) {
     h('div', { class: 'modal-actions' }, h('button', { class: 'btn ghost', onclick: () => back.remove() }, 'Close'))));
 
   document.body.append(back);
+}
+
+async function viewWithdrawals() {
+  const q = state.cache.withdrawals || (state.cache.withdrawals = { page: 1, status: 'Processing' });
+
+  const params = new URLSearchParams({ page: q.page, pageSize: 20 });
+  if (q.status) params.set('status', q.status);
+
+  const data = await api(`/admin/withdrawals?${params}`);
+
+  const filter = (status, label) => h('button', {
+    class: q.status === status ? 'btn sm' : 'btn ghost sm',
+    onclick: () => { q.status = status; q.page = 1; render(); },
+  }, label);
+
+  const copy = (text) => {
+    navigator.clipboard?.writeText(text).then(() => toast('Copied.', 'ok'));
+  };
+
+  // Paid only after the transfer has actually been made from the company's bank account.
+  const markPaid = (w) => formModal(`${tr('Mark paid')} — ${w.fullName || shortId(w.userId)}`,
+    `${money(w.amount, w.currency)} · ${w.iban || '—'}`, [
+      { name: 'reference', label: 'Bank transfer reference' },
+    ], async (v) => {
+      await api(`/admin/withdrawals/${w.id}/paid`, {
+        method: 'POST', body: JSON.stringify({ bankReference: v.reference }),
+      });
+      toast('Withdrawal marked as paid.', 'ok');
+      render();
+    });
+
+  const refuse = (w) => confirmDialog('Refuse withdrawal',
+    'The full amount goes back to the user’s main wallet.',
+    async (reason) => {
+      try {
+        await api(`/admin/withdrawals/${w.id}/reject`, {
+          method: 'POST', body: JSON.stringify({ reason }),
+        });
+        toast('Withdrawal refused and refunded.', 'ok');
+        render();
+      } catch (e) { toast(e.message, 'err'); }
+    }, { danger: true, needsReason: true });
+
+  const open = (w) => w.status === 'Processing' || w.status === 'Pending';
+
+  return h('div', {},
+    pageHead('Withdrawals', 'Bank transfers waiting to be made. The money has already left the user’s wallet.'),
+    h('div', { class: 'card' },
+      h('div', { class: 'toolbar' },
+        filter('Processing', 'To pay'), filter('Completed', 'Paid'),
+        filter('Cancelled', 'Refused'), filter('', 'All')),
+
+      pagedTable({
+        columns: [
+          { label: 'Requested', render: (w) => when(w.createdAt) },
+          { label: 'User', render: (w) => w.fullName || shortId(w.userId) },
+          { label: 'Phone', render: (w) => (w.phoneNumber ? localPhone(w.phoneNumber) : (w.email || '—')) },
+          { label: 'IBAN', render: (w) => (w.iban
+            ? h('span', { style: 'direction:ltr;unicode-bidi:isolate;font-family:monospace' }, w.iban)
+            : '—') },
+          { label: 'Amount', num: true, render: (w) => money(w.amount, w.currency) },
+          { label: 'Status', render: (w) => h('span', { class: badgeClass(w.status) }, w.status) },
+          { label: 'Note', render: (w) => w.bankReference || w.failureReason || '—' },
+          { label: '', render: (w) => (open(w)
+            ? h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap' },
+              w.iban ? h('button', { class: 'btn ghost sm', onclick: () => copy(w.iban) }, 'Copy') : null,
+              h('button', { class: 'btn sm', onclick: () => markPaid(w) }, 'Mark paid'),
+              h('button', { class: 'btn danger sm', onclick: () => refuse(w) }, 'Refuse'))
+            : '') },
+        ],
+        rows: data.items,
+        page: data.page,
+        totalPages: data.totalPages,
+        totalCount: data.totalCount,
+        onPage: (p) => { q.page = p; render(); },
+      })));
 }
 
 async function viewShoppingCredits() {
