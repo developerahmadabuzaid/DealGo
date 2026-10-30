@@ -25,8 +25,6 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.dealgosa.app
-      vars:
-        APP_STORE_APPLE_ID: "" # App Store Connect > App Information > Apple ID (a number)
 
     # No "triggering" section: builds start only from the Codemagic dashboard, so a push never
     # sends a build to Apple by surprise.
@@ -46,11 +44,11 @@ workflows:
 
       - name: Build the IPA
         script: |
-          # Each upload needs a higher build number than the last one Apple has. The version
-          # (1.0.0) still comes from pubspec.yaml.
-          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          # Each upload needs a higher build number than the last. BUILD_NUMBER is Codemagic's
+          # own counter for this app and goes up by one every build. The version (1.0.0) still
+          # comes from pubspec.yaml.
           flutter build ipa --release \
-            --build-number=$((LATEST + 1)) \
+            --build-number=$BUILD_NUMBER \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
