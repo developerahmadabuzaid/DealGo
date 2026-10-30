@@ -1,0 +1,65 @@
+# Codemagic: builds the iOS app on Codemagic's Macs and uploads it to TestFlight.
+#
+# One-time setup in Codemagic:
+#   Teams > Integrations > Developer Portal: add an App Store Connect API key named
+#   "DealGo App Store Connect". Codemagic then creates and renews the signing certificate and
+#   provisioning profile itself; nothing secret lives in this repository.
+#
+# The app talks to https://dealgosa.com by default (lib/core/config/app_config.dart), the same
+# as the Android release build.
+
+workflows:
+  ios-release:
+    name: iOS release to TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    working_directory: mobile
+
+    integrations:
+      app_store_connect: DealGo App Store Connect
+
+    environment:
+      flutter: 3.44.9
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.dealgosa.app
+      vars:
+        APP_STORE_APPLE_ID: "" # App Store Connect > App Information > Apple ID (a number)
+
+    # No "triggering" section: builds start only from the Codemagic dashboard, so a push never
+    # sends a build to Apple by surprise.
+
+    scripts:
+      - name: Get packages
+        script: flutter pub get
+
+      - name: Run tests
+        script: flutter test
+
+      - name: Install pods
+        script: cd ios && pod install --repo-update
+
+      - name: Apply signing
+        script: xcode-project use-profiles
+
+      - name: Build the IPA
+        script: |
+          # Each upload needs a higher build number than the last one Apple has. The version
+          # (1.0.0) still comes from pubspec.yaml.
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          flutter build ipa --release \
+            --build-number=$((LATEST + 1)) \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # Sending to App Review stays a manual step in App Store Connect.
+        submit_to_app_store: false
