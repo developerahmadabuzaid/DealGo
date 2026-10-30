@@ -24,6 +24,13 @@ public class Payment : Entity
     public string Provider { get; set; } = "WALLET";
     public string? ProviderTransactionId { get; set; }
 
+    /// <summary>
+    /// The gateway's own order id for this payment (Paymob's intention_order_id). Paymob's callbacks
+    /// carry it as order.id, and its documentation names it as the key to match them by.
+    /// UNIQUE(Provider, ProviderOrderId): one order can only ever settle one payment.
+    /// </summary>
+    public long? ProviderOrderId { get; set; }
+
     public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
 
     public string? IdempotencyKey { get; set; }

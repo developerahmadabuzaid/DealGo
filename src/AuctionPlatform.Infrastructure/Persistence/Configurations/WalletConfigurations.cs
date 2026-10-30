@@ -79,6 +79,11 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
             .IsUnique()
             .HasFilter("\"IdempotencyKey\" IS NOT NULL");
 
+        // A gateway order settles exactly one payment.
+        b.HasIndex(p => new { p.Provider, p.ProviderOrderId })
+            .IsUnique()
+            .HasFilter("\"ProviderOrderId\" IS NOT NULL");
+
         b.HasIndex(p => p.UserId);
         b.HasIndex(p => p.Status);
         b.HasIndex(p => p.CreatedAt);

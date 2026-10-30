@@ -1,4 +1,6 @@
+using AuctionPlatform.Application.Common;
 using AuctionPlatform.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -30,6 +32,16 @@ public sealed class WebhooksController : ApiControllerBase
     [HttpPost("payments/{provider}")]
     public async Task<IActionResult> Payments(string provider, CancellationToken ct)
     {
+        // Off unless deliberately enabled outside Production with a real secret. It credits whatever
+        // user and amount the payload names, so a guessable secret is a way to mint money.
+        var options = HttpContext.RequestServices.GetRequiredService<IOptions<PaymentOptions>>().Value;
+        var environment = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
+        if (environment.IsProduction() || !options.GenericWebhookEnabled || options.WebhookSecret.Length < 32)
+        {
+            _logger.LogWarning("Refused a call to the disabled generic payment webhook for {Provider}.", provider);
+            return NotFound();
+        }
+
         // The raw body is needed verbatim: the signature is computed over the exact bytes sent.
         using var reader = new StreamReader(Request.Body);
         var body = await reader.ReadToEndAsync(ct);

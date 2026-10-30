@@ -927,6 +927,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<long?>("ProviderOrderId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("ProviderTransactionId")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -947,6 +950,10 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("Provider", "ProviderOrderId")
+                        .IsUnique()
+                        .HasFilter("\"ProviderOrderId\" IS NOT NULL");
 
                     b.HasIndex("Provider", "ProviderTransactionId")
                         .IsUnique()

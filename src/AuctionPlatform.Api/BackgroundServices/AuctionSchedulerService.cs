@@ -301,57 +301,9 @@ public sealed class ShoppingCreditExpiryWorker : BackgroundService
                     "credit:expiry", TimeSpan.FromMinutes(10), stoppingToken);
                 if (handle is null) continue;
 
-                var now = clock.UtcNow;
-
-                var expiring = await db.WalletTransactions
-                    .AsNoTracking()
-                    .Where(t => t.WalletType == WalletType.Shopping &&
-                                t.Amount > 0 &&
-                                t.ExpiresAt != null &&
-                                t.ExpiresAt <= now)
-                    .Select(t => new { t.Id, t.UserId, t.Amount, t.Currency })
-                    .Take(200)
-                    .ToListAsync(stoppingToken);
-
-                if (expiring.Count == 0) continue;
-
                 var wallets = scope.ServiceProvider.GetRequiredService<IWalletService>();
-
-                foreach (var credit in expiring)
-                {
-                    // Only the part still unspent can expire, so a user who already used the credit
-                    // is never pushed negative.
-                    var balance = await db.Wallets
-                        .AsNoTracking()
-                        .Where(w => w.UserId == credit.UserId && w.WalletType == WalletType.Shopping)
-                        .Select(w => w.Balance)
-                        .FirstOrDefaultAsync(stoppingToken);
-
-                    var amount = Math.Min(credit.Amount, balance);
-
-                    if (amount > 0)
-                    {
-                        await wallets.DebitAsync(new WalletMovement
-                        {
-                            UserId = credit.UserId,
-                            WalletType = WalletType.Shopping,
-                            Amount = amount,
-                            Currency = credit.Currency,
-                            TransactionType = WalletTransactionType.Expiration,
-                            ReferenceType = nameof(WalletTransaction),
-                            ReferenceId = credit.Id,
-                            Description = "Shopping credit expired",
-                            IdempotencyKey = $"credit-expiry:{credit.Id}"
-                        }, stoppingToken);
-                    }
-
-                    // Clearing the marker keeps the entry out of the next sweep.
-                    await db.WalletTransactions
-                        .Where(t => t.Id == credit.Id)
-                        .ExecuteUpdateAsync(s => s.SetProperty(t => t.ExpiresAt, (DateTime?)null), stoppingToken);
-                }
-
-                _logger.LogInformation("Expired {Count} shopping credit entries.", expiring.Count);
+                var count = await ExpireDueAsync(db, wallets, clock.UtcNow, stoppingToken);
+                if (count > 0) _logger.LogInformation("Expired {Count} shopping credit entries.", count);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -362,5 +314,71 @@ public sealed class ShoppingCreditExpiryWorker : BackgroundService
                 _logger.LogError(ex, "Shopping credit expiry iteration failed.");
             }
         }
+    }
+
+    /// <summary>
+    /// One pass of expiry: every shopping credit past its date loses whatever of it is still unspent.
+    /// Returns how many credits were processed.
+    /// </summary>
+    public static async Task<int> ExpireDueAsync(
+        ApplicationDbContext db, IWalletService wallets, DateTime now, CancellationToken ct)
+    {
+        var expiring = await db.WalletTransactions
+            .AsNoTracking()
+            .Where(t => t.WalletType == WalletType.Shopping &&
+                        t.Amount > 0 &&
+                        t.ExpiresAt != null &&
+                        t.ExpiresAt <= now)
+            .OrderBy(t => t.CreatedAt)
+            .Select(t => new { t.Id, t.UserId, t.Amount, t.Currency, t.CreatedAt })
+            .Take(200)
+            .ToListAsync(ct);
+
+        foreach (var credit in expiring)
+        {
+            // Only the part of this credit still unspent can expire. Spending is taken from
+            // the oldest credit first, so whatever the user still holds is made of their
+            // newest credits: this one's remainder is the balance less everything credited
+            // after it, between nothing and its own amount. Expiring min(credit, balance)
+            // instead took credit received after this one — money that had not expired.
+            var balance = await db.Wallets
+                .AsNoTracking()
+                .Where(w => w.UserId == credit.UserId && w.WalletType == WalletType.Shopping)
+                .Select(w => w.Balance)
+                .FirstOrDefaultAsync(ct);
+
+            var creditedSince = await db.WalletTransactions
+                .AsNoTracking()
+                .Where(t => t.UserId == credit.UserId &&
+                            t.WalletType == WalletType.Shopping &&
+                            t.Amount > 0 &&
+                            t.CreatedAt > credit.CreatedAt)
+                .SumAsync(t => t.Amount, ct);
+
+            var amount = Math.Clamp(balance - creditedSince, 0m, credit.Amount);
+
+            if (amount > 0)
+            {
+                await wallets.DebitAsync(new WalletMovement
+                {
+                    UserId = credit.UserId,
+                    WalletType = WalletType.Shopping,
+                    Amount = amount,
+                    Currency = credit.Currency,
+                    TransactionType = WalletTransactionType.Expiration,
+                    ReferenceType = nameof(WalletTransaction),
+                    ReferenceId = credit.Id,
+                    Description = "Shopping credit expired",
+                    IdempotencyKey = $"credit-expiry:{credit.Id}"
+                }, ct);
+            }
+
+            // Clearing the marker keeps the entry out of the next sweep.
+            await db.WalletTransactions
+                .Where(t => t.Id == credit.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.ExpiresAt, (DateTime?)null), ct);
+        }
+
+        return expiring.Count;
     }
 }

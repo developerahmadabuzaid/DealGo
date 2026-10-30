@@ -181,5 +181,6 @@ public static class DependencyInjection
         // Wallet top-ups by card, mada and Apple Pay through Paymob.
         services.AddHttpClient<IPaymobClient, PaymobClient>();
         services.AddScoped<IWalletTopUpService, WalletTopUpService>();
+        services.AddScoped<IPaymentMonitorService, PaymentMonitorService>();
     }
 }

@@ -176,13 +176,22 @@ $paymobIds = @($PaymobIntegrationIds | Where-Object { "$_".Trim() -ne '' })
 foreach ($id in $paymobIds) {
     if ("$id" -notmatch '^\d+$') { throw "PaymobIntegrationIds: '$id' is not a number. Copy the ids from Paymob's Payment integrations page." }
 }
+$paymobApiKey = if ($PaymobApiKey) { $PaymobApiKey.Trim() } else { '' }
+$paymobMode = if ($PaymobMode) { $PaymobMode.Trim().ToLowerInvariant() } else { '' }
 $paymobComplete = $paymobSecretKey -and $paymobPublicKey -and $paymobHmacSecret -and $paymobIds.Count -gt 0
 if (-not $paymobComplete -and ($paymobSecretKey -or $paymobPublicKey -or $paymobHmacSecret -or $paymobIds.Count)) {
     throw 'Paymob is half set up: PaymobSecretKey, PaymobPublicKey, PaymobHmacSecret and PaymobIntegrationIds are all needed.'
 }
+# Test or live is stated, never guessed: the server refuses payments whose methods Paymob marks
+# differently, so test keys cannot take money on a live site nor live keys on a test one.
+if ($paymobComplete -and $paymobMode -notin @('test', 'live')) {
+    throw "PaymobMode must be 'test' or 'live' (it is '$paymobMode'). Start with 'test'."
+}
 $webConfig = $webConfig.Replace('__PAYMOB_SECRET_KEY__', $paymobSecretKey)
 $webConfig = $webConfig.Replace('__PAYMOB_PUBLIC_KEY__', $paymobPublicKey)
 $webConfig = $webConfig.Replace('__PAYMOB_HMAC_SECRET__', $paymobHmacSecret)
+$webConfig = $webConfig.Replace('__PAYMOB_API_KEY__', $paymobApiKey)
+$webConfig = $webConfig.Replace('__PAYMOB_MODE__', $paymobMode)
 $idsMarker = '<!-- __PAYMOB_INTEGRATION_IDS__ -->'
 $idsLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($idsMarker) } | Select-Object -First 1
 $idsIndent = if ($idsLine) { $idsLine.Substring(0, $idsLine.IndexOf($idsMarker)) } else { '' }
@@ -368,6 +377,11 @@ if ($placeholders) {
 }
 else {
     Write-Host "`nPackage is complete. See deploy\smarterasp\DEPLOYMENT-AR.md for the upload steps." -ForegroundColor Green
+}
+
+if ($paymobComplete) {
+    $modeColor = if ($paymobMode -eq 'live') { 'Yellow' } else { 'Cyan' }
+    Write-Host "`nPaymob is set up in $($paymobMode.ToUpperInvariant()) mode$(if (-not $paymobApiKey) { ' (no API key: reconciliation can only wait for callbacks)' })." -ForegroundColor $modeColor
 }
 
 if (-not $paymobComplete) {

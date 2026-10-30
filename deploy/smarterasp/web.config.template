@@ -45,6 +45,8 @@
           <environmentVariable name="Paymob__SecretKey" value="__PAYMOB_SECRET_KEY__" />
           <environmentVariable name="Paymob__PublicKey" value="__PAYMOB_PUBLIC_KEY__" />
           <environmentVariable name="Paymob__HmacSecret" value="__PAYMOB_HMAC_SECRET__" />
+          <environmentVariable name="Paymob__ApiKey" value="__PAYMOB_API_KEY__" />
+          <environmentVariable name="Paymob__Mode" value="__PAYMOB_MODE__" />
           <!-- __PAYMOB_INTEGRATION_IDS__ -->
         </environmentVariables>
       </aspNetCore>

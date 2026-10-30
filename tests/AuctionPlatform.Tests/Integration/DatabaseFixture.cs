@@ -3,6 +3,7 @@ using AuctionPlatform.Application.Bidding;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Identity;
 using AuctionPlatform.Application.Notifications;
+using AuctionPlatform.Application.Prizes;
 using AuctionPlatform.Application.Realtime;
 using AuctionPlatform.Application.Site;
 using AuctionPlatform.Application.Store;
@@ -55,7 +56,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     /// Each scope gets its own DbContext and its own connection, which is what lets a test issue
     /// genuinely parallel requests the way separate HTTP calls would.
     /// </summary>
-    public AsyncServiceScope CreateScope(Guid? actingUserId = null)
+    public AsyncServiceScope CreateScope(Guid? actingUserId = null, bool failWalletCredits = false)
     {
         var services = new ServiceCollection();
 
@@ -109,7 +110,16 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<INumberGenerator, NumberGenerator>();
         services.AddScoped<INotificationService, NotificationService>();
 
-        services.AddScoped<IWalletService, WalletService>();
+        if (failWalletCredits)
+        {
+            // A database failure in the middle of crediting a wallet, for the recovery tests.
+            services.AddScoped<WalletService>();
+            services.AddScoped<IWalletService>(sp => new FailingCreditWalletService(sp.GetRequiredService<WalletService>()));
+        }
+        else
+        {
+            services.AddScoped<IWalletService, WalletService>();
+        }
         services.AddScoped<IAuctionService, AuctionService>();
         services.AddScoped<IParticipationService, ParticipationService>();
         services.AddScoped<IBidService, BidService>();
@@ -128,9 +138,14 @@ public sealed class DatabaseFixture : IAsyncLifetime
             o.PublicKey = "test-public";
             o.HmacSecret = PaymobHmacSecret;
             o.IntegrationIds = [1001];
+            o.Mode = "test";
+            o.ApiKey = "test-api-key";
         });
         services.AddSingleton<IPaymobClient, FakePaymobClient>();
         services.AddScoped<IWalletTopUpService, WalletTopUpService>();
+        services.AddScoped<IPaymentMonitorService, PaymentMonitorService>();
+        services.AddScoped<IPrizeClaimService, PrizeClaimService>();
+        services.AddScoped<IAdminWalletService, AdminWalletService>();
 
         return services.BuildServiceProvider().CreateAsyncScope();
     }
@@ -146,16 +161,38 @@ public sealed class DatabaseFixture : IAsyncLifetime
     /// </summary>
     public sealed class FakePaymobClient : IPaymobClient
     {
+        /// <summary>What Paymob's inquiry API answers, per order id. Absent: no transaction yet.</summary>
+        public static readonly System.Collections.Concurrent.ConcurrentDictionary<long, string> InquiryAnswers = new();
+
+        /// <summary>Makes opening a payment fail as if Paymob timed out, for the next call.</summary>
+        public static volatile bool FailNextCheckout;
+
         public bool IsEnabled => true;
+        public bool CanInquire => true;
 
         public static long OrderIdFor(string reference) =>
-            Math.Abs(BitConverter.ToInt64(Guid.Parse(reference).ToByteArray(), 0) % 1_000_000_000L);
+            Math.Abs(BitConverter.ToInt64(Guid.Parse(reference).ToByteArray(), 0) % 1_000_000_000L) + 1;
 
         public Task<PaymobCheckout> CreateCheckoutAsync(decimal amount, string currency, string reference,
             string description, PaymobCustomer customer, string notificationUrl, string redirectionUrl,
-            CancellationToken ct = default) =>
-            Task.FromResult(new PaymobCheckout(
+            CancellationToken ct = default)
+        {
+            if (FailNextCheckout)
+            {
+                FailNextCheckout = false;
+                throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service is not answering.");
+            }
+
+            return Task.FromResult(new PaymobCheckout(
                 "pi_test_" + reference, OrderIdFor(reference), "https://checkout.test/" + reference));
+        }
+
+        public Task<System.Text.Json.JsonElement?> InquireByOrderAsync(long orderId, CancellationToken ct = default)
+        {
+            if (!InquiryAnswers.TryGetValue(orderId, out var json)) return Task.FromResult<System.Text.Json.JsonElement?>(null);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return Task.FromResult<System.Text.Json.JsonElement?>(doc.RootElement.Clone());
+        }
     }
 
     private sealed class TestCurrentUser : ICurrentUserService
@@ -170,6 +207,20 @@ public sealed class DatabaseFixture : IAsyncLifetime
         public string? IpAddress => "127.0.0.1";
         public string? UserAgent => "tests";
         public bool HasPermission(string permission) => true;
+    }
+    /// <summary>Every credit fails as a dropped database connection would; everything else works.</summary>
+    private sealed class FailingCreditWalletService(IWalletService inner) : IWalletService
+    {
+        public Task<WalletsDto> GetWalletsAsync(Guid userId, CancellationToken ct = default) => inner.GetWalletsAsync(userId, ct);
+        public Task EnsureWalletsExistAsync(Guid userId, string currency, CancellationToken ct = default) => inner.EnsureWalletsExistAsync(userId, currency, ct);
+        public Task<WalletOperationResult> CreditAsync(WalletMovement movement, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Simulated database failure while crediting.");
+        public Task<WalletOperationResult> DebitAsync(WalletMovement movement, CancellationToken ct = default) => inner.DebitAsync(movement, ct);
+        public Task<PagedResult<WalletTransactionDto>> GetTransactionsAsync(Guid userId, WalletTransactionQuery query, CancellationToken ct = default) => inner.GetTransactionsAsync(userId, query, ct);
+        public Task<WalletOperationResult> DepositAsync(Guid userId, DepositRequest request, CancellationToken ct = default) => inner.DepositAsync(userId, request, ct);
+        public Task<OtpChallengeDto> RequestWithdrawalOtpAsync(Guid userId, RequestWithdrawalOtpRequest request, CancellationToken ct = default) => inner.RequestWithdrawalOtpAsync(userId, request, ct);
+        public Task<WalletOperationResult> WithdrawAsync(Guid userId, WithdrawRequest request, CancellationToken ct = default) => inner.WithdrawAsync(userId, request, ct);
+        public Task<ShoppingCreditSummaryDto> GetShoppingCreditSummaryAsync(string currency, CancellationToken ct = default) => inner.GetShoppingCreditSummaryAsync(currency, ct);
     }
 
     private sealed class NoopRateLimiter : IRateLimiterService

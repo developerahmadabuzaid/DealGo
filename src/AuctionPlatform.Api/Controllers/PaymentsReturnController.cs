@@ -1,4 +1,5 @@
 using System.Net;
+using AuctionPlatform.Domain.Enums;
 using AuctionPlatform.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,10 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace AuctionPlatform.Api.Controllers;
 
 /// <summary>
-/// Where Paymob sends the customer after the checkout page. The result arrives signed in the
-/// query string, so it is applied exactly as the server callback would be (whichever arrives
-/// first credits the wallet; the other changes nothing). The page itself only says what happened
-/// and leads back to the wallet.
+/// Where Paymob sends the customer after the checkout page (Paymob's "transaction response
+/// callback"). Paymob's documentation says not to update orders from it, and it does not: it finds
+/// the payment, asks Paymob's API when the processed callback is late, and shows the result.
 /// </summary>
 [ApiController]
 [Route("api/v1/payments")]
@@ -27,14 +27,16 @@ public sealed class PaymentsReturnController : ControllerBase
         var query = Request.Query.ToDictionary(q => q.Key, q => q.Value.ToString());
         var result = await _topUps.HandleReturnAsync(query, ct);
 
-        var (title, body, color) = result switch
+        // Shows what the server has recorded. Nothing in this request is trusted to change it:
+        // only Paymob's signed processed callback, or Paymob's own API, can credit a wallet.
+        var (title, body, color) = result.Status switch
         {
-            { Valid: true, Succeeded: true } =>
+            PaymentStatus.Completed =>
                 ("تمت عملية الدفع", "أُضيف المبلغ إلى محفظتك. يمكنك العودة إلى التطبيق الآن.", "#1F9D55"),
-            { Valid: true } =>
-                ("لم تكتمل عملية الدفع", "لم يُخصم أي مبلغ لهذه المحاولة. يمكنك المحاولة مرة أخرى من المحفظة.", "#C0392B"),
+            PaymentStatus.Failed or PaymentStatus.Cancelled =>
+                ("لم تكتمل عملية الدفع", "لم يُضف أي مبلغ لهذه المحاولة. يمكنك المحاولة مرة أخرى من المحفظة.", "#C0392B"),
             _ =>
-                ("تعذّر التحقق من الدفع", "إن خُصم المبلغ فسيظهر في محفظتك خلال دقائق.", "#B7791F"),
+                ("جارٍ تأكيد الدفع", "عند تأكيد Paymob للعملية سيُضاف المبلغ إلى محفظتك خلال دقائق.", "#B7791F"),
         };
 
         var html = $$"""

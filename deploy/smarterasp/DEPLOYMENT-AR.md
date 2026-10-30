@@ -240,21 +240,40 @@ deploy\smarterasp\publish-smarterasp.ps1 `
 
 ## الدفع الإلكتروني عبر Paymob
 
-شحن المحفظة بالبطاقة أو مدى أو Apple Pay يتم في صفحة Paymob الآمنة. يحتاج أربع قيم من لوحة Paymob
-(ksa.dashboard.paymob.com):
+شحن المحفظة بالبطاقة أو مدى أو Apple Pay يتم في صفحة Paymob الآمنة
+(``ksa.checkout.paymob.com``). القيم المطلوبة من لوحة Paymob (ksa.dashboard.paymob.com):
 
-| القيمة | مكانها في لوحة Paymob | في `local-secrets.ps1` |
+| القيمة | مكانها في لوحة Paymob | في ``local-secrets.ps1`` |
 |---|---|---|
-| Secret Key | Settings ← Account Info | `PaymobSecretKey` |
-| Public Key | Settings ← Account Info | `PaymobPublicKey` |
-| HMAC | Settings ← Account Info | `PaymobHmacSecret` |
-| أرقام طرق الدفع (Integration IDs) | Developers ← Payment Integrations | `PaymobIntegrationIds = @(123, 456)` |
+| Secret Key | Settings ← Account Info | ``PaymobSecretKey`` |
+| Public Key | Settings ← Account Info | ``PaymobPublicKey`` |
+| HMAC | Settings ← Account Info | ``PaymobHmacSecret`` |
+| API Key (موصى به) | Settings ← Account Info | ``PaymobApiKey`` |
+| أرقام طرق الدفع (Integration IDs) | Developers ← Payment Integrations | ``PaymobIntegrationIds = @(123, 456)`` |
+| الوضع | — | ``PaymobMode = 'test'`` أو ``'live'`` |
 
-1. ابدأ **بمفاتيح وضع الاختبار (Test)** وأرقام طرق الدفع التجريبية، وابنِ الحزمة وارفعها.
-2. اشحن المحفظة من التطبيق ببطاقة Paymob التجريبية، وتأكد أن الرصيد زاد مرة واحدة فقط.
-3. بعد نجاح التجربة، ضع **مفاتيح الوضع الحقيقي (Live)** وأرقامه، ثم ابنِ الحزمة وارفعها من جديد.
+- **الوضع إلزامي:** يرفض الخادم أي عملية دفع إذا كانت مفاتيح Paymob من نوع مختلف عن الوضع المكتوب،
+  فلا يمكن أن تعمل مفاتيح الاختبار على الموقع الحقيقي أو العكس بالخطأ.
+- **API Key** يسمح للخادم بسؤال Paymob مباشرة عن العمليات التي لم يصل إشعارها، فلا تضيع عملية دفع.
+  بدونه يعتمد الشحن على إشعار Paymob فقط.
+
+### خطوات التفعيل
+
+1. ضع **مفاتيح وضع الاختبار** وأرقام طرق الدفع التجريبية و``PaymobMode = 'test'``، ثم ابنِ الحزمة وارفعها.
+2. اشحن المحفظة من التطبيق ببطاقة Paymob التجريبية، وتأكد أن الرصيد زاد **مرة واحدة فقط**.
+3. افتح لوحة الإدارة ← ``/api/v1/admin/payments/health`` وتأكد أن:
+   ``ledgerGuardsInstalled = true`` و``walletsOutOfBalance = 0`` و``callbacksUnprocessed = 0``.
+4. جرّب أيضًا بطاقة مرفوضة: يجب ألا يتغير الرصيد وأن تظهر الرسالة "لم تتم عملية الدفع".
+5. بعد نجاح كل ما سبق: ضع **مفاتيح الوضع الحقيقي** وأرقامه و``PaymobMode = 'live'``، وابنِ الحزمة وارفعها.
 
 لا حاجة لإعداد روابط الاستدعاء في لوحة Paymob: كل عملية دفع ترسل معها عنوان
-`/api/v1/webhooks/paymob` وعنوان صفحة العودة.
+``/api/v1/webhooks/paymob`` وعنوان صفحة العودة.
+
+### المتابعة اليومية
+
+- ``GET /api/v1/admin/payments/health``: ملخص الشحنات الناجحة والفاشلة والعالقة، والإشعارات المرفوضة،
+  واختلاف المبالغ، وأي محفظة لا يطابق رصيدها سجلها.
+- ``GET /api/v1/admin/payments/topups``: قائمة الشحنات لمطابقتها مع تقرير عمليات Paymob.
+- ``POST /api/v1/admin/payments/reconcile``: تشغيل المطابقة فورًا (تعمل تلقائيًا كل 3 دقائق).
 
 لا تضع هذه المفاتيح في أي ملف داخل المستودع، ولا ترسلها في محادثة.

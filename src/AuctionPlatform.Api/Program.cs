@@ -302,6 +302,7 @@ builder.Services.AddHostedService<AuctionSchedulerService>();
 builder.Services.AddHostedService<AuctionExpiryService>();
 builder.Services.AddHostedService<AuctionCompletionWorker>();
 builder.Services.AddHostedService<ShoppingCreditExpiryWorker>();
+builder.Services.AddHostedService<PaymobReconciliationWorker>();
 
 // ---------------------------------------------------------------- swagger
 

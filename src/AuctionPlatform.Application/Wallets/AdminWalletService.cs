@@ -188,6 +188,13 @@ public sealed class AdminWalletService : IAdminWalletService
             throw new DomainException(ErrorCodes.InvalidAmount, "The adjustment amount cannot be zero.");
         }
 
+        // Without a key, a double click or a retried request adjusts the wallet twice.
+        if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            throw new DomainException(
+                ErrorCodes.ValidationFailed, "An idempotency key is required for manual wallet adjustments.");
+        }
+
         var currency = request.Currency ?? Money.DefaultCurrency;
         var isCredit = request.Amount > 0;
 
@@ -214,16 +221,21 @@ public sealed class AdminWalletService : IAdminWalletService
             ? await _wallets.CreditAsync(movement, ct)
             : await _wallets.DebitAsync(movement, ct);
 
-        await tx.CommitAsync(ct);
+        // Inside the same transaction as the money: an adjustment is never made without its audit
+        // record, and a retried one (same key) is not audited twice.
+        if (!result.WasDuplicate)
+        {
+            await _audit.LogAsync(
+                request.WalletType == WalletType.Shopping
+                    ? AuditActionType.ShoppingCreditIssued
+                    : AuditActionType.WalletAdjusted,
+                nameof(Wallet), result.WalletId,
+                new { Balance = result.BalanceBefore },
+                new { Balance = result.BalanceAfter, request.Amount, WalletType = request.WalletType.ToString() },
+                request.Reason, ct);
+        }
 
-        await _audit.LogAsync(
-            request.WalletType == WalletType.Shopping
-                ? AuditActionType.ShoppingCreditIssued
-                : AuditActionType.WalletAdjusted,
-            nameof(Wallet), result.WalletId,
-            new { Balance = result.BalanceBefore },
-            new { Balance = result.BalanceAfter, request.Amount, WalletType = request.WalletType.ToString() },
-            request.Reason, ct);
+        await tx.CommitAsync(ct);
 
         return result;
     }

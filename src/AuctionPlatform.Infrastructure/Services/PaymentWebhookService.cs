@@ -187,9 +187,11 @@ public sealed class PaymentWebhookService : IPaymentWebhookService
     /// <summary>HMAC-SHA256 over the raw body, compared in constant time.</summary>
     private bool VerifySignature(string rawBody, string? signature)
     {
-        if (string.IsNullOrWhiteSpace(_options.WebhookSecret))
+        // A short or placeholder secret ("not-configured" was the production value) can be guessed,
+        // and a guessed secret signs a credit to any wallet. Refuse outright.
+        if (string.IsNullOrWhiteSpace(_options.WebhookSecret) || _options.WebhookSecret.Length < 32)
         {
-            _logger.LogWarning("No webhook secret is configured; rejecting the webhook.");
+            _logger.LogWarning("No usable webhook secret is configured; rejecting the webhook.");
             return false;
         }
 

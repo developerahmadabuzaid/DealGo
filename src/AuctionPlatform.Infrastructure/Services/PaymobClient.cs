@@ -13,7 +13,7 @@ using Microsoft.Extensions.Options;
 namespace AuctionPlatform.Infrastructure.Services;
 
 /// <summary>A payment Paymob has opened for us: where to send the customer to pay it.</summary>
-public sealed record PaymobCheckout(string IntentionId, long? OrderId, string CheckoutUrl);
+public sealed record PaymobCheckout(string IntentionId, long OrderId, string CheckoutUrl);
 
 public sealed record PaymobCustomer(string FirstName, string LastName, string Phone, string Email);
 
@@ -21,10 +21,12 @@ public interface IPaymobClient
 {
     bool IsEnabled { get; }
 
+    /// <summary>Whether the server can ask Paymob about a transaction (needs the API key).</summary>
+    bool CanInquire { get; }
+
     /// <summary>
     /// Opens a payment for <paramref name="amount"/> riyals with Paymob's intention API and
-    /// returns the address of Paymob's checkout page for it. <paramref name="reference"/> comes
-    /// back on every callback for the payment, which is how a callback finds its top-up.
+    /// returns its Paymob order id and the Unified Checkout page for it.
     /// </summary>
     Task<PaymobCheckout> CreateCheckoutAsync(
         decimal amount,
@@ -35,14 +37,25 @@ public interface IPaymobClient
         string notificationUrl,
         string redirectionUrl,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Asks Paymob, server to server, for the latest transaction on a Paymob order. Null when the
+    /// order has no transaction yet (the customer has not paid). The answer comes from Paymob's
+    /// API over TLS with our credentials, so unlike a browser redirect it can be acted on.
+    /// </summary>
+    Task<JsonElement?> InquireByOrderAsync(long orderId, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Paymob's Saudi API (ksa.paymob.com): the unified intention API to open a payment, and its
-/// unified checkout page to take it.
-///
-/// Amounts go to Paymob in halalas. The secret key is sent as "Token &lt;key&gt;"; it never leaves
-/// the server. The public key is not a secret: it is part of the checkout address.
+/// Paymob's KSA APIs, as its developer documentation describes them:
+///   * POST {BaseUrl}/v1/intention/ with "Authorization: Token &lt;secret key&gt;"; amounts in cents
+///     (halalas); returns the intention id, the Paymob order id (intention_order_id) and the
+///     client secret.
+///   * The customer pays on {CheckoutUrl}/?publicKey=…&amp;clientSecret=… (Unified Checkout).
+///   * POST {BaseUrl}/api/auth/tokens {api_key} gives a token for
+///     POST {BaseUrl}/api/ecommerce/orders/transaction_inquiry {auth_token, order_id}.
+///   * Callbacks carry an HMAC-SHA512 of a fixed list of fields (see <see cref="SignedFields"/>).
+/// The secret key, HMAC secret and API key never leave the server and are never logged.
 /// </summary>
 public sealed class PaymobClient : IPaymobClient
 {
@@ -51,6 +64,12 @@ public sealed class PaymobClient : IPaymobClient
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+
+    // Auth tokens are reused for a while rather than requested per inquiry. The typed client is
+    // created per request, so the cache is shared across instances.
+    private static readonly SemaphoreSlim TokenGate = new(1, 1);
+    private static string? _token;
+    private static DateTime _tokenExpiresAt;
 
     private readonly HttpClient _http;
     private readonly PaymobOptions _options;
@@ -64,15 +83,10 @@ public sealed class PaymobClient : IPaymobClient
 
         _http.BaseAddress ??= new Uri(_options.BaseUrl.TrimEnd('/') + "/");
         _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
-
-        if (_options.IsConfigured)
-        {
-            _http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Token", _options.SecretKey);
-        }
     }
 
     public bool IsEnabled => _options.IsConfigured;
+    public bool CanInquire => _options.CanInquire;
 
     public async Task<PaymobCheckout> CreateCheckoutAsync(
         decimal amount,
@@ -95,65 +109,151 @@ public sealed class PaymobClient : IPaymobClient
             Amount: halalas,
             Currency: currency,
             PaymentMethods: _options.IntegrationIds,
-            Items: [new IntentionItem(description, halalas, description, 1)],
+            Items: [new IntentionItem(Cut(description, 50), halalas, Cut(description, 255), 1)],
             BillingData: new BillingData(
-                FirstName: customer.FirstName,
-                LastName: customer.LastName,
+                FirstName: Cut(customer.FirstName, 50),
+                LastName: Cut(customer.LastName, 50),
                 PhoneNumber: customer.Phone,
                 Email: customer.Email,
                 Country: "SA"),
-            Customer: new IntentionCustomer(customer.FirstName, customer.LastName, customer.Email),
+            Customer: new IntentionCustomer(Cut(customer.FirstName, 50), Cut(customer.LastName, 50), customer.Email),
             SpecialReference: reference,
+            Expiration: _options.IntentionExpirySeconds,
             NotificationUrl: notificationUrl,
             RedirectionUrl: redirectionUrl,
             Extras: new Dictionary<string, string> { ["payment_id"] = reference });
 
-        HttpResponseMessage response;
+        using var request = new HttpRequestMessage(HttpMethod.Post, "v1/intention/")
+        {
+            Content = JsonContent.Create(body, options: Json)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Token", _options.SecretKey);
+
+        using var response = await SendAsync(request, $"open payment {reference}", ct);
+        var text = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Paymob's error bodies describe the request (a missing field, an unknown integration
+            // id), never a card. Logged so a misconfiguration can be read and fixed.
+            _logger.LogError("Paymob refused to open payment {Reference}: {Status} {Body}",
+                reference, (int)response.StatusCode, Truncate(text));
+            throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service refused the request.");
+        }
+
+        using var doc = JsonDocument.Parse(text);
+        var root = doc.RootElement;
+
+        var clientSecret = root.TryGetProperty("client_secret", out var cs) ? cs.GetString() : null;
+        var intentionId = root.TryGetProperty("id", out var id) ? id.ToString() : string.Empty;
+        var orderId = root.TryGetProperty("intention_order_id", out var oid) && oid.TryGetInt64(out var o) ? o : 0;
+
+        if (string.IsNullOrWhiteSpace(clientSecret) || orderId <= 0)
+        {
+            _logger.LogError("Paymob opened payment {Reference} without a client secret or order id.", reference);
+            throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service answered oddly.");
+        }
+
+        // Paymob says whether each payment method is live. One that disagrees with the configured
+        // mode means test keys on a live site or live keys on a test one: refuse before the
+        // customer can pay.
+        if (root.TryGetProperty("payment_methods", out var methods) && methods.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var m in methods.EnumerateArray())
+            {
+                if (m.TryGetProperty("live", out var live) &&
+                    live.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                    live.GetBoolean() != _options.IsLiveMode)
+                {
+                    _logger.LogCritical(
+                        "Paymob payment methods are {Actual} but Paymob:Mode is {Mode}; refusing payment {Reference}.",
+                        live.GetBoolean() ? "live" : "test", _options.Mode, reference);
+                    throw new DomainException(ErrorCodes.ServiceUnavailable, "Online payment is misconfigured.");
+                }
+            }
+        }
+
+        var checkout = $"{_options.CheckoutUrl.TrimEnd('/')}/" +
+                       $"?publicKey={Uri.EscapeDataString(_options.PublicKey)}" +
+                       $"&clientSecret={Uri.EscapeDataString(clientSecret)}";
+
+        _logger.LogInformation("Paymob opened payment {Reference} as intention {IntentionId}, order {OrderId}.",
+            reference, intentionId, orderId);
+
+        return new PaymobCheckout(intentionId, orderId, checkout);
+    }
+
+    public async Task<JsonElement?> InquireByOrderAsync(long orderId, CancellationToken ct = default)
+    {
+        if (!CanInquire) return null;
+
+        var token = await AuthTokenAsync(ct);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/ecommerce/orders/transaction_inquiry")
+        {
+            Content = JsonContent.Create(new { auth_token = token, order_id = orderId })
+        };
+        using var response = await SendAsync(request, $"inquire about order {orderId}", ct);
+        var text = await response.Content.ReadAsStringAsync(ct);
+
+        if ((int)response.StatusCode == 404) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Paymob inquiry for order {OrderId} failed: {Status} {Body}",
+                orderId, (int)response.StatusCode, Truncate(text));
+            throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service did not answer the inquiry.");
+        }
+
+        using var doc = JsonDocument.Parse(text);
+        // A transaction has an id and an amount; anything else ("no transactions yet") is no answer.
+        return doc.RootElement.ValueKind == JsonValueKind.Object &&
+               doc.RootElement.TryGetProperty("id", out _) &&
+               doc.RootElement.TryGetProperty("amount_cents", out _)
+            ? doc.RootElement.Clone()
+            : null;
+    }
+
+    private async Task<string> AuthTokenAsync(CancellationToken ct)
+    {
+        await TokenGate.WaitAsync(ct);
         try
         {
-            response = await _http.PostAsJsonAsync("v1/intention/", body, Json, ct);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            _logger.LogError(ex, "Paymob could not be reached to open payment {Reference}.", reference);
-            throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service is not answering.");
-        }
+            if (_token is not null && DateTime.UtcNow < _tokenExpiresAt) return _token;
 
-        using (response)
-        {
-            var text = await response.Content.ReadAsStringAsync(ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "api/auth/tokens")
+            {
+                Content = JsonContent.Create(new { api_key = _options.ApiKey })
+            };
+            using var response = await SendAsync(request, "get an auth token", ct);
             if (!response.IsSuccessStatusCode)
             {
-                // Paymob's error bodies describe the request, not the card; nothing secret in them.
-                _logger.LogError(
-                    "Paymob refused to open payment {Reference}: {Status} {Body}",
-                    reference, (int)response.StatusCode, Truncate(text));
-                throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service refused the request.");
+                _logger.LogError("Paymob refused an auth token: {Status}", (int)response.StatusCode);
+                throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service refused our credentials.");
             }
 
-            using var doc = JsonDocument.Parse(text);
-            var root = doc.RootElement;
-            var clientSecret = root.TryGetProperty("client_secret", out var cs) ? cs.GetString() : null;
-            var intentionId = root.TryGetProperty("id", out var id) ? id.ToString() : string.Empty;
-            long? orderId = root.TryGetProperty("intention_order_id", out var oid) && oid.TryGetInt64(out var o)
-                ? o
-                : null;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            _token = doc.RootElement.GetProperty("token").GetString()
+                     ?? throw new DomainException(ErrorCodes.ServiceUnavailable, "No auth token returned.");
+            // Paymob tokens last about an hour; renew well before.
+            _tokenExpiresAt = DateTime.UtcNow.AddMinutes(45);
+            return _token;
+        }
+        finally
+        {
+            TokenGate.Release();
+        }
+    }
 
-            if (string.IsNullOrWhiteSpace(clientSecret))
-            {
-                _logger.LogError("Paymob opened payment {Reference} but sent no client secret.", reference);
-                throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service answered oddly.");
-            }
-
-            var checkout = $"{_options.BaseUrl.TrimEnd('/')}/unifiedcheckout/" +
-                           $"?publicKey={Uri.EscapeDataString(_options.PublicKey)}" +
-                           $"&clientSecret={Uri.EscapeDataString(clientSecret)}";
-
-            _logger.LogInformation(
-                "Paymob opened payment {Reference} as intention {IntentionId}, order {OrderId}.",
-                reference, intentionId, orderId);
-
-            return new PaymobCheckout(intentionId, orderId, checkout);
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, string what, CancellationToken ct)
+    {
+        try
+        {
+            return await _http.SendAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "Paymob could not be reached to {What}.", what);
+            throw new DomainException(ErrorCodes.ServiceUnavailable, "The payment service is not answering.");
         }
     }
 
@@ -163,9 +263,9 @@ public sealed class PaymobClient : IPaymobClient
     // ------------------------------------------------------------------ callback signatures
 
     /// <summary>
-    /// The transaction fields Paymob signs, in the order it concatenates them. Paymob sends the
-    /// HMAC-SHA512 of their values, joined with nothing between, keyed with the account's HMAC
-    /// secret, as the <c>hmac</c> query parameter.
+    /// The transaction fields Paymob signs, in the order its documentation lists them ("HMAC
+    /// Transaction Callback"). The HMAC is the SHA-512 HMAC of their values joined with nothing
+    /// between, keyed with the account's HMAC secret, sent as the <c>hmac</c> query parameter.
     /// </summary>
     public static readonly string[] SignedFields =
     [
@@ -175,20 +275,24 @@ public sealed class PaymobClient : IPaymobClient
         "source_data.pan", "source_data.sub_type", "source_data.type", "success"
     ];
 
-    /// <summary>The HMAC of a server-to-server callback, whose fields are in the JSON "obj".</summary>
+    /// <summary>The HMAC of a transaction as JSON: the processed callback's "obj", or an inquiry.</summary>
     public static string ComputeHmac(JsonElement transaction, string secret) =>
         Sign(SignedFields.Select(f => ValueAt(transaction, f)), secret);
 
     /// <summary>
-    /// The HMAC of the customer's return to the site, whose fields are query parameters. The
-    /// order id arrives as "order" there rather than "order.id".
+    /// The HMAC of the response callback (the customer's return), whose fields are query
+    /// parameters. Paymob's list names the order id "order_id" there; its sample sends "order".
+    /// Either is accepted.
     /// </summary>
     public static string ComputeHmac(IReadOnlyDictionary<string, string> query, string secret) =>
-        Sign(SignedFields.Select(f => query.TryGetValue(f == "order.id" ? "order" : f, out var v) ? v : string.Empty),
+        Sign(SignedFields.Select(f => f == "order.id"
+                ? (query.TryGetValue("order_id", out var oid) ? oid : query.TryGetValue("order", out var o) ? o : string.Empty)
+                : query.TryGetValue(f, out var v) ? v : string.Empty),
             secret);
 
     public static bool HmacMatches(string computed, string? provided) =>
         !string.IsNullOrWhiteSpace(provided) &&
+        provided.Trim().Length == computed.Length &&
         CryptographicOperations.FixedTimeEquals(
             Encoding.ASCII.GetBytes(computed),
             Encoding.ASCII.GetBytes(provided.Trim().ToLowerInvariant()));
@@ -218,10 +322,11 @@ public sealed class PaymobClient : IPaymobClient
             JsonValueKind.False => "false",
             JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
             JsonValueKind.String => current.GetString() ?? string.Empty,
-            JsonValueKind.Number => current.GetRawText(),
             _ => current.GetRawText()
         };
     }
+
+    private static string Cut(string text, int max) => text.Length <= max ? text : text[..max];
 
     private static string Truncate(string text) => text.Length <= 500 ? text : text[..500];
 
@@ -235,6 +340,7 @@ public sealed class PaymobClient : IPaymobClient
         BillingData BillingData,
         IntentionCustomer Customer,
         string SpecialReference,
+        int Expiration,
         string NotificationUrl,
         string RedirectionUrl,
         Dictionary<string, string> Extras);

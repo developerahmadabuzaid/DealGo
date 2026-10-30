@@ -141,6 +141,15 @@ public sealed class PaymentOptions
 
     /// <summary>Shared secret used to verify inbound webhook signatures.</summary>
     public string WebhookSecret { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Turns on the generic /webhooks/payments/{provider} endpoint, which credits the user and
+    /// amount its payload names. No real provider uses it (Paymob has its own endpoint), so it is off
+    /// unless set, never served in Production, and refused with a secret under 32 characters:
+    /// production ran it with the literal secret "not-configured", which let anyone credit any
+    /// wallet.
+    /// </summary>
+    public bool GenericWebhookEnabled { get; set; }
     public string Provider { get; set; } = "SANDBOX";
 
     /// <summary>
@@ -152,21 +161,41 @@ public sealed class PaymentOptions
 
 /// <summary>
 /// Paymob, the Saudi gateway that takes card, mada and Apple Pay payments for wallet top-ups.
+/// Follows Paymob's developer documentation (developers.paymob.com, Intention APIs, Unified
+/// Checkout, Webhook callbacks and HMAC, Transaction inquiry).
 ///
-/// The keys come from the Paymob dashboard (Settings → Account info): the secret key creates
-/// payments from the server, the public key opens Paymob's checkout page, and the HMAC secret
-/// proves a callback came from Paymob. Each payment method enabled for the account has its own
-/// integration id (Developers → Payment integrations); every id listed here is offered at checkout.
+/// From the Paymob dashboard: the secret key creates payments ("Token" header), the public key
+/// opens the checkout page, the HMAC secret proves a callback came from Paymob, and the API key
+/// lets the server ask Paymob about a transaction itself. Each payment method enabled for the
+/// account has its own integration id (Developers → Payment integrations).
 /// </summary>
 public sealed class PaymobOptions
 {
     public const string SectionName = "Paymob";
 
+    /// <summary>Paymob's KSA API host: intentions, auth tokens and transaction inquiry.</summary>
     public string BaseUrl { get; set; } = "https://ksa.paymob.com";
+
+    /// <summary>Paymob's KSA Unified Checkout page, opened with the public key and client secret.</summary>
+    public string CheckoutUrl { get; set; } = "https://ksa.checkout.paymob.com";
+
     public string SecretKey { get; set; } = string.Empty;
     public string PublicKey { get; set; } = string.Empty;
     public string HmacSecret { get; set; } = string.Empty;
     public int[] IntegrationIds { get; set; } = [];
+
+    /// <summary>
+    /// The API key, used only to ask Paymob about a transaction (reconciliation, and checking a
+    /// customer's return). Optional: without it the processed callback is the only confirmation.
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// "test" or "live", stated on purpose. Paymob marks every payment method it opens as live or
+    /// not; a payment whose methods disagree with this is refused, so test keys can never take
+    /// payments on a site meant to be live, nor live keys on one meant for testing.
+    /// </summary>
+    public string Mode { get; set; } = string.Empty;
 
     /// <summary>
     /// The site's public address, which Paymob calls back and returns the customer to. Empty uses
@@ -178,15 +207,26 @@ public sealed class PaymobOptions
     public decimal MinTopUp { get; set; } = 10m;
     public decimal MaxTopUp { get; set; } = 20000m;
 
+    /// <summary>How long a customer has to pay once a top-up is opened, in seconds.</summary>
+    public int IntentionExpirySeconds { get; set; } = 3600;
+
+    /// <summary>How many unpaid top-ups one user may have open at once.</summary>
+    public int MaxOpenTopUps { get; set; } = 5;
+
     public int TimeoutSeconds { get; set; } = 20;
+
+    public bool IsLiveMode => string.Equals(Mode, "live", StringComparison.OrdinalIgnoreCase);
+    public bool IsTestMode => string.Equals(Mode, "test", StringComparison.OrdinalIgnoreCase);
 
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(SecretKey) &&
         !string.IsNullOrWhiteSpace(PublicKey) &&
         !string.IsNullOrWhiteSpace(HmacSecret) &&
-        IntegrationIds.Length > 0;
-}
+        IntegrationIds.Length > 0 &&
+        (IsLiveMode || IsTestMode);
 
+    public bool CanInquire => IsConfigured && !string.IsNullOrWhiteSpace(ApiKey);
+}
 /// <summary>
 /// Tawked, the Saudi provider that delivers and checks one-time codes for mobile numbers.
 ///
