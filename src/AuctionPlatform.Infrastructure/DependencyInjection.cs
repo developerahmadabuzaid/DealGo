@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.Configure<PaymentOptions>(configuration.GetSection(PaymentOptions.SectionName));
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
         services.Configure<TawkedOptions>(configuration.GetSection(TawkedOptions.SectionName));
+        services.Configure<PaymobOptions>(configuration.GetSection(PaymobOptions.SectionName));
 
         AddPersistence(services, configuration);
         AddIdentity(services);
@@ -176,5 +177,9 @@ public static class DependencyInjection
 
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IPaymentWebhookService, PaymentWebhookService>();
+
+        // Wallet top-ups by card, mada and Apple Pay through Paymob.
+        services.AddHttpClient<IPaymobClient, PaymobClient>();
+        services.AddScoped<IWalletTopUpService, WalletTopUpService>();
     }
 }

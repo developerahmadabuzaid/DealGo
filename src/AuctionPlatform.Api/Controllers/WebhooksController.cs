@@ -16,11 +16,14 @@ namespace AuctionPlatform.Api.Controllers;
 public sealed class WebhooksController : ApiControllerBase
 {
     private readonly IPaymentWebhookService _webhooks;
+    private readonly IWalletTopUpService _topUps;
     private readonly ILogger<WebhooksController> _logger;
 
-    public WebhooksController(IPaymentWebhookService webhooks, ILogger<WebhooksController> logger)
+    public WebhooksController(
+        IPaymentWebhookService webhooks, IWalletTopUpService topUps, ILogger<WebhooksController> logger)
     {
         _webhooks = webhooks;
+        _topUps = topUps;
         _logger = logger;
     }
 
@@ -39,6 +42,26 @@ public sealed class WebhooksController : ApiControllerBase
         if (!result.Accepted)
         {
             _logger.LogWarning("Rejected a {Provider} webhook: {Message}", provider, result.Message);
+            return BadRequest(new { code = "WEBHOOK_REJECTED", message = result.Message, details = Array.Empty<string>() });
+        }
+
+        return Ok(new { received = true, alreadyProcessed = result.AlreadyProcessed });
+    }
+
+    /// <summary>
+    /// Paymob's "transaction processed" callback. Paymob signs it with an HMAC sent as the
+    /// <c>hmac</c> query parameter; anything unsigned or wrongly signed is refused.
+    /// </summary>
+    [HttpPost("paymob")]
+    public async Task<IActionResult> Paymob([FromQuery] string? hmac, CancellationToken ct)
+    {
+        using var reader = new StreamReader(Request.Body);
+        var body = await reader.ReadToEndAsync(ct);
+
+        var result = await _topUps.HandleCallbackAsync(body, hmac, ct);
+        if (!result.Accepted)
+        {
+            _logger.LogWarning("Rejected a Paymob callback: {Message}", result.Message);
             return BadRequest(new { code = "WEBHOOK_REJECTED", message = result.Message, details = Array.Empty<string>() });
         }
 

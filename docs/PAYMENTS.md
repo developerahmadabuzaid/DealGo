@@ -60,10 +60,37 @@ Entry fee refunds run one participant at a time in independent transactions, so 
 block the rest, and the refund marker is inserted **before** money moves so a concurrent duplicate
 fails at the insert rather than after paying out.
 
+## Top-ups through Paymob
+
+Real money enters only here, into the Main wallet, by card, mada or Apple Pay on Paymob's own
+checkout page (`ksa.paymob.com`). Card details never reach this server.
+
+```text
+POST /wallet/topups {amount}
+  → Payment (Deposit, PAYMOB) recorded Pending; its id is the reference Paymob carries
+  → Paymob intention API opens the payment          → Processing, checkout URL returned
+customer pays on Paymob's page
+Paymob → POST /webhooks/paymob?hmac=…      (server to server)
+Paymob → GET  /payments/paymob/return?…&hmac=…   (the customer's browser)
+  either one, verified with HMAC-SHA512 over Paymob's fixed field list:
+    success, not pending, amount and currency equal to the recorded payment
+      → credit Main wallet, keyed paymob-topup:{paymentId}   → Completed
+    declined → Failed, nothing moves
+GET /wallet/topups/{id}  — the app polls this until Completed or Failed
+```
+
+Both routes carry the same result and may arrive in either order or both; the credit key makes
+the second a no-op. An amount that differs from the recorded payment is never credited.
+
+Keys: `Paymob__SecretKey`, `Paymob__PublicKey`, `Paymob__HmacSecret`, `Paymob__IntegrationIds__N`
+from the dashboard, set in web.config by the publish script from `local-secrets.ps1`. Without
+them top-ups are switched off.
+
 ## Deposits and withdrawals
 
-`POST /wallet/deposit` and `POST /wallet/withdraw` operate on the Main wallet, both requiring an
-idempotency key. Withdrawal verifies the user, the wallet, sufficient balance, writes the ledger
+`POST /wallet/deposit` adds balance with no payment behind it, for development only. It is
+refused in Production regardless of `AllowSandboxDeposits`: there it let anyone signed in add
+money. `POST /wallet/withdraw` operates on the Main wallet and requires an idempotency key. Withdrawal verifies the user, the wallet, sufficient balance, writes the ledger
 entry and records a `Withdrawal` payment in `Processing` for the payout provider to complete.
 
 Shopping credit is structurally excluded from any withdrawable total.

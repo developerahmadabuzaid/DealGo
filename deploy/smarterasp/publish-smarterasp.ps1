@@ -167,6 +167,30 @@ if ($OtpTestAccounts) {
         $testAccountLines += "<environmentVariable name=""Otp__TestAccounts__$digits"" value=""$code"" />"
     }
 }
+# Paymob: card, mada and Apple Pay top-ups. Optional: without the keys the site runs and top-ups
+# are switched off. Set them in local-secrets.ps1, never in a file under version control.
+$paymobSecretKey = if ($PaymobSecretKey) { $PaymobSecretKey.Trim() } else { '' }
+$paymobPublicKey = if ($PaymobPublicKey) { $PaymobPublicKey.Trim() } else { '' }
+$paymobHmacSecret = if ($PaymobHmacSecret) { $PaymobHmacSecret.Trim() } else { '' }
+$paymobIds = @($PaymobIntegrationIds | Where-Object { "$_".Trim() -ne '' })
+foreach ($id in $paymobIds) {
+    if ("$id" -notmatch '^\d+$') { throw "PaymobIntegrationIds: '$id' is not a number. Copy the ids from Paymob's Payment integrations page." }
+}
+$paymobComplete = $paymobSecretKey -and $paymobPublicKey -and $paymobHmacSecret -and $paymobIds.Count -gt 0
+if (-not $paymobComplete -and ($paymobSecretKey -or $paymobPublicKey -or $paymobHmacSecret -or $paymobIds.Count)) {
+    throw 'Paymob is half set up: PaymobSecretKey, PaymobPublicKey, PaymobHmacSecret and PaymobIntegrationIds are all needed.'
+}
+$webConfig = $webConfig.Replace('__PAYMOB_SECRET_KEY__', $paymobSecretKey)
+$webConfig = $webConfig.Replace('__PAYMOB_PUBLIC_KEY__', $paymobPublicKey)
+$webConfig = $webConfig.Replace('__PAYMOB_HMAC_SECRET__', $paymobHmacSecret)
+$idsMarker = '<!-- __PAYMOB_INTEGRATION_IDS__ -->'
+$idsLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($idsMarker) } | Select-Object -First 1
+$idsIndent = if ($idsLine) { $idsLine.Substring(0, $idsLine.IndexOf($idsMarker)) } else { '' }
+$idLines = for ($i = 0; $i -lt $paymobIds.Count; $i++) {
+    "<environmentVariable name=""Paymob__IntegrationIds__$i"" value=""$($paymobIds[$i])"" />"
+}
+$webConfig = $webConfig.Replace($idsMarker, (@($idLines) -join "`n$idsIndent"))
+
 $marker = '<!-- __OTP_TEST_ACCOUNTS__ -->'
 $markerLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($marker) } | Select-Object -First 1
 $indent = if ($markerLine) { $markerLine.Substring(0, $markerLine.IndexOf($marker)) } else { '' }
@@ -334,7 +358,7 @@ if ($siteSize -gt 100MB) {
 }
 
 $placeholders = Select-String -Path (Join-Path $siteFolder 'web.config'), (Join-Path $siteFolder 'appsettings.Production.json') `
-    -Pattern '__[A-Z_]+__' -AllMatches
+    -Pattern '__[A-Z_]+__' -AllMatches -CaseSensitive
 
 if ($placeholders) {
     Write-Warning 'This package still contains placeholders and will not run as it stands:'
@@ -342,11 +366,17 @@ if ($placeholders) {
         Write-Warning ("  {0}: {1}" -f $_.Filename, ($_.Matches | ForEach-Object { $_.Value } | Select-Object -Unique) -join ' ')
     }
 }
-elseif ($PaymentWebhookSecret -eq 'not-configured') {
-    Write-Warning 'Payments__WebhookSecret was left at its default. Payment webhooks will be rejected until it is set.'
-}
 else {
     Write-Host "`nPackage is complete. See deploy\smarterasp\DEPLOYMENT-AR.md for the upload steps." -ForegroundColor Green
+}
+
+if (-not $paymobComplete) {
+    Write-Warning @'
+
+Paymob is not set up, so wallet top-ups are switched off in this package: the wallet's top-up
+button will say online payment is not available yet. Set PaymobSecretKey, PaymobPublicKey,
+PaymobHmacSecret and PaymobIntegrationIds in local-secrets.ps1 and build again.
+'@
 }
 
 if (-not $bootstrapAdminEmail -and -not $bootstrapAdminPhone) {

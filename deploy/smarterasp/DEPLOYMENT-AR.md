@@ -237,3 +237,24 @@ deploy\smarterasp\publish-smarterasp.ps1 `
 
 المفاتيح لا تُحفظ في السكربت ولا في git. احتفظ بها في مدير كلمات مرور — تغيير مفتاح التوقيع
 يُخرج كل المستخدمين من حساباتهم.
+
+## الدفع الإلكتروني عبر Paymob
+
+شحن المحفظة بالبطاقة أو مدى أو Apple Pay يتم في صفحة Paymob الآمنة. يحتاج أربع قيم من لوحة Paymob
+(ksa.dashboard.paymob.com):
+
+| القيمة | مكانها في لوحة Paymob | في `local-secrets.ps1` |
+|---|---|---|
+| Secret Key | Settings ← Account Info | `PaymobSecretKey` |
+| Public Key | Settings ← Account Info | `PaymobPublicKey` |
+| HMAC | Settings ← Account Info | `PaymobHmacSecret` |
+| أرقام طرق الدفع (Integration IDs) | Developers ← Payment Integrations | `PaymobIntegrationIds = @(123, 456)` |
+
+1. ابدأ **بمفاتيح وضع الاختبار (Test)** وأرقام طرق الدفع التجريبية، وابنِ الحزمة وارفعها.
+2. اشحن المحفظة من التطبيق ببطاقة Paymob التجريبية، وتأكد أن الرصيد زاد مرة واحدة فقط.
+3. بعد نجاح التجربة، ضع **مفاتيح الوضع الحقيقي (Live)** وأرقامه، ثم ابنِ الحزمة وارفعها من جديد.
+
+لا حاجة لإعداد روابط الاستدعاء في لوحة Paymob: كل عملية دفع ترسل معها عنوان
+`/api/v1/webhooks/paymob` وعنوان صفحة العودة.
+
+لا تضع هذه المفاتيح في أي ملف داخل المستودع، ولا ترسلها في محادثة.

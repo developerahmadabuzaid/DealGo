@@ -121,10 +121,42 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<StoreOrderService>();
         services.AddScoped<IStoreOrderService>(sp => sp.GetRequiredService<StoreOrderService>());
 
+        // Top-ups run for real against the database; only the call out to Paymob is replaced.
+        services.Configure<PaymobOptions>(o =>
+        {
+            o.SecretKey = "test-secret";
+            o.PublicKey = "test-public";
+            o.HmacSecret = PaymobHmacSecret;
+            o.IntegrationIds = [1001];
+        });
+        services.AddSingleton<IPaymobClient, FakePaymobClient>();
+        services.AddScoped<IWalletTopUpService, WalletTopUpService>();
+
         return services.BuildServiceProvider().CreateAsyncScope();
     }
 
+    /// <summary>The HMAC secret the fixture's Paymob is configured with, for signing test callbacks.</summary>
+    public const string PaymobHmacSecret = "test-hmac-secret";
+
     // ------------------------------------------------------------------ test doubles
+
+    /// <summary>
+    /// Paymob as far as opening a payment goes: it answers with a checkout page and an order id
+    /// derived from the reference, so a test can sign a callback that names the same order.
+    /// </summary>
+    public sealed class FakePaymobClient : IPaymobClient
+    {
+        public bool IsEnabled => true;
+
+        public static long OrderIdFor(string reference) =>
+            Math.Abs(BitConverter.ToInt64(Guid.Parse(reference).ToByteArray(), 0) % 1_000_000_000L);
+
+        public Task<PaymobCheckout> CreateCheckoutAsync(decimal amount, string currency, string reference,
+            string description, PaymobCustomer customer, string notificationUrl, string redirectionUrl,
+            CancellationToken ct = default) =>
+            Task.FromResult(new PaymobCheckout(
+                "pi_test_" + reference, OrderIdFor(reference), "https://checkout.test/" + reference));
+    }
 
     private sealed class TestCurrentUser : ICurrentUserService
     {

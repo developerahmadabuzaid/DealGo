@@ -142,7 +142,49 @@ public sealed class PaymentOptions
     /// <summary>Shared secret used to verify inbound webhook signatures.</summary>
     public string WebhookSecret { get; set; } = string.Empty;
     public string Provider { get; set; } = "SANDBOX";
+
+    /// <summary>
+    /// Lets POST /wallet/deposit add balance with no payment behind it, for development. Never
+    /// honoured in Production, whatever this says: there it was a way to mint money.
+    /// </summary>
     public bool AllowSandboxDeposits { get; set; } = true;
+}
+
+/// <summary>
+/// Paymob, the Saudi gateway that takes card, mada and Apple Pay payments for wallet top-ups.
+///
+/// The keys come from the Paymob dashboard (Settings → Account info): the secret key creates
+/// payments from the server, the public key opens Paymob's checkout page, and the HMAC secret
+/// proves a callback came from Paymob. Each payment method enabled for the account has its own
+/// integration id (Developers → Payment integrations); every id listed here is offered at checkout.
+/// </summary>
+public sealed class PaymobOptions
+{
+    public const string SectionName = "Paymob";
+
+    public string BaseUrl { get; set; } = "https://ksa.paymob.com";
+    public string SecretKey { get; set; } = string.Empty;
+    public string PublicKey { get; set; } = string.Empty;
+    public string HmacSecret { get; set; } = string.Empty;
+    public int[] IntegrationIds { get; set; } = [];
+
+    /// <summary>
+    /// The site's public address, which Paymob calls back and returns the customer to. Empty uses
+    /// the address the top-up request arrived on, which is right everywhere but behind a proxy.
+    /// </summary>
+    public string CallbackBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>The smallest and largest single top-up, in riyals.</summary>
+    public decimal MinTopUp { get; set; } = 10m;
+    public decimal MaxTopUp { get; set; } = 20000m;
+
+    public int TimeoutSeconds { get; set; } = 20;
+
+    public bool IsConfigured =>
+        !string.IsNullOrWhiteSpace(SecretKey) &&
+        !string.IsNullOrWhiteSpace(PublicKey) &&
+        !string.IsNullOrWhiteSpace(HmacSecret) &&
+        IntegrationIds.Length > 0;
 }
 
 /// <summary>

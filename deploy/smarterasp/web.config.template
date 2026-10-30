@@ -42,6 +42,10 @@
           <environmentVariable name="Bootstrap__SuperAdminEmail" value="__BOOTSTRAP_ADMIN_EMAIL__" />
           <environmentVariable name="Bootstrap__SuperAdminPhone" value="__BOOTSTRAP_ADMIN_PHONE__" />
           <!-- __OTP_TEST_ACCOUNTS__ -->
+          <environmentVariable name="Paymob__SecretKey" value="__PAYMOB_SECRET_KEY__" />
+          <environmentVariable name="Paymob__PublicKey" value="__PAYMOB_PUBLIC_KEY__" />
+          <environmentVariable name="Paymob__HmacSecret" value="__PAYMOB_HMAC_SECRET__" />
+          <!-- __PAYMOB_INTEGRATION_IDS__ -->
         </environmentVariables>
       </aspNetCore>
     </system.webServer>
