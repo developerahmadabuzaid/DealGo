@@ -34,5 +34,8 @@ public enum AuditActionType
     ParticipantAddedByAdmin = 24,
 
     /// <summary>An advertisement on the app's front page was added, changed or removed.</summary>
-    AppAdChanged = 25
+    AppAdChanged = 25,
+
+    /// <summary>A user deleted their own account. Their personal details were removed.</summary>
+    AccountDeleted = 26
 }

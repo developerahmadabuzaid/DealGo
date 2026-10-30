@@ -93,6 +93,7 @@ public static class DependencyInjection
         services.AddScoped<IOtpService, OtpService>();
 
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAccountDeletionService, AccountDeletionService>();
         services.AddScoped<IUserAdminService, UserAdminService>();
     }
 

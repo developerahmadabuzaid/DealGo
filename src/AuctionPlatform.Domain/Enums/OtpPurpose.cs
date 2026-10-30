@@ -11,7 +11,8 @@ public enum OtpPurpose
     Login = 0,
     Withdrawal = 1,
     VerifyContact = 2,
-    PrizePayment = 3
+    PrizePayment = 3,
+    DeleteAccount = 4
 }
 
 /// <summary>How a one-time code was delivered.</summary>

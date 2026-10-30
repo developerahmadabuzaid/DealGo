@@ -39,6 +39,19 @@ class AppStrings {
   String get login => _t('تسجيل الدخول', 'Sign in');
   String get register => _t('إنشاء حساب', 'Create account');
   String get logout => _t('تسجيل الخروج', 'Sign out');
+  String get deleteAccount => _t('حذف الحساب', 'Delete account');
+  String get deleteAccountExplanation => _t(
+      'سيتم حذف اسمك ورقم جوالك وبريدك وإشعاراتك، وتسجيل خروجك من كل الأجهزة. '
+          'يبقى سجل العمليات المالية محفوظاً كما يتطلب النظام، ورصيد التسوق غير قابل للاسترداد. '
+          'لا يمكن التراجع عن الحذف.',
+      'Your name, phone, email and notifications will be deleted and you will be signed out '
+          'everywhere. Financial records are kept as required, and shopping credit cannot be '
+          'refunded. This cannot be undone.');
+  String get deleteAccountSendCode =>
+      _t('أرسل رمز التأكيد', 'Send confirmation code');
+  String get deleteAccountConfirmCode =>
+      _t('أدخل الرمز لتأكيد حذف الحساب', 'Enter the code to confirm deleting your account');
+  String get accountDeleted => _t('تم حذف الحساب', 'Account deleted');
   String get email => _t('البريد الإلكتروني', 'Email');
   String get password => _t('كلمة المرور', 'Password');
   String get fullName => _t('الاسم الكامل', 'Full name');
@@ -468,6 +481,9 @@ class AppStrings {
     'OTP_DESTINATION_INVALID': 'البريد الإلكتروني أو رقم الهاتف غير صحيح.',
     'PHONE_NUMBER_INVALID': 'أدخل رقم جوال سعودي صحيح يبدأ بـ 5، مثل 05XXXXXXXX.',
     'PHONE_NUMBER_TAKEN': 'رقم الجوال هذا مرتبط بحساب آخر.',
+    'ACCOUNT_HAS_BALANCE': 'اسحب رصيد المحفظة الرئيسية أولاً، ثم احذف الحساب.',
+    'ACCOUNT_HAS_OPEN_ACTIVITY':
+        'لا يمكن حذف الحساب الآن: لديك مزاد أو جهاز أو طلب أو عملية دفع لم تكتمل بعد.',
     'EMAIL_ALREADY_REGISTERED': 'هذا البريد الإلكتروني مسجل بالفعل.',
     'ACCOUNT_DISABLED': 'تم إيقاف هذا الحساب.',
     'UNAUTHORIZED': 'انتهت الجلسة. سجّل الدخول من جديد.',

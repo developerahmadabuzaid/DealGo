@@ -69,6 +69,7 @@ public static class OtpMessageKeys
     public const string Withdrawal = "otp.withdrawal";
     public const string VerifyContact = "otp.verify_contact";
     public const string PrizePayment = "otp.prize_payment";
+    public const string DeleteAccount = "otp.delete_account";
 
     public static string For(OtpPurpose purpose) => purpose switch
     {
@@ -76,6 +77,7 @@ public static class OtpMessageKeys
         OtpPurpose.Withdrawal => Withdrawal,
         OtpPurpose.VerifyContact => VerifyContact,
         OtpPurpose.PrizePayment => PrizePayment,
+        OtpPurpose.DeleteAccount => DeleteAccount,
         _ => Login
     };
 }

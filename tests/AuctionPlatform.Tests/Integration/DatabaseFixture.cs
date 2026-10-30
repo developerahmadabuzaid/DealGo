@@ -106,6 +106,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<ICurrentUserService>(_ => new TestCurrentUser(actingUserId));
         services.AddScoped<IOtpService, OtpService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAccountDeletionService, AccountDeletionService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<INumberGenerator, NumberGenerator>();
         services.AddScoped<INotificationService, NotificationService>();

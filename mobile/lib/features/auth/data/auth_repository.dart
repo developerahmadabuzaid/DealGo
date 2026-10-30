@@ -133,6 +133,22 @@ class AuthRepository {
     await _tokens.clear();
   }
 
+  // ---- account deletion ----
+
+  /// Sends the code that confirms deleting the account. The server refuses while the account
+  /// still has a withdrawable balance or something in progress.
+  Future<OtpChallenge> requestAccountDeletionOtp() async {
+    final data = await _api.post('/me/delete/request-otp');
+    return OtpChallenge.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Deletes the account. The server has already ended every session, so only the local copy
+  /// of the tokens is left to clear.
+  Future<void> deleteAccount(String code) async {
+    await _api.post('/me/delete', body: {'code': code});
+    await _tokens.clear();
+  }
+
   /// Registers this device for push so the backend can reach the user when the app is closed.
   Future<void> registerDevice(String token, String platform) async {
     try {

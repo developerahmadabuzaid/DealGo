@@ -171,6 +171,13 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(user: updated);
   }
 
+  /// Deletes the account after the user confirms with a code, then leaves the user signed out.
+  Future<void> deleteAccount(String code) async {
+    await _repo.deleteAccount(code);
+    await _ref.read(hubClientProvider).disconnect();
+    state = const AuthState(checked: true);
+  }
+
   Future<void> signOut() async {
     await _repo.logout();
     await _ref.read(hubClientProvider).disconnect();

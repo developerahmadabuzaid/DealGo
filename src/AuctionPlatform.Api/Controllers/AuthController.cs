@@ -114,8 +114,16 @@ public sealed class AuthController : ApiControllerBase
 public sealed class ProfileController : ApiControllerBase
 {
     private readonly IAuthService _auth;
+    private readonly IAccountDeletionService _deletion;
+    private readonly IWebHostEnvironment _environment;
 
-    public ProfileController(IAuthService auth) => _auth = auth;
+    public ProfileController(
+        IAuthService auth, IAccountDeletionService deletion, IWebHostEnvironment environment)
+    {
+        _auth = auth;
+        _deletion = deletion;
+        _environment = environment;
+    }
 
     [HttpGet]
     public async Task<ActionResult<UserProfileDto>> Get(CancellationToken ct) =>
@@ -124,4 +132,28 @@ public sealed class ProfileController : ApiControllerBase
     [HttpPut]
     public async Task<ActionResult<UserProfileDto>> Update(UpdateProfileRequest request, CancellationToken ct) =>
         Ok(await _auth.UpdateProfileAsync(CurrentUserId, request, ct));
+
+    /// <summary>
+    /// Sends the code that confirms deleting the account. Refused while the account still has a
+    /// withdrawable balance or an auction, device, order or payment in progress.
+    /// </summary>
+    [HttpPost("delete/request-otp")]
+    [EnableRateLimiting("auth")]
+    public async Task<ActionResult<OtpChallengeDto>> RequestDeletionOtp(CancellationToken ct)
+    {
+        var challenge = await _deletion.RequestAsync(CurrentUserId, ct);
+
+        return Ok(_environment.IsProduction()
+            ? challenge with { DevelopmentCode = null }
+            : challenge);
+    }
+
+    /// <summary>Deletes the account once the code is confirmed. Every session ends.</summary>
+    [HttpPost("delete")]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> Delete(DeleteAccountRequest request, CancellationToken ct)
+    {
+        await _deletion.DeleteAsync(CurrentUserId, request, ct);
+        return NoContent();
+    }
 }

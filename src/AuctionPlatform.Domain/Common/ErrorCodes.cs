@@ -75,6 +75,8 @@ public static class ErrorCodes
     public const string OtpDestinationInvalid = "OTP_DESTINATION_INVALID";
     public const string PhoneNumberInvalid = "PHONE_NUMBER_INVALID";
     public const string PhoneNumberTaken = "PHONE_NUMBER_TAKEN";
+    public const string AccountHasBalance = "ACCOUNT_HAS_BALANCE";
+    public const string AccountHasOpenActivity = "ACCOUNT_HAS_OPEN_ACTIVITY";
 
     // Generic
     public const string ValidationFailed = "VALIDATION_FAILED";
