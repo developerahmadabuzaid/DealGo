@@ -360,6 +360,8 @@ class AppTheme {
           fontSize: 12.5,
           fontWeight: FontWeight.w600,
           color: text,
+          // Chip labels do not inherit the fallback either; amounts on chips need the Riyal sign.
+          fontFamilyFallback: riyalFallback,
         ),
         padding: const EdgeInsets.symmetric(
           horizontal: space3,
