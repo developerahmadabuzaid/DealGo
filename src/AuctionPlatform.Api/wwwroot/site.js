@@ -398,6 +398,7 @@ function buildFooter(s, links) {
   const legal = [
     h('a', { href: safeUrl(s.privacyUrl) || '/privacy.html' }, 'سياسة الخصوصية'),
     h('a', { href: safeUrl(s.termsUrl) || '/terms.html' }, 'الشروط والأحكام'),
+    h('a', { href: '/support' }, 'الدعم الفني'),
   ];
 
   const contact = [

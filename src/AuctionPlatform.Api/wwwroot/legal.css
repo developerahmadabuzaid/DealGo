@@ -97,6 +97,25 @@
 .legal-foot a { color: var(--muted); text-decoration: none; }
 .legal-foot a:hover, .legal-foot a[aria-current] { color: var(--brand); }
 
+/* The support page's contact buttons. */
+.support-actions { display: flex; flex-wrap: wrap; gap: var(--s3); margin-bottom: var(--s4); }
+.legal .support-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  font-weight: 700;
+  text-decoration: none;
+}
+.legal .support-whatsapp { background: #25d366; color: #fff; }
+.legal .support-whatsapp:hover { background: #1ebe5a; }
+.legal .support-whatsapp bdi { font-weight: 600; opacity: .9; }
+.legal .support-email { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.legal .support-email bdi { color: var(--text-2); font-weight: 600; }
+.legal .support-email[hidden] { display: none; }
+.support-hint { font-size: 14.5px !important; color: var(--muted) !important; }
+
 @media (max-width: 640px) {
   .legal { padding-inline: var(--s4); }
   .legal h2 { font-size: 19px; }

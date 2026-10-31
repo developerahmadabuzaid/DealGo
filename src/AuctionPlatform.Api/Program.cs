@@ -524,6 +524,9 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 
 app.MapFallbackToFile("/admin/{*path:nonfile}", "admin/index.html");
 
+// The support page, at the short address given to the App Store as the app's Support URL.
+app.MapFallbackToFile("/support", "support.html");
+
 // The mobile app, built for the web and served from here as an installable PWA. Its files live
 // in wwwroot/app; `scripts/build-pwa` puts them there. Like the console, any address inside it
 // resolves to its own index.html so a refresh deep in the app still works.
