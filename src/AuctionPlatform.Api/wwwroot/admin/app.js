@@ -341,6 +341,7 @@ const AR = {
 
   // wallets and users
   'Withdrawals': 'طلبات السحب',
+  'Deposits & withdrawals': 'عمليات الإيداع والسحب', 'Details': 'التفاصيل',
 
   // support
   'Support': 'الدعم الفني', 'WhatsApp support': 'دعم واتساب', 'WhatsApp number': 'رقم واتساب',
@@ -975,6 +976,7 @@ const NAV = [
   {
     group: 'Finance',
     items: [
+      { id: 'operations', label: 'Deposits & withdrawals', icon: 'coins' },
       { id: 'wallets', label: 'Wallets', icon: 'wallet' },
       { id: 'withdrawals', label: 'Withdrawals', icon: 'receipt' },
       { id: 'shopping-credits', label: 'Shopping credits', icon: 'gift' },
@@ -1085,6 +1087,7 @@ function routeView(route) {
     'store-settings': viewStoreSettings,
     'wallets': viewWallets,
     'withdrawals': viewWithdrawals,
+    'operations': viewOperations,
     'shopping-credits': viewShoppingCredits,
     'site-content': viewSiteContent,
     'site-cards': viewSiteCards,
@@ -4205,6 +4208,225 @@ async function viewWithdrawals() {
         totalCount: data.totalCount,
         onPage: (p) => { q.page = p; render(); },
       })));
+}
+
+/*
+ * Every deposit and withdrawal.
+ *
+ * The list is for finding an operation; its detail is for answering a question about it — who
+ * paid, how, what Paymob said, what the ledger recorded and who on the staff touched it. Nothing
+ * here moves money: paying or refusing a withdrawal stays on the Withdrawals page.
+ */
+const OP_TYPE = { Deposit: 'إيداع', Withdrawal: 'سحب' };
+const OP_STATUS = {
+  Pending: 'بانتظار الدفع', Processing: 'قيد المعالجة', Completed: 'مكتملة',
+  Failed: 'فاشلة', Cancelled: 'ملغاة', Refunded: 'مستردة',
+};
+const LEDGER_TYPE = {
+  Deposit: 'إيداع', Withdrawal: 'سحب', Refund: 'استرداد', Adjustment: 'تسوية',
+};
+const AUDIT_ACTION = {
+  WithdrawalPaid: 'تم تحويل المبلغ', WithdrawalRejected: 'رُفض الطلب وأُعيد المبلغ',
+};
+
+/** A status badge in Arabic whatever the server calls it. */
+const opBadge = (status) => h('span', { class: badgeClass(status) }, OP_STATUS[status] || status);
+
+/** Text that is data — a name, a reason, a bank reference — appended raw, never translated. */
+const raw = (v) => document.createTextNode(v === null || v === undefined || v === '' ? '—' : String(v));
+const ltr = (v) => h('span', { style: 'direction:ltr;unicode-bidi:isolate;font-family:monospace' }, raw(v));
+
+async function viewOperations() {
+  const q = state.cache.ops || (state.cache.ops = { page: 1, type: '', status: '', from: '', to: '', search: '' });
+
+  const params = new URLSearchParams({ page: q.page, pageSize: 25 });
+  if (q.type) params.set('type', q.type);
+  if (q.status) params.set('status', q.status);
+  if (q.from) params.set('from', q.from);
+  if (q.to) params.set('to', q.to);
+  if (q.search) params.set('search', q.search);
+
+  const data = await api(`/admin/payments/operations?${params}`);
+  const t = data.totals;
+
+  const chip = (key, value, label) => h('button', {
+    class: q[key] === value ? 'btn sm' : 'btn ghost sm',
+    onclick: () => { q[key] = value; q.page = 1; render(); },
+  }, label);
+
+  const search = h('input', { type: 'search', value: q.search, placeholder: 'الاسم أو الجوال أو رقم العملية' });
+  const from = h('input', { type: 'date', value: q.from });
+  const to = h('input', { type: 'date', value: q.to });
+  const apply = () => {
+    q.search = search.value.trim(); q.from = from.value; q.to = to.value; q.page = 1; render();
+  };
+  search.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
+
+  return h('div', {},
+    pageHead('Deposits & withdrawals', 'كل عمليات شحن المحفظة والسحب، مع تفاصيل كل عملية.'),
+
+    h('div', { class: 'kpi-grid' },
+      kpi('إيداعات مكتملة', money(t.depositedCompleted), true, { icon: 'coins', tone: 'ok', note: `${num(t.depositsCompleted)} عملية` }),
+      kpi('سحوبات محوّلة', money(t.withdrawnPaid), true, { icon: 'wallet', note: `${num(t.withdrawalsPaid)} عملية` }),
+      kpi('سحوبات بانتظار التحويل', money(t.withdrawalsWaiting), true, { icon: 'clock', tone: 'warn', note: `${num(t.withdrawalsWaitingCount)} طلب` }),
+      kpi('عمليات فاشلة', num(t.failed), false, { icon: 'alert', tone: 'danger' })),
+
+    h('div', { class: 'card' },
+      h('div', { class: 'toolbar', style: 'flex-wrap:wrap;gap:6px' },
+        chip('type', '', 'الكل'), chip('type', 'Deposit', 'الإيداعات'), chip('type', 'Withdrawal', 'السحوبات'),
+        h('span', { style: 'width:12px' }),
+        chip('status', '', 'كل الحالات'), chip('status', 'Completed', 'مكتملة'),
+        chip('status', 'Processing', 'قيد المعالجة'), chip('status', 'Failed', 'فاشلة'),
+        chip('status', 'Cancelled', 'ملغاة')),
+      h('div', { class: 'toolbar', style: 'flex-wrap:wrap;gap:8px;align-items:center' },
+        search,
+        h('label', { class: 'hint' }, 'من'), from,
+        h('label', { class: 'hint' }, 'إلى'), to,
+        h('button', { class: 'btn sm', onclick: apply }, 'بحث'),
+        (q.search || q.from || q.to)
+          ? h('button', { class: 'btn ghost sm', onclick: () => { q.search = ''; q.from = ''; q.to = ''; q.page = 1; render(); } }, 'مسح')
+          : null),
+
+      pagedTable({
+        columns: [
+          { label: 'التاريخ', render: (o) => when(o.createdAt) },
+          { label: 'النوع', render: (o) => h('span', { class: o.type === 'Deposit' ? 'badge live' : 'badge info' }, OP_TYPE[o.type] || o.type) },
+          { label: 'المستخدم', render: (o) => o.fullName || shortId(o.userId) },
+          { label: 'الجوال', render: (o) => (o.phoneNumber ? localPhone(o.phoneNumber) : '—') },
+          { label: 'المبلغ', num: true, render: (o) => money(o.amount, o.currency) },
+          { label: 'الحالة', render: (o) => opBadge(o.status) },
+          { label: 'المرجع', render: (o) => (o.reference ? ltr(o.reference) : '—') },
+          { label: '', render: (o) => h('button', { class: 'btn ghost sm', onclick: () => openOperation(o.id) }, 'Details') },
+        ],
+        rows: data.page.items,
+        page: data.page.page,
+        totalPages: data.page.totalPages,
+        totalCount: data.page.totalCount,
+        onPage: (p) => { q.page = p; render(); },
+      })));
+}
+
+async function openOperation(id) {
+  let o;
+  try { o = await api(`/admin/payments/operations/${id}`); } catch (e) { toast(e.message, 'err'); return; }
+
+  const back = h('div', { class: 'modal-back' });
+  back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+
+  const isDeposit = o.type === 'Deposit';
+
+  const stat = (label, value) => h('div', { class: 'stat' },
+    h('div', { class: 'stat-label' }, label),
+    h('div', { class: 'stat-value' }, value));
+
+  const section = (title, iconName, tone, ...body) =>
+    h('section', { class: `modal-sec ${tone}` },
+      h('h4', {}, h('span', { class: 'sec-icon' }, icon(iconName)), h('span', {}, title)),
+      h('div', { class: 'sec-body' }, ...body));
+
+  const table = (head, rows) => (rows.length
+    ? h('div', { class: 'table-wrap' }, h('table', {},
+        h('thead', {}, h('tr', {}, ...head.map((x) => h('th', {}, x)))),
+        h('tbody', {}, ...rows.map((r) => h('tr', {}, ...r.map((c) => h('td', {}, c instanceof Node ? c : raw(c))))))))
+    : h('div', { class: 'hint' }, 'لا يوجد.'));
+
+  const method = !isDeposit ? 'تحويل بنكي'
+    : o.paymentMethod === 'card' ? 'بطاقة بنكية'
+    : o.paymentMethod ? o.paymentMethod
+    : o.provider === 'PAYMOB' ? 'Paymob' : o.provider;
+
+  const card = o.cardBrand || o.cardLast4
+    ? h('span', {}, raw(o.cardBrand || ''), ' ', ltr(o.cardLast4 ? `•••• ${o.cardLast4}` : ''))
+    : '—';
+
+  const copyBtn = (text) => (text
+    ? h('button', { class: 'btn ghost sm', onclick: () => navigator.clipboard?.writeText(text).then(() => toast('Copied.', 'ok')) }, 'Copy')
+    : null);
+
+  back.append(h('div', { class: 'modal modal-wide' },
+    h('div', { class: 'modal-hero' },
+      h('span', { class: 'modal-hero-icon' }, icon(isDeposit ? 'coins' : 'wallet')),
+      h('div', { class: 'modal-hero-text' },
+        h('h3', {}, `${OP_TYPE[o.type] || o.type} · `, money(o.amount, o.currency)),
+        h('div', { class: 'modal-hero-meta' },
+          h('span', { class: 'num-chip' }, raw(shortId(o.id))),
+          opBadge(o.status))),
+      h('button', { class: 'modal-x', type: 'button', 'aria-label': 'إغلاق', onclick: () => back.remove() }, '×')),
+
+    h('div', { class: 'modal-body' },
+      o.failureReason
+        ? h('div', { class: 'panel' },
+            h('h4', {}, icon('alert'), h('span', {}, o.status === 'Cancelled' ? 'سبب الرفض' : 'سبب الفشل')),
+            h('div', {}, raw(o.failureReason)))
+        : null,
+
+      section('العملية', 'receipt', 'gold',
+        h('div', { class: 'stat-grid' },
+          stat('النوع', OP_TYPE[o.type] || o.type),
+          stat('المبلغ', money(o.amount, o.currency)),
+          stat('الحالة', opBadge(o.status)),
+          stat('طريقة الدفع', method),
+          stat('تاريخ الطلب', when(o.createdAt)),
+          stat(isDeposit ? 'تاريخ التأكيد' : 'تاريخ التسوية', when(o.completedAt)),
+          stat('رقم العملية', h('span', {}, ltr(o.id), ' ', copyBtn(o.id))))),
+
+      section('المستخدم', 'users', 'ok',
+        h('div', { class: 'stat-grid' },
+          stat('الاسم', raw(o.fullName)),
+          stat('الجوال', o.phoneNumber ? localPhone(o.phoneNumber) : '—'),
+          stat('البريد', o.email ? ltr(o.email) : '—'),
+          stat('رصيد المحفظة الرئيسية الآن', money(o.mainBalance, o.currency)),
+          stat('معرّف المستخدم', ltr(o.userId)))),
+
+      isDeposit && o.provider !== 'PAYMOB'
+        ? section('مصدر الإيداع', 'shield', 'info',
+            h('div', { class: 'hint' }, `إيداع داخلي (${o.provider}) لم يمر عبر بوابة الدفع.`))
+        : isDeposit
+        ? section('بيانات بوابة الدفع (Paymob)', 'shield', 'info',
+            h('div', { class: 'stat-grid' },
+              stat('رقم الطلب في Paymob', o.gatewayOrderId ? h('span', {}, ltr(o.gatewayOrderId), ' ', copyBtn(String(o.gatewayOrderId))) : '—'),
+              stat('رقم المعاملة في Paymob', o.gatewayTransactionId ? h('span', {}, ltr(o.gatewayTransactionId), ' ', copyBtn(o.gatewayTransactionId)) : '—'),
+              stat('البطاقة', card),
+              stat('معرّف نية الدفع', o.gatewayIntentionId ? ltr(o.gatewayIntentionId) : '—')),
+            h('h4', { style: 'margin:14px 0 6px' }, 'إشعارات Paymob'),
+            table(['وقت الاستلام', 'التوقيع', 'النتيجة', 'المعالجة', 'ملاحظة'],
+              o.callbacks.map((c) => [
+                when(c.receivedAt),
+                h('span', { class: c.signatureValid ? 'badge live' : 'badge danger' }, c.signatureValid ? 'صحيح' : 'غير صحيح'),
+                c.success === null ? '—' : h('span', { class: c.success ? 'badge live' : 'badge danger' }, c.success ? 'ناجحة' : 'مرفوضة'),
+                c.processed ? `تمت ${when(c.processedAt)}` : 'لم تتم',
+                c.processingError || '—',
+              ])))
+        : section('التحويل البنكي', 'shield', 'info',
+            h('div', { class: 'stat-grid' },
+              stat('الآيبان', o.iban ? h('span', {}, ltr(o.iban), ' ', copyBtn(o.iban)) : '—'),
+              stat('مرجع التحويل البنكي', o.bankReference ? ltr(o.bankReference) : '—'))),
+
+      section('قيود المحفظة', 'wallet', 'gold',
+        table(['التاريخ', 'المحفظة', 'النوع', 'المبلغ', 'الرصيد قبل', 'الرصيد بعد', 'الوصف'],
+          o.ledger.map((l) => [
+            when(l.createdAt),
+            l.walletType === 'Main' ? 'الرئيسية' : l.walletType === 'Shopping' ? 'التسوق' : l.walletType,
+            LEDGER_TYPE[l.transactionType] || l.transactionType,
+            money(l.amount, o.currency),
+            money(l.balanceBefore, o.currency),
+            money(l.balanceAfter, o.currency),
+            l.description || '—',
+          ]))),
+
+      section('سجل الإجراءات', 'clock', 'info',
+        table(['التاريخ', 'الإجراء', 'بواسطة', 'ملاحظة'],
+          o.history.map((a) => [
+            when(a.createdAt),
+            AUDIT_ACTION[a.action] || a.action,
+            a.actorEmail ? ltr(a.actorEmail) : '—',
+            a.reason || '—',
+          ])))),
+
+    h('div', { class: 'modal-actions' },
+      h('button', { class: 'btn ghost', onclick: () => back.remove() }, 'Close'))));
+
+  document.body.append(back);
 }
 
 async function viewShoppingCredits() {

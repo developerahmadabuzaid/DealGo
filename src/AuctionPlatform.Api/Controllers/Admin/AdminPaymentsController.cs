@@ -18,12 +18,28 @@ public sealed class AdminPaymentsController : ApiControllerBase
 {
     private readonly IPaymentMonitorService _monitor;
     private readonly IWalletTopUpService _topUps;
+    private readonly IMoneyOperationsService _operations;
 
-    public AdminPaymentsController(IPaymentMonitorService monitor, IWalletTopUpService topUps)
+    public AdminPaymentsController(
+        IPaymentMonitorService monitor, IWalletTopUpService topUps, IMoneyOperationsService operations)
     {
         _monitor = monitor;
         _topUps = topUps;
+        _operations = operations;
     }
+
+    /// <summary>Every deposit and withdrawal, with totals for whatever the filter matches.</summary>
+    [HttpGet("operations")]
+    [Authorize(Policy = Permissions.WalletRead)]
+    public async Task<ActionResult<MoneyOperationPageDto>> Operations(
+        [FromQuery] MoneyOperationQuery query, CancellationToken ct) =>
+        Ok(await _operations.ListAsync(query, ct));
+
+    /// <summary>One deposit or withdrawal in full: its ledger lines, Paymob's callbacks, staff actions.</summary>
+    [HttpGet("operations/{id:guid}")]
+    [Authorize(Policy = Permissions.WalletRead)]
+    public async Task<ActionResult<MoneyOperationDetailDto>> Operation(Guid id, CancellationToken ct) =>
+        Ok(await _operations.GetAsync(id, ct));
 
     [HttpGet("health")]
     [Authorize(Policy = Permissions.WalletRead)]

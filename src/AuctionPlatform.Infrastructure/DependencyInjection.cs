@@ -185,5 +185,6 @@ public static class DependencyInjection
         services.AddHttpClient<IPaymobClient, PaymobClient>();
         services.AddScoped<IWalletTopUpService, WalletTopUpService>();
         services.AddScoped<IPaymentMonitorService, PaymentMonitorService>();
+        services.AddScoped<IMoneyOperationsService, MoneyOperationsService>();
     }
 }

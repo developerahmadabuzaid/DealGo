@@ -145,6 +145,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddSingleton<IPaymobClient, FakePaymobClient>();
         services.AddScoped<IWalletTopUpService, WalletTopUpService>();
         services.AddScoped<IPaymentMonitorService, PaymentMonitorService>();
+        services.AddScoped<IMoneyOperationsService, MoneyOperationsService>();
         services.AddScoped<IPrizeClaimService, PrizeClaimService>();
         services.AddScoped<IAdminWalletService, AdminWalletService>();
         services.AddScoped<IAdminWithdrawalService, AdminWithdrawalService>();
