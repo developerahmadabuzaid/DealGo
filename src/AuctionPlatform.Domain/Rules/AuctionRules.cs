@@ -142,6 +142,23 @@ public static class AuctionRules
         return Money.Round(prizePrice * fraction);
     }
 
+    /// <summary>
+    /// What the winner of <paramref name="rank"/> pays for its prize.
+    ///
+    /// First place is the auction's own device, so it pays where the auction price finished
+    /// (<see cref="PrizePaymentAmount(decimal, decimal, decimal)"/>). Second to fourth place pay
+    /// their own device's price at the auction's target rate, whatever the bids reached: a 2000
+    /// second prize on a 50% auction costs 1000.
+    /// </summary>
+    public static decimal PrizePaymentAmount(
+        int rank, decimal prizePrice, decimal finalPrice, decimal auctionValue, decimal targetPercentage)
+    {
+        if (rank <= 1) return PrizePaymentAmount(prizePrice, finalPrice, auctionValue);
+        if (targetPercentage is <= 0 or > 100) return Money.Round(prizePrice);
+
+        return Money.Round(prizePrice * targetPercentage / 100m);
+    }
+
     /// <summary>Progress from the starting price toward the target, clamped to 0..1.</summary>
     public static decimal Progress(decimal startingPrice, decimal currentPrice, decimal targetPrice)
     {

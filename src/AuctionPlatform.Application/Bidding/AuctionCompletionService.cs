@@ -150,8 +150,8 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             };
 
             // Winning grants the right to the prize, not the prize itself: the winner still owes
-            // the discounted prize price, tracked as a claim. The auction's discount applies to
-            // every prize alike.
+            // the discounted prize price, tracked as a claim. First place pays the closing price;
+            // the other places pay their device's price at the auction's target rate.
             var claim = new PrizeClaim
             {
                 WinnerId = winner.Id,
@@ -160,7 +160,8 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 PrizeId = prize.Id,
                 Status = PrizeClaimStatus.PaymentRequired,
                 PaymentAmount = AuctionRules.PrizePaymentAmount(
-                    prize.OriginalPrice, auction.CurrentPrice, auction.OriginalPrice),
+                    rank, prize.OriginalPrice, auction.CurrentPrice, auction.OriginalPrice,
+                    auction.TargetPercentage),
                 Currency = auction.Currency,
                 CreatedAt = now,
                 PaymentRequiredAt = now,

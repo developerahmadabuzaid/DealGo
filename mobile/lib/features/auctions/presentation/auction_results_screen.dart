@@ -159,6 +159,8 @@ class _Results extends StatelessWidget {
           _WinnersList(
             top: bidders.take(4).toList(),
             prizes: {for (final p in detail.prizes) p.rank: p},
+            winners: prizeByRank,
+            detail: detail,
             currency: detail.currency,
           ),
         ],
@@ -298,7 +300,13 @@ class MyResultCard extends StatelessWidget {
               t.prizeAmountDue(
                 Fmt.money(
                   won.paymentAmount ??
-                      prizePriceAt(won.prizeValue, detail.currentPrice, detail.originalPrice),
+                      prizePriceForRank(
+                        won.rank,
+                        won.prizeValue,
+                        auctionPrice: detail.currentPrice,
+                        auctionValue: detail.originalPrice,
+                        targetRate: detail.targetRate,
+                      ),
                   won.currency,
                   locale: locale,
                 ),
@@ -350,16 +358,38 @@ class MyResultCard extends StatelessWidget {
 }
 
 /// The four winning places, one card each: what that place takes, at what price, and who took it.
+///
+/// First place's price is where the auction closed. The other places do not pay their own last
+/// bid: they pay their device's price at the auction's target rate, so that is the price shown.
 class _WinnersList extends StatelessWidget {
   const _WinnersList({
     required this.top,
     required this.prizes,
+    required this.winners,
+    required this.detail,
     required this.currency,
   });
 
   final List<LeaderboardEntry> top;
   final Map<int, AuctionPrize> prizes;
+  final Map<int, AuctionWinner> winners;
+  final AuctionDetail detail;
   final String currency;
+
+  double _priceFor(LeaderboardEntry entry) {
+    if (entry.rank <= 1) return entry.highestPrice;
+    final winner = winners[entry.rank];
+    if (winner?.paymentAmount != null) return winner!.paymentAmount!;
+    final prizePrice = winner?.prizeValue ?? prizes[entry.rank]?.originalPrice;
+    if (prizePrice == null) return entry.highestPrice;
+    return prizePriceForRank(
+      entry.rank,
+      prizePrice,
+      auctionPrice: detail.currentPrice,
+      auctionValue: detail.originalPrice,
+      targetRate: detail.targetRate,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -370,6 +400,7 @@ class _WinnersList extends StatelessWidget {
           _WinnerCard(
             entry: top[i],
             prize: prizes[top[i].rank],
+            price: _priceFor(top[i]),
             currency: currency,
           ),
         ],
@@ -382,11 +413,13 @@ class _WinnerCard extends StatelessWidget {
   const _WinnerCard({
     required this.entry,
     required this.prize,
+    required this.price,
     required this.currency,
   });
 
   final LeaderboardEntry entry;
   final AuctionPrize? prize;
+  final double price;
   final String currency;
 
   static const _medals = {
@@ -491,7 +524,7 @@ class _WinnerCard extends StatelessWidget {
                               alignment: AlignmentDirectional.centerStart,
                               child: Text(
                                 Fmt.money(
-                                  entry.highestPrice,
+                                  price,
                                   currency,
                                   locale: locale,
                                 ),

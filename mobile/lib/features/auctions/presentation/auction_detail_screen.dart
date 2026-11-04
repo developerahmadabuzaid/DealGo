@@ -637,10 +637,12 @@ class _EndedDeviceList extends StatelessWidget {
                                       alignment: AlignmentDirectional.centerStart,
                                       child: Text(
                                         Fmt.money(
-                                          prizePriceAt(
+                                          prizePriceForRank(
+                                            p.rank,
                                             p.originalPrice,
-                                            detail.currentPrice,
-                                            detail.originalPrice,
+                                            auctionPrice: detail.currentPrice,
+                                            auctionValue: detail.originalPrice,
+                                            targetRate: detail.targetRate,
                                           ),
                                           p.currency,
                                           locale: locale,
@@ -700,7 +702,8 @@ class _PrizeList extends StatelessWidget {
     final theme = Theme.of(context);
 
     // Shown only while the auction is open, so the price is never final yet: the most a winner can
-    // pay is at the target price, where the auction stops.
+    // pay is at the target price, where the auction stops. Second to fourth place are already
+    // final: their device's price at the target rate.
     final auctionPrice = detail.targetPrice;
     final discount = discountAt(auctionPrice, detail.originalPrice);
 
@@ -771,14 +774,17 @@ class _PrizeList extends StatelessWidget {
                         const SizedBox(height: AppTheme.space3),
                         PrizePriceBox(
                           fullPrice: p.originalPrice,
-                          price: prizePriceAt(
+                          price: prizePriceForRank(
+                            p.rank,
                             p.originalPrice,
-                            auctionPrice,
-                            detail.originalPrice,
+                            auctionPrice: auctionPrice,
+                            auctionValue: detail.originalPrice,
+                            targetRate: detail.targetRate,
                           ),
                           discount: discount,
                           currency: p.currency,
-                          exact: false,
+                          // Second to fourth place are priced at the target rate from the start.
+                          exact: p.rank > 1,
                         ),
                       ],
                     ),

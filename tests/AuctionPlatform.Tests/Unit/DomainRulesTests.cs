@@ -42,6 +42,22 @@ public class AuctionPricingTests
         AuctionRules.PrizePaymentAmount(prizePrice, finalPrice, auctionValue).Should().Be(expected);
     }
 
+    [Theory]
+    // First place pays where the auction closed.
+    [InlineData(1, 5000, 2000, 5000, 50, 2000)]
+    // Second to fourth pay their device's price at the target rate, whatever the bids reached.
+    [InlineData(2, 2000, 2000, 5000, 50, 1000)]
+    [InlineData(3, 26, 1800, 3600, 50, 13)]
+    [InlineData(4, 1200, 4900, 5000, 40, 480)]
+    [InlineData(2, 999, 2500, 5000, 50, 499.5)]
+    public void Runner_up_prizes_cost_their_price_at_the_target_rate(
+        int rank, decimal prizePrice, decimal finalPrice, decimal auctionValue, decimal targetPercentage,
+        decimal expected)
+    {
+        AuctionRules.PrizePaymentAmount(rank, prizePrice, finalPrice, auctionValue, targetPercentage)
+            .Should().Be(expected);
+    }
+
     [Fact]
     public void A_bid_never_overshoots_the_target()
     {

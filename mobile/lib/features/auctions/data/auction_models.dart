@@ -23,6 +23,23 @@ double prizePriceAt(
   return (prizePrice * fraction * 100).roundToDouble() / 100;
 }
 
+/// What the winner of [rank] pays for a prize worth [prizePrice].
+///
+/// First place pays where the auction price finished ([prizePriceAt]). Second to fourth place pay
+/// their own device's price at the auction's target rate, whatever the bids reached: a 2000 second
+/// prize on a 50% auction costs 1000. Same rule as the server's AuctionRules.PrizePaymentAmount.
+double prizePriceForRank(
+  int rank,
+  double prizePrice, {
+  required double auctionPrice,
+  required double auctionValue,
+  required double targetRate,
+}) {
+  if (rank <= 1) return prizePriceAt(prizePrice, auctionPrice, auctionValue);
+  if (targetRate <= 0 || targetRate > 1) return prizePrice;
+  return (prizePrice * targetRate * 100).roundToDouble() / 100;
+}
+
 /// The discount, 0..1, that an auction price of [auctionPrice] gives on a value of [auctionValue].
 double discountAt(double auctionPrice, double auctionValue) {
   if (auctionValue <= 0 || auctionPrice <= 0) return 0;
@@ -200,6 +217,7 @@ class AuctionDetail {
     required this.startingPrice,
     required this.currentPrice,
     required this.targetPrice,
+    this.targetPercentage = 0,
     required this.finalPhasePrice,
     required this.bidIncrement,
     required this.entryFee,
@@ -240,6 +258,17 @@ class AuctionDetail {
   final double startingPrice;
   final double currentPrice;
   final double targetPrice;
+
+  /// The share of [originalPrice], 0..100, the auction stops at. Zero from a server that does not
+  /// send it; [targetRate] then works it out from the target price.
+  final double targetPercentage;
+
+  /// [targetPercentage] as a fraction, 0..1.
+  double get targetRate => targetPercentage > 0
+      ? targetPercentage / 100
+      : originalPrice > 0
+          ? targetPrice / originalPrice
+          : 0;
   final double finalPhasePrice;
   final double bidIncrement;
   final double entryFee;
@@ -290,6 +319,7 @@ class AuctionDetail {
         startingPrice: _num(j['startingPrice']),
         currentPrice: _num(j['currentPrice']),
         targetPrice: _num(j['targetPrice']),
+        targetPercentage: _num(j['targetPercentage']),
         finalPhasePrice: _num(j['finalPhasePrice']),
         bidIncrement: _num(j['bidIncrement']),
         entryFee: _num(j['entryFee']),
