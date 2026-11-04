@@ -466,6 +466,15 @@ public sealed class AuctionAdminService : IAuctionAdminService
                 ErrorCodes.InvalidAuctionState, "The start time can no longer be changed.");
         }
 
+        // A start time already gone would tell participants the auction began when it did not.
+        // To begin it now there is "Start now". A minute's grace lets "this minute" through: the
+        // console sends the moment it was saved, which is already a little behind on arrival.
+        if (request.ScheduledStartAt.ToUniversalTime() < _clock.UtcNow.AddMinutes(-1))
+        {
+            throw new DomainException(
+                ErrorCodes.InvalidAuctionConfiguration, "The start time cannot be in the past.");
+        }
+
         var previous = auction.ScheduledStartAt;
         auction.ScheduledStartAt = request.ScheduledStartAt;
         auction.UpdatedAt = _clock.UtcNow;

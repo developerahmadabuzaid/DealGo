@@ -155,6 +155,7 @@ const AR = {
   'Remove': 'حذف', 'Activate': 'تفعيل', 'Disable': 'إيقاف', 'Archive': 'أرشفة', 'Hide': 'إخفاء',
   'Restart': 'إعادة تشغيل', 'Add product': 'إضافة منتج', 'Add category': 'إضافة تصنيف',
   'Edit category': 'تعديل التصنيف', 'Edit start time': 'تعديل وقت البدء',
+  'The start time cannot be in the past.': 'لا يمكن أن يكون وقت البدء قبل الآن.',
   'Create as draft': 'حفظ كمسودة', 'Issue credit': 'منح رصيد', 'OK': 'حسناً',
   'Mark shipped': 'تحديد كمشحون', 'Mark delivered': 'تحديد كمُسلَّم',
   'Mark completed': 'تحديد كمكتمل', 'Alert': 'تنبيه',
@@ -685,6 +686,7 @@ function formModal(title, subtitle, fields, onSubmit) {
       value: f.value ?? '',
       placeholder: f.placeholder || '',
       step: f.step || null,
+      min: f.min || null,
     });
     inputs[f.name] = input;
     return h('div', {}, h('label', {}, f.label), input, f.hint ? h('div', { class: 'hint' }, f.hint) : null);
@@ -1676,19 +1678,33 @@ async function openAuction(id) {
 }
 
 function editSchedule(a) {
-  const current = a.scheduledStartAt ? new Date(a.scheduledStartAt) : new Date();
-  const local = new Date(current.getTime() - current.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  // The value a datetime-local input understands: this computer's local time, to the minute.
+  const toLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+  // A start time already gone cannot be chosen; one that has passed is offered as now instead.
+  const now = new Date();
+  const saved = a.scheduledStartAt ? new Date(a.scheduledStartAt) : null;
+  const local = toLocal(saved && saved > now ? saved : now);
 
   // Written in Arabic here: a template literal builds a different string for every auction, so
   // the dictionary can never match it.
   formModal('Edit start time', `${a.auctionNumber} · الأوقات مخزّنة بالتوقيت العالمي`, [
-    { name: 'scheduledStartAt', label: 'Scheduled start (local time)', type: 'datetime-local', value: local },
+    {
+      name: 'scheduledStartAt', label: 'Scheduled start (local time)', type: 'datetime-local',
+      value: local, min: toLocal(now), hint: 'لا يمكن اختيار وقت قبل الآن.',
+    },
     { name: 'reason', label: 'Reason', placeholder: 'Recorded in the audit log' },
   ], async (v) => {
+    const start = new Date(v.scheduledStartAt);
+    if (Number.isNaN(start.getTime())) throw new Error('اختر وقت البدء.');
+    // The server refuses it too; this only says so before the round trip. The minute picked is
+    // compared from its start, so choosing the current minute still counts as now.
+    if (start.getTime() < Date.now() - 60000) throw new Error('The start time cannot be in the past.');
+
     await api(`/admin/auctions/${a.id}/schedule`, {
       method: 'PATCH',
       body: JSON.stringify({
-        scheduledStartAt: new Date(v.scheduledStartAt).toISOString(),
+        scheduledStartAt: (start < new Date() ? new Date() : start).toISOString(),
         reason: v.reason,
       }),
     });
