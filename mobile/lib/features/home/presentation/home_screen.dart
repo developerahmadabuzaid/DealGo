@@ -1228,9 +1228,12 @@ class _FeaturedAuctionTile extends StatelessWidget {
     final live = a.isLive;
 
     // Live, the price is where bidding has pushed it. Before the start it can only be the opening
-    // price, and that is the biggest discount this auction will ever show.
+    // price.
     final price = live ? a.currentPrice : a.startingPrice;
-    final off = _HomeScreenState._discount(price, a.originalPrice);
+
+    // The saving shown is the auction's own: the discount it was set up with, where its price
+    // stops. The opening price is far lower, but nobody wins the device at it.
+    final off = _HomeScreenState._discount(a.targetPrice, a.originalPrice);
 
     final seconds = a.remainingSeconds;
     final left = live
@@ -1526,9 +1529,9 @@ class _UpcomingCard extends StatelessWidget {
     final left = (needed - a.participantCount).clamp(0, needed);
     final urgent = filled >= _urgentFrom;
 
-    // Before it starts the price can only rise, so the discount at the starting price is the most
-    // this auction will ever offer. Saying it now is honest, and it is the largest figure here.
-    final off = _HomeScreenState._discount(a.startingPrice, a.originalPrice);
+    // The auction's own discount, the one it was set up with: where its price stops. The opening
+    // price is far lower, but nobody wins the device at it.
+    final off = _HomeScreenState._discount(a.targetPrice, a.originalPrice);
 
     final startsAt = a.scheduledStartAt;
     final until = startsAt?.difference(DateTime.now().toUtc());
