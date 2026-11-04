@@ -252,6 +252,14 @@ class _SearchRow extends ConsumerStatefulWidget {
 class _SearchRowState extends ConsumerState<_SearchRow> {
   final _query = TextEditingController();
 
+  /// What is typed and the hint share one line height, so the two sit at the same place.
+  static const _textStyle = TextStyle(
+    color: AppTheme.ink,
+    fontSize: 14,
+    height: 1.4,
+    leadingDistribution: TextLeadingDistribution.even,
+  );
+
   @override
   void dispose() {
     _query.dispose();
@@ -295,7 +303,20 @@ class _SearchRowState extends ConsumerState<_SearchRow> {
               textAlignVertical: TextAlignVertical.center,
               onSubmitted: (_) => _search(),
               cursorColor: AppTheme.brand,
-              style: const TextStyle(color: AppTheme.ink, fontSize: 14),
+              style: _textStyle,
+              /*
+               * One fixed line height, with the spare room shared evenly above and below. The
+               * iPhone's Arabic font is much taller than its size, so without this the line it
+               * lays out is taller than the pill: the letters ride up to the top while the cursor
+               * stays in the middle, and the two no longer line up.
+               */
+              strutStyle: const StrutStyle(
+                fontSize: 14,
+                height: 1.4,
+                leadingDistribution: TextLeadingDistribution.even,
+                forceStrutHeight: true,
+              ),
+              cursorHeight: 18,
               // Every border is cleared explicitly: the app theme draws outlined fields, and this
               // one sits inside its own white pill.
               decoration: InputDecoration(
@@ -305,7 +326,7 @@ class _SearchRowState extends ConsumerState<_SearchRow> {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 hintText: t.searchProducts,
-                hintStyle: const TextStyle(color: Color(0xFF7A808A), fontSize: 14),
+                hintStyle: _textStyle.copyWith(color: const Color(0xFF7A808A)),
               ),
             ),
           ),
