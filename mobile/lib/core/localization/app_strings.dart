@@ -274,6 +274,12 @@ class AppStrings {
   String topUpMinimum(String amount) =>
       _t('أقل مبلغ للشحن $amount', 'The smallest top-up is $amount');
   String get payNow => _t('ادفع الآن', 'Pay now');
+  String topUpToPay(String needed, String balance) => _t(
+        'المطلوب $needed ورصيد محفظتك $balance. اشحن الفرق لإتمام الدفع، وسيكتمل تلقائياً بعد الشحن.',
+        'This needs $needed and your wallet holds $balance. Top up the difference and the payment '
+            'completes on its own.',
+      );
+  String topUpAndPay(String amount) => _t('اشحن وادفع · $amount', 'Top up and pay · $amount');
   String get waitingForPayment => _t('بانتظار تأكيد الدفع…', 'Waiting for the payment to be confirmed…');
   String get waitingForPaymentHint => _t(
       'أكمل الدفع في الصفحة التي فُتحت، ثم عُد إلى التطبيق. سيُضاف المبلغ تلقائيًا فور التأكيد.',

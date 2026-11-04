@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/auto_refresh.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
+import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/prize_repository.dart';
 
 /// Wins and prize claims.
@@ -179,7 +180,13 @@ class _PayButtonState extends ConsumerState<_PayButton> {
     setState(() => _busy = true);
 
     try {
-      // Prize payments come from the Main wallet; the server rejects shopping credit here.
+      // Prize payments come from the Main wallet; the server rejects shopping credit here. Short
+      // of the amount, the top-up opens first for what is missing, then the payment carries on.
+      if (!await ensureMainBalance(context, ref,
+          amount: widget.amount, currency: widget.currency)) {
+        return;
+      }
+
       final key = 'prize-${widget.claimId}-${DateTime.now().microsecondsSinceEpoch}';
       await ref.read(prizeRepositoryProvider).pay(widget.claimId, key);
 
@@ -200,6 +207,11 @@ class _PayButtonState extends ConsumerState<_PayButton> {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final locale = Localizations.localeOf(context).languageCode;
+    final price = Fmt.money(widget.amount, widget.currency, locale: locale);
+
+    // Short of the amount, the button says it will top up first.
+    final main = ref.watch(walletsProvider).valueOrNull?.main.balance;
+    final short = main != null && main < widget.amount;
 
     return FilledButton(
       onPressed: _busy ? null : _pay,
@@ -207,7 +219,7 @@ class _PayButtonState extends ConsumerState<_PayButton> {
           ? const SizedBox(
               height: 20, width: 20,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-          : Text('${t.payForPrize} · ${Fmt.money(widget.amount, widget.currency, locale: locale)}'),
+          : Text(short ? t.topUpAndPay(price) : '${t.payForPrize} · $price'),
     );
   }
 }

@@ -12,6 +12,14 @@ import 'package:mobile/features/wallets/presentation/top_up_sheet.dart';
 class _FakeWallets implements WalletRepository {
   double? started;
   String status = 'Processing';
+  double mainBalance = 0;
+
+  @override
+  Future<Wallets> get() async {
+    Wallet wallet(String type, double balance) => Wallet(
+        id: type, walletType: type, balance: balance, currency: 'SAR', isWithdrawable: type == 'Main');
+    return Wallets(main: wallet('Main', mainBalance), shopping: wallet('Shopping', 0), currency: 'SAR');
+  }
 
   @override
   Future<TopUp> startTopUp(double amount) async {
@@ -113,6 +121,82 @@ void main() {
     expect(find.textContaining('لم يُخصم أي مبلغ'), findsOneWidget);
     expect(find.text('المحاولة مرة أخرى'), findsOneWidget);
   });
+
+  testWidgets('a pay button with enough in the wallet goes straight ahead', (tester) async {
+    final opened = await _openPay(tester, balance: 200, amount: 150);
+
+    expect(find.byType(TopUpSheet), findsNothing);
+    expect(opened.results, [true]);
+  });
+
+  testWidgets('a pay button short of money opens the top-up for what is missing, then goes ahead',
+      (tester) async {
+    final opened = await _openPay(tester, balance: 40, amount: 150);
+
+    // The sheet says why, and is already filled in with the difference.
+    expect(find.byType(TopUpSheet), findsOneWidget);
+    expect(find.textContaining('المطلوب'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '110'), findsOneWidget);
+
+    await tester.tap(find.text('ادفع الآن'));
+    await tester.pump();
+    await tester.pump();
+    expect(opened.fake.started, 110);
+
+    opened.fake.status = 'Completed';
+    await tester.pump(const Duration(seconds: 5));
+    await _settle(tester);
+
+    expect(find.byType(TopUpSheet), findsNothing);
+    expect(opened.results, [true]);
+  });
+
+  testWidgets('closing the top-up without paying stops the payment', (tester) async {
+    final opened = await _openPay(tester, balance: 0, amount: 4);
+
+    // Never less than the minimum top-up, even when only a little is missing.
+    expect(find.widgetWithText(TextField, '10'), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(TopUpSheet))).pop();
+    await tester.pumpAndSettle();
+
+    expect(opened.results, [false]);
+  });
+}
+
+/// Opens a page with a pay button that first makes sure the Main wallet holds [amount].
+Future<({_FakeWallets fake, List<bool> results})> _openPay(
+    WidgetTester tester, {required double balance, required double amount}) async {
+  final fake = _FakeWallets()..mainBalance = balance;
+  final results = <bool>[];
+
+  await tester.pumpWidget(ProviderScope(
+    overrides: [walletRepositoryProvider.overrideWithValue(fake)],
+    child: MaterialApp(
+      theme: AppTheme.light(),
+      locale: const Locale('ar'),
+      localizationsDelegates: const [
+        AppStringsDelegate(),
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppStrings.supportedLocales,
+      home: Consumer(
+        builder: (context, ref, _) => Scaffold(
+          body: TextButton(
+            onPressed: () async =>
+                results.add(await ensureMainBalance(context, ref, amount: amount, currency: 'SAR')),
+            child: const Text('pay'),
+          ),
+        ),
+      ),
+    ),
+  ));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('pay'));
+  await tester.pumpAndSettle();
+  return (fake: fake, results: results);
 }
 
 /// Moves the clock on in slices. The waiting spinner never stops, so pumpAndSettle never would.

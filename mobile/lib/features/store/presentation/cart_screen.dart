@@ -8,6 +8,7 @@ import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
+import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/store_repository.dart';
 
 /// Cart and checkout.
@@ -65,6 +66,18 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       _placing = true;
       _error = null;
     });
+
+    // Paying from the Main wallet without enough in it: the top-up opens first for what is
+    // missing, and the order goes through once the money is in. Shopping credit cannot be topped
+    // up, so that choice still has to be covered as it is.
+    final quote = _quote;
+    if (_paymentMethod == 'MainWallet' && quote != null && !quote.canAfford) {
+      final paid = await ensureMainBalance(context, ref, amount: quote.total, currency: quote.currency);
+      if (!paid || !mounted) {
+        if (mounted) setState(() => _placing = false);
+        return;
+      }
+    }
 
     // One key per attempt: if the response is lost, retrying returns the same order rather
     // than charging twice.
@@ -171,14 +184,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: FilledButton(
-                  onPressed: (_placing || _quote == null || !_quote!.canAfford) ? null : _checkout,
+                  onPressed: (_placing ||
+                          _quote == null ||
+                          (!_quote!.canAfford && _paymentMethod != 'MainWallet'))
+                      ? null
+                      : _checkout,
                   child: _placing
                       ? const SizedBox(
                           height: 20, width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : Text(_quote == null
                           ? t.checkout
-                          : '${t.checkout} · ${Fmt.money(_quote!.total, _quote!.currency, locale: locale)}'),
+                          : !_quote!.canAfford && _paymentMethod == 'MainWallet'
+                              ? t.topUpAndPay(Fmt.money(_quote!.total, _quote!.currency, locale: locale))
+                              : '${t.checkout} · ${Fmt.money(_quote!.total, _quote!.currency, locale: locale)}'),
                 ),
               ),
             ),

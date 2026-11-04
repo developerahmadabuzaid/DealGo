@@ -12,6 +12,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/auto_refresh.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
+import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/auction_models.dart';
 import 'auction_end_dialog.dart';
 import 'auction_results_screen.dart';
@@ -298,9 +299,16 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
 
   Future<void> _join() async {
     final t = AppStrings.of(context);
+    final d = widget.detail;
     setState(() => _busy = true);
 
     try {
+      // The entry fee comes from the Main wallet. Short of it, the top-up opens first for what is
+      // missing, and joining carries on once the money is in.
+      if (!await ensureMainBalance(context, ref, amount: d.entryFee, currency: d.currency)) {
+        return;
+      }
+
       final key =
           'join-${widget.detail.id}-${DateTime.now().microsecondsSinceEpoch}';
       await ref.read(auctionRepositoryProvider).join(widget.detail.id, key);
@@ -332,6 +340,10 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
     final t = AppStrings.of(context);
     final d = widget.detail;
     final locale = Localizations.localeOf(context).languageCode;
+
+    // Short of the entry fee, the button says it will top up first.
+    final main = ref.watch(walletsProvider).valueOrNull?.main.balance;
+    final short = main != null && main < d.entryFee;
 
     return Card(
       child: Padding(
@@ -402,7 +414,9 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
                       )
                     : const Icon(Icons.how_to_reg_rounded),
                 label: Text(
-                  '${t.joinAuction} · ${Fmt.money(d.entryFee, d.currency, locale: locale)}',
+                  short
+                      ? t.topUpAndPay(Fmt.money(d.entryFee, d.currency, locale: locale))
+                      : '${t.joinAuction} · ${Fmt.money(d.entryFee, d.currency, locale: locale)}',
                 ),
               ),
           ],
