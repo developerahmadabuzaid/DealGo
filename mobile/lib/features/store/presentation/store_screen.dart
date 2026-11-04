@@ -215,8 +215,9 @@ class _StoreBannerState extends ConsumerState<_StoreBanner> {
       padding: const EdgeInsets.fromLTRB(AppTheme.space3, AppTheme.space2, AppTheme.space3, 0),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        child: SizedBox(
-          height: 128,
+        // The same pictures as the home page's slideshow, at the same shape.
+        child: AspectRatio(
+          aspectRatio: AdPlacement.slideshowRatio,
           child: Stack(
             fit: StackFit.expand,
             children: [

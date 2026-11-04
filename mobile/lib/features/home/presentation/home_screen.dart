@@ -93,6 +93,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 SliverToBoxAdapter(
                   child: _AdStrip(
                     banners: [for (final ad in stripAds) _AdPicture(poster: ad)],
+                    aspectRatio: AdPlacement.stripRatio,
                   ),
                 ),
 
@@ -120,6 +121,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 SliverToBoxAdapter(
                   child: _AdStrip(
                     banners: [for (final ad in belowAds) _AdPicture(poster: ad)],
+                    aspectRatio: AdPlacement.underCategoriesRatio,
                     still: true,
                   ),
                 ),
@@ -282,7 +284,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// The advertisement under the search box: the picture on its own, edge to edge, changing by
 /// itself. Nothing is written over it, so whatever is on the picture is read as it was drawn.
 class _AdStrip extends StatefulWidget {
-  const _AdStrip({required this.banners, this.still = false});
+  const _AdStrip({required this.banners, required this.aspectRatio, this.still = false});
 
   /// Ready-made banners: an uploaded picture, or one the app draws itself.
   final List<Widget> banners;
@@ -290,8 +292,9 @@ class _AdStrip extends StatefulWidget {
   /// Shows the first banner alone and leaves it there, with no dots and nothing to swipe.
   final bool still;
 
-  /// Short on purpose: it is a strip, not a picture to study.
-  static const _height = 48.0;
+  /// Width over height. The strip is as wide as the screen and keeps this shape, so a picture
+  /// made at it is never cropped differently from one phone to the next.
+  final double aspectRatio;
 
   @override
   State<_AdStrip> createState() => _AdStripState();
@@ -336,18 +339,16 @@ class _AdStripState extends State<_AdStrip> {
     final banners = widget.banners;
     if (banners.isEmpty) return const SizedBox.shrink();
 
-    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.2);
-
     if (widget.still) {
-      return SizedBox(height: _AdStrip._height * scale, child: banners.first);
+      return AspectRatio(aspectRatio: widget.aspectRatio, child: banners.first);
     }
 
     return Listener(
       onPointerDown: (_) => _timer?.cancel(),
       onPointerUp: (_) => _play(),
       onPointerCancel: (_) => _play(),
-      child: SizedBox(
-        height: _AdStrip._height * scale,
+      child: AspectRatio(
+        aspectRatio: widget.aspectRatio,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -460,7 +461,6 @@ class _PosterShowState extends State<_PosterShow> {
   Widget build(BuildContext context) {
     final banners = widget.banners;
     final index = _index.clamp(0, banners.length - 1);
-    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.2);
 
     return Padding(
       padding: const EdgeInsets.only(top: AppTheme.space1),
@@ -470,17 +470,20 @@ class _PosterShowState extends State<_PosterShow> {
             onPointerDown: (_) => _timer?.cancel(),
             onPointerUp: (_) => _play(),
             onPointerCancel: (_) => _play(),
-            child: SizedBox(
-              // Tall enough for a poster to read as a page, short enough that the row of
-              // departments and the advertisement under it are on screen without scrolling.
-              height: 188 * scale,
-              child: PageView.builder(
-                controller: _pages,
-                itemCount: banners.length,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
-                  child: banners[i],
+            // Each picture keeps the slideshow's shape on every phone: the height follows the
+            // width of one page (most of the screen, less the gap between pages), never the text
+            // size, so a poster made at that shape is shown whole and the same everywhere.
+            child: LayoutBuilder(
+              builder: (context, box) => SizedBox(
+                height: (box.maxWidth * _pages.viewportFraction - 10) / AdPlacement.slideshowRatio,
+                child: PageView.builder(
+                  controller: _pages,
+                  itemCount: banners.length,
+                  onPageChanged: (i) => setState(() => _index = i),
+                  itemBuilder: (_, i) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: banners[i],
+                  ),
                 ),
               ),
             ),

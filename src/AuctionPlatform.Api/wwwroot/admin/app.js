@@ -670,6 +670,7 @@ function formModal(title, subtitle, fields, onSubmit) {
       return h('div', {}, h('label', {}, f.label),
         h('div', { class: 'row' }, thumb,
           h('div', {}, h('div', { class: 'row' }, pick, remove), state)),
+        f.hint ? h('div', { class: 'hint' }, f.hint) : null,
         fileInput);
     }
 
@@ -3127,24 +3128,41 @@ async function viewSiteCards() {
  *
  * With a place left empty the app falls back to what it did before this page existed — auction
  * covers and product photographs — so an empty list is a working front page, not a broken one.
+ *
+ * `size` is the picture to design for each place. The app draws every place at exactly that shape
+ * (AdPlacement in the app's ads_repository.dart) on every phone, so a picture made at it is shown
+ * whole; another shape is cropped to fit.
  */
 const AD_PLACES = [
   {
     value: 'HomeStrip',
     label: 'الشريط العلوي',
     note: 'تحت صندوق البحث · صورة عريضة قصيرة، تتبدّل وحدها. لا يظهر عليها أي نص.',
+    size: '1400 × 200',
+    ratio: '7:1',
   },
   {
     value: 'HomeSlideshow',
     label: 'الإعلان الكبير',
-    note: 'تحت الشريط · صور كبيرة تتبدّل وحدها، ويظهر عليها العنوان والسطر الصغير.',
+    note: 'تحت الشريط · صور كبيرة تتبدّل وحدها، ويظهر عليها العنوان والسطر الصغير. '
+      + 'تظهر أيضاً أعلى صفحة المتجر.',
+    size: '1600 × 800',
+    ratio: '2:1',
   },
   {
     value: 'HomeUnderCategories',
     label: 'إعلان تحت الأقسام',
     note: 'صورة واحدة ثابتة تحت «تسوق حسب القسم». تُعرض أول صورة فقط.',
+    size: '1200 × 200',
+    ratio: '6:1',
   },
 ];
+
+/** The design size line for one ad place, e.g. "المقاس المثالي: 1600 × 800 بكسل (2:1)". */
+function adSizeText(place) {
+  return `المقاس المثالي: ${place.size} بكسل (نسبة ${place.ratio}). `
+    + 'صورة بنسبة أخرى تُقصّ أطرافها لتملأ المكان، وأبقِ الكتابة المهمة بعيدة قليلاً عن الحواف.';
+}
 
 /** The value of the "what does it open" list, as one string, so one <select> covers four kinds. */
 function adTargetValue(ad) {
@@ -3218,7 +3236,10 @@ async function viewAppAds() {
         value: ad?.placement || place || 'HomeStrip',
         options: AD_PLACES.map((p) => ({ value: p.value, label: p.label })),
       },
-      { name: 'imageUrl', label: 'الصورة', type: 'image', value: ad?.imageUrl || '' },
+      {
+        name: 'imageUrl', label: 'الصورة', type: 'image', value: ad?.imageUrl || '',
+        hint: AD_PLACES.map((p) => `${p.label}: ${p.size} بكسل (${p.ratio})`).join(' · '),
+      },
       {
         name: 'title', label: 'العنوان (الإعلان الكبير فقط)', value: ad?.title || '',
         hint: 'يُكتب فوق الصورة في الإعلان الكبير. الشريطان الآخران يعرضان الصورة وحدها.',
@@ -3325,6 +3346,7 @@ async function viewAppAds() {
         h('button', { class: 'btn ghost sm', onclick: () => edit(null, place.value) },
           icon('plus'), h('span', {}, 'إضافة صورة')),
         h('span', { class: 'hint' }, place.note)),
+      h('div', { class: 'hint ad-size' }, adSizeText(place)),
       table(place))));
 }
 

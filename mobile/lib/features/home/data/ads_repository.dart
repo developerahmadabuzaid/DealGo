@@ -5,6 +5,15 @@ class AdPlacement {
   static const strip = 'HomeStrip';
   static const slideshow = 'HomeSlideshow';
   static const underCategories = 'HomeUnderCategories';
+
+  /*
+   * Width over height of each place. Every phone draws a place at this shape, whatever its screen
+   * width or text size, so a picture made at it shows whole and the same everywhere. The console
+   * asks for pictures at these shapes: 1400×200, 1600×800 and 1200×200.
+   */
+  static const stripRatio = 7.0;
+  static const slideshowRatio = 2.0;
+  static const underCategoriesRatio = 6.0;
 }
 
 /// One advertisement an administrator set in the console.
