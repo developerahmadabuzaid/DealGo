@@ -54,6 +54,7 @@ public class PrizeClaim : Entity
 
     public Guid? PaymentId { get; set; }
     public Guid? ShippingAddressId { get; set; }
+    public ShippingAddress? ShippingAddress { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? PaymentRequiredAt { get; set; }

@@ -463,7 +463,8 @@ public class StoreConcurrencyTests
         product2.SoldQuantity.Should().Be(1);
         product2.Status.Should().Be(StoreProductStatus.OutOfStock);
 
-        (await db2.StoreOrders.CountAsync()).Should().Be(1);
+        // Only this product's orders: other tests share the database and place orders of their own.
+        (await db2.StoreOrderItems.CountAsync(i => i.ProductId == productId)).Should().Be(1);
     }
 
     /// <summary>Spec §132: a shopping-wallet purchase debits the shopping wallet and nothing else.</summary>

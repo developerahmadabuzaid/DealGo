@@ -111,7 +111,7 @@ public sealed class ExceptionHandlingMiddleware
     {
         ErrorCodes.AuctionNotFound or ErrorCodes.ParticipantNotFound or ErrorCodes.ProductNotFound
             or ErrorCodes.OrderNotFound or ErrorCodes.CategoryNotFound or ErrorCodes.WalletNotFound
-            or ErrorCodes.PrizeClaimNotFound or ErrorCodes.NotFound
+            or ErrorCodes.PrizeClaimNotFound or ErrorCodes.AddressNotFound or ErrorCodes.NotFound
             => StatusCodes.Status404NotFound,
 
         ErrorCodes.Unauthorized or ErrorCodes.InvalidCredentials or ErrorCodes.InvalidRefreshToken

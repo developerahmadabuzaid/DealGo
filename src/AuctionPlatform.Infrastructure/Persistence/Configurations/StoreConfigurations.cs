@@ -172,12 +172,15 @@ public sealed class ShippingAddressConfiguration : IEntityTypeConfiguration<Ship
         b.Property(a => a.Phone).HasMaxLength(32).IsRequired();
         b.Property(a => a.Country).HasMaxLength(128).IsRequired();
         b.Property(a => a.City).HasMaxLength(128).IsRequired();
-        b.Property(a => a.Area).HasMaxLength(128);
-        b.Property(a => a.AddressLine1).HasMaxLength(512).IsRequired();
-        b.Property(a => a.AddressLine2).HasMaxLength(512);
+        b.Property(a => a.District).HasMaxLength(128);
+        b.Property(a => a.Street).HasMaxLength(512).IsRequired();
+        b.Property(a => a.BuildingNumber).HasMaxLength(64);
+        b.Property(a => a.Notes).HasMaxLength(512);
+        b.Property(a => a.ShortAddress).HasMaxLength(8);
         b.Property(a => a.PostalCode).HasMaxLength(32);
 
         b.HasIndex(a => a.UserId);
+        b.HasIndex(a => new { a.UserId, a.ArchivedAt });
 
         b.HasOne(a => a.User)
             .WithMany(u => u.Addresses)

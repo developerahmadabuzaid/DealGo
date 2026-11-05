@@ -182,20 +182,45 @@ public class StoreOrderItem : Entity
     public decimal TotalPrice { get; set; }
 }
 
+/// <summary>
+/// Where a store order or a won prize is delivered. Laid out the Saudi way: city, district,
+/// street and building, with the national short address and a pin on the map when the customer
+/// gives them.
+/// </summary>
 public class ShippingAddress : Entity
 {
     public Guid UserId { get; set; }
     public ApplicationUser? User { get; set; }
 
+    /// <summary>The recipient, who may not be the account holder.</summary>
     public string FullName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
-    public string? Area { get; set; }
-    public string AddressLine1 { get; set; } = string.Empty;
-    public string? AddressLine2 { get; set; }
+    public string? District { get; set; }
+    public string Street { get; set; } = string.Empty;
+    public string? BuildingNumber { get; set; }
+
+    /// <summary>Directions for the courier: a landmark, the floor, the gate to use.</summary>
+    public string? Notes { get; set; }
+
+    /// <summary>The Saudi National Address short code: four letters and four digits, e.g. RRRD2929.</summary>
+    public string? ShortAddress { get; set; }
+
+    /// <summary>No longer collected; kept so addresses saved before the Saudi layout keep their code.</summary>
     public string? PostalCode { get; set; }
+
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+
     public bool IsDefault { get; set; }
 
+    /// <summary>
+    /// Set when the customer removes or rewrites an address that an order or a prize was already
+    /// sent to. The row stays, so what was delivered where never changes; it just stops being offered.
+    /// </summary>
+    public DateTime? ArchivedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
 }

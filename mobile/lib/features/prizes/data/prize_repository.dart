@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import '../../addresses/data/address_repository.dart';
 
 double _num(dynamic v) => (v as num?)?.toDouble() ?? 0;
 
@@ -16,6 +17,7 @@ class PrizeClaim {
     required this.paymentDeadlineAt,
     this.prizeOriginalPrice = 0,
     this.prizeDescription,
+    this.shippingAddress,
   });
 
   final String id;
@@ -32,6 +34,12 @@ class PrizeClaim {
   /// The prize's full price. [paymentAmount] is that price after the auction's discount.
   final double prizeOriginalPrice;
   final String? prizeDescription;
+
+  /// Where the prize is to be delivered, once the winner has chosen.
+  final ShippingAddress? shippingAddress;
+
+  /// Paid for, and either still waiting for an address or not yet sent out.
+  bool get awaitsDelivery => status == 'Paid' || status == 'Claimed';
 
   /// The discount the winner got, 0..1. Zero when the server sent no full price to compare with.
   double get discount => prizeOriginalPrice > paymentAmount && prizeOriginalPrice > 0
@@ -56,6 +64,9 @@ class PrizeClaim {
             : DateTime.parse(j['paymentDeadlineAt'] as String).toUtc(),
         prizeOriginalPrice: _num(j['prizeOriginalPrice']),
         prizeDescription: j['prizeDescription'] as String?,
+        shippingAddress: j['shippingAddress'] == null
+            ? null
+            : ShippingAddress.fromJson(j['shippingAddress'] as Map<String, dynamic>),
       );
 }
 
@@ -149,8 +160,10 @@ class PrizeRepository {
     return PrizeClaim.fromJson(data as Map<String, dynamic>);
   }
 
-  Future<PrizeClaim> claim(String claimId) async {
-    final data = await _api.post('/prize-claims/$claimId/claim', body: {'shippingAddressId': null});
+  /// Asks for a paid prize to be delivered to [shippingAddressId], or redirects one not yet sent.
+  Future<PrizeClaim> claim(String claimId, String shippingAddressId) async {
+    final data = await _api.post('/prize-claims/$claimId/claim',
+        body: {'shippingAddressId': shippingAddressId});
     return PrizeClaim.fromJson(data as Map<String, dynamic>);
   }
 }
@@ -173,7 +186,6 @@ class NotificationRepository {
   Future<void> markRead(String id) => _api.post('/notifications/$id/read');
 
   Future<void> markAllRead() => _api.post('/notifications/read-all');
-}
 
   /// Tells the server where to send push notifications for the signed-in account.
   Future<void> registerDevice(String token, String platform) =>
@@ -181,3 +193,4 @@ class NotificationRepository {
 
   Future<void> unregisterDevice(String token) =>
       _api.delete('/notifications/devices', query: {'token': token});
+}

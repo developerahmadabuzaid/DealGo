@@ -220,6 +220,7 @@ class CheckoutQuote {
     required this.availableBalance,
     required this.remainingAfterPurchase,
     required this.canAfford,
+    this.requiresShippingAddress = false,
   });
 
   final double subtotal;
@@ -232,6 +233,9 @@ class CheckoutQuote {
   final double remainingAfterPurchase;
   final bool canAfford;
 
+  /// Something in the cart is delivered, so the order needs an address.
+  final bool requiresShippingAddress;
+
   factory CheckoutQuote.fromJson(Map<String, dynamic> j) => CheckoutQuote(
         subtotal: _num(j['subtotal']),
         discount: _num(j['discount']),
@@ -242,6 +246,7 @@ class CheckoutQuote {
         availableBalance: _num(j['availableBalance']),
         remainingAfterPurchase: _num(j['remainingAfterPurchase']),
         canAfford: j['canAfford'] as bool? ?? false,
+        requiresShippingAddress: j['requiresShippingAddress'] as bool? ?? false,
       );
 }
 
@@ -368,26 +373,29 @@ class StoreRepository {
     return (data as List).map((e) => StoreCategory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Map<String, dynamic> _cartBody(List<CartLine> cart, String paymentMethod, String key) => {
+  Map<String, dynamic> _cartBody(
+          List<CartLine> cart, String paymentMethod, String key, String? shippingAddressId) =>
+      {
         'items': cart
             .map((l) => {'productId': l.product.id, 'quantity': l.quantity})
             .toList(),
         'paymentMethod': paymentMethod,
-        'shippingAddressId': null,
+        'shippingAddressId': shippingAddressId,
         'idempotencyKey': key,
       };
 
   Future<CheckoutQuote> quote(List<CartLine> cart, String paymentMethod) async {
     final data = await _api.post('/store/checkout/quote',
-        body: _cartBody(cart, paymentMethod, 'quote'));
+        body: _cartBody(cart, paymentMethod, 'quote', null));
     return CheckoutQuote.fromJson(data as Map<String, dynamic>);
   }
 
   /// [idempotencyKey] makes a retried checkout return the original order instead of buying twice.
   Future<StoreOrder> checkout(
-      List<CartLine> cart, String paymentMethod, String idempotencyKey) async {
+      List<CartLine> cart, String paymentMethod, String idempotencyKey,
+      {String? shippingAddressId}) async {
     final data = await _api.post('/store/orders',
-        body: _cartBody(cart, paymentMethod, idempotencyKey));
+        body: _cartBody(cart, paymentMethod, idempotencyKey, shippingAddressId));
     return StoreOrder.fromJson(data as Map<String, dynamic>);
   }
 

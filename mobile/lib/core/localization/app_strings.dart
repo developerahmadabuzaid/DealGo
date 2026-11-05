@@ -306,7 +306,7 @@ class AppStrings {
         'Pending' || 'PaymentRequired' => _t('بانتظار الدفع', 'Payment due'),
         'PaymentProcessing' => _t('جارٍ الدفع', 'Payment in progress'),
         'Paid' => _t('تم الدفع', 'Paid'),
-        'Claimed' => _t('تم الاستلام', 'Claimed'),
+        'Claimed' => _t('بانتظار التوصيل', 'Awaiting delivery'),
         'Fulfilled' => _t('تم التسليم', 'Delivered'),
         'Cancelled' => _t('ملغاة', 'Cancelled'),
         'Expired' => _t('انتهت المهلة', 'Expired'),
@@ -435,6 +435,66 @@ class AppStrings {
   String get quantity => _t('الكمية', 'Quantity');
   String get cancelOrder => _t('إلغاء الطلب', 'Cancel order');
 
+  // ---- delivery addresses
+  String get myAddresses => _t('عناويني', 'My addresses');
+  String get addAddress => _t('إضافة عنوان', 'Add address');
+  String get editAddress => _t('تعديل العنوان', 'Edit address');
+  String get deliveryAddress => _t('عنوان التوصيل', 'Delivery address');
+  String get chooseDeliveryAddress => _t('اختر عنوان التوصيل', 'Choose a delivery address');
+  String get changeAddress => _t('تغيير', 'Change');
+  String get noAddressesYet => _t(
+      'لا توجد عناوين بعد. أضف عنواناً لنوصل إليه طلباتك وجوائزك.',
+      'No addresses yet. Add one so orders and prizes can be delivered.');
+  String get recipientName => _t('اسم المستلم', 'Recipient name');
+  String get recipientPhone => _t('جوال المستلم', 'Recipient mobile');
+  String get city => _t('المدينة', 'City');
+  String get district => _t('الحي', 'District');
+  String get street => _t('الشارع', 'Street');
+  String get buildingNumber => _t('رقم المبنى / المنزل', 'Building / house number');
+  String get addressNotes => _t('ملاحظات للمندوب', 'Notes for the courier');
+  String get addressNotesHint =>
+      _t('مثل: الدور الثاني، بجانب المسجد', 'e.g. second floor, next to the mosque');
+  String get shortAddress => _t('العنوان الوطني المختصر', 'National short address');
+  String get shortAddressHint => _t('اختياري، مثل RRRD2929', 'Optional, e.g. RRRD2929');
+  String get optional => _t('اختياري', 'Optional');
+  String get makeDefaultAddress => _t('اجعله العنوان الافتراضي', 'Make this the default');
+  String get defaultAddress => _t('الافتراضي', 'Default');
+  String get setAsDefault => _t('تعيين كافتراضي', 'Set as default');
+  String get deleteAddress => _t('حذف العنوان', 'Delete address');
+  String get deleteAddressConfirm => _t('هل تريد حذف هذا العنوان؟', 'Delete this address?');
+  String get delete => _t('حذف', 'Delete');
+  String get edit => _t('تعديل', 'Edit');
+  String get addressSaved => _t('تم حفظ العنوان', 'Address saved');
+  String get locationOnMap => _t('الموقع على الخريطة', 'Location on the map');
+  String get pickOnMap => _t('حدد الموقع على الخريطة', 'Pick the location on the map');
+  String get changeLocation => _t('تعديل الموقع', 'Change location');
+  String get locationPicked => _t('تم تحديد الموقع', 'Location set');
+  String get useMyLocation => _t('موقعي الحالي', 'My current location');
+  String get confirmLocation => _t('تأكيد الموقع', 'Confirm location');
+  String get moveMapToPin => _t(
+      'حرّك الخريطة حتى يكون الدبوس على باب المنزل', 'Move the map until the pin is on the door');
+  String get locationServicesOff =>
+      _t('خدمة الموقع متوقفة في جوالك. فعّلها ثم أعد المحاولة.',
+          'Location services are off. Turn them on and try again.');
+  String get locationPermissionDenied =>
+      _t('لم يُسمح بالوصول إلى موقعك. يمكنك تحريك الخريطة يدوياً أو السماح من الإعدادات.',
+          'Location access was not allowed. Move the map by hand, or allow it in Settings.');
+  String get locationUnavailable =>
+      _t('تعذّر تحديد موقعك الآن. حرّك الخريطة يدوياً.',
+          'Your location could not be found. Move the map by hand.');
+  String get openSettings => _t('الإعدادات', 'Settings');
+  String fieldRequired(String field) => _t('أدخل $field', 'Enter the ${field.toLowerCase()}');
+  String get nameTooShort => _t('أدخل اسم المستلم كاملاً', "Enter the recipient's full name");
+  String get invalidSaudiMobile =>
+      _t('أدخل رقم جوال سعودي صحيح يبدأ بـ 5', 'Enter a Saudi mobile number starting with 5');
+  String get invalidShortAddress =>
+      _t('العنوان المختصر 4 أحرف إنجليزية ثم 4 أرقام، مثل RRRD2929',
+          'Four letters then four digits, e.g. RRRD2929');
+  String tooLong(int max) => _t('الحد الأقصى $max حرفاً', 'At most $max characters');
+  String get deliverPrizeHere => _t('اطلب التوصيل', 'Request delivery');
+  String get prizeDeliveryRequested =>
+      _t('سنوصل جائزتك إلى هذا العنوان', 'Your prize will be delivered to this address');
+
   // ---- notifications & profile
   String get notifications => _t('الإشعارات', 'Notifications');
   String get markAllRead => _t('تعليم الكل كمقروء', 'Mark all read');
@@ -504,6 +564,8 @@ class AppStrings {
     'UNAUTHORIZED': 'انتهت الجلسة. سجّل الدخول من جديد.',
     'FORBIDDEN': 'ليس لديك صلاحية لهذا الإجراء.',
     'VALIDATION_FAILED': 'تحقق من البيانات المدخلة.',
+    'ADDRESS_NOT_FOUND': 'العنوان غير موجود. اختر عنواناً آخر.',
+    'ADDRESS_REQUIRED': 'اختر عنوان التوصيل أولاً.',
     'INTERNAL_ERROR': 'حدث خطأ في الخادم. حاول مرة أخرى.',
     'NETWORK_ERROR': 'لا يوجد اتصال بالخادم.',
     // The platform is up but something it needs is not answering: the database, or the provider

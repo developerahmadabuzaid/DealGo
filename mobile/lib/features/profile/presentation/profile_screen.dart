@@ -79,6 +79,13 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.location_on_outlined),
+                  title: Text(t.myAddresses),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/addresses'),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.history_rounded),
                   title: Text(t.auctionHistory),
                   trailing: const Icon(Icons.chevron_right_rounded),

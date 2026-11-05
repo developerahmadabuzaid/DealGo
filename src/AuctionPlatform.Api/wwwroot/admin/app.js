@@ -348,6 +348,7 @@ const AR = {
   'Support': 'الدعم الفني', 'WhatsApp support': 'دعم واتساب', 'WhatsApp number': 'رقم واتساب',
   'Support number saved.': 'تم حفظ رقم الدعم.', 'Save number': 'حفظ الرقم',
   'Open chat': 'فتح المحادثة',
+  'Open on map': 'فتح على الخريطة',
   'Bank transfers waiting to be made. The money has already left the user’s wallet.':
     'تحويلات بنكية بانتظار التنفيذ. المبلغ خُصم من محفظة المستخدم عند الطلب.',
   'To pay': 'بانتظار الدفع', 'Paid': 'مدفوعة', 'Refused': 'مرفوضة', 'All': 'الكل',
@@ -3904,9 +3905,8 @@ async function openOrder(id) {
 
     o.shippingAddress
       ? h('div', {}, h('label', {}, 'Shipping address'),
-          h('div', { class: 'hint' },
-            `${o.shippingAddress.fullName}, ${o.shippingAddress.addressLine1}, ` +
-            `${o.shippingAddress.city}, ${o.shippingAddress.country} · ${o.shippingAddress.phone}`))
+          h('div', { class: 'hint' }, addressLine(o.shippingAddress)),
+          addressMapLink(o.shippingAddress))
       : null,
 
     h('div', { class: 'modal-actions' },
@@ -4646,3 +4646,22 @@ function render() {
 
 state.auth = store.load();
 render();
+
+/** One line a courier can read: recipient, building and street, district, city, phone. */
+function addressLine(a) {
+  return [
+    a.fullName,
+    [a.buildingNumber, a.street].filter(Boolean).join(' '),
+    a.district,
+    a.city,
+    a.shortAddress,
+    a.phone,
+  ].filter(Boolean).join(' · ') + (a.notes ? ` — ${a.notes}` : '');
+}
+
+/** The customer's pin, opened on OpenStreetMap. Nothing when they did not drop one. */
+function addressMapLink(a) {
+  if (typeof a.latitude !== 'number' || typeof a.longitude !== 'number') return null;
+  const href = `https://www.openstreetmap.org/?mlat=${a.latitude}&mlon=${a.longitude}#map=18/${a.latitude}/${a.longitude}`;
+  return h('a', { class: 'btn ghost', href, target: '_blank', rel: 'noopener' }, 'Open on map');
+}

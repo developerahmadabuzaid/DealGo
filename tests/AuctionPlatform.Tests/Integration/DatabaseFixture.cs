@@ -131,6 +131,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IStoreAdminService, StoreAdminService>();
         services.AddScoped<StoreOrderService>();
         services.AddScoped<IStoreOrderService>(sp => sp.GetRequiredService<StoreOrderService>());
+        services.AddScoped<IShippingAddressService, ShippingAddressService>();
 
         // Top-ups run for real against the database; only the call out to Paymob is replaced.
         services.Configure<PaymobOptions>(o =>

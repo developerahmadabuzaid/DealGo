@@ -1089,6 +1089,8 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("PrizeId");
 
+                    b.HasIndex("ShippingAddressId");
+
                     b.HasIndex("Status");
 
                     b.HasIndex("UserId");
@@ -1206,18 +1208,12 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AddressLine1")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("AddressLine2")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
-                    b.Property<string>("Area")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                    b.Property<string>("BuildingNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("City")
                         .IsRequired()
@@ -1232,6 +1228,10 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("District")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -1239,6 +1239,16 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
 
                     b.Property<string>("Phone")
                         .IsRequired()
@@ -1249,12 +1259,26 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("ShortAddress")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Street")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "ArchivedAt");
 
                     b.ToTable("ShippingAddresses", (string)null);
                 });
@@ -2496,12 +2520,19 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("AuctionPlatform.Domain.Entities.ShippingAddress", "ShippingAddress")
+                        .WithMany()
+                        .HasForeignKey("ShippingAddressId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("AuctionPlatform.Domain.Entities.Winner", "Winner")
                         .WithMany()
                         .HasForeignKey("WinnerId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Prize");
+
+                    b.Navigation("ShippingAddress");
 
                     b.Navigation("Winner");
                 });

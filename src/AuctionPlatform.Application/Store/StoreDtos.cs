@@ -251,14 +251,6 @@ public sealed class StoreOrderQuery : PagedQuery
     public DateTime? To { get; set; }
 }
 
-public sealed record ShippingAddressDto(
-    Guid Id, string FullName, string Phone, string Country, string City,
-    string? Area, string AddressLine1, string? AddressLine2, string? PostalCode, bool IsDefault);
-
-public sealed record SaveShippingAddressRequest(
-    string FullName, string Phone, string Country, string City,
-    string? Area, string AddressLine1, string? AddressLine2, string? PostalCode, bool IsDefault);
-
 /// <summary>Server-calculated checkout totals. The client never computes an order total.</summary>
 public sealed record CheckoutQuoteDto(
     decimal Subtotal,
@@ -269,7 +261,9 @@ public sealed record CheckoutQuoteDto(
     string Currency,
     decimal AvailableBalance,
     decimal RemainingAfterPurchase,
-    bool CanAfford);
+    bool CanAfford,
+    // True when something in the cart is delivered, so checkout will ask for an address.
+    bool RequiresShippingAddress = false);
 
 public sealed record StoreSettingsDto(
     bool StoreEnabled,

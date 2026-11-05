@@ -136,9 +136,11 @@ public sealed class AccountDeletionService : IAccountDeletionService
         await _db.UserDeviceTokens.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct);
         await _db.Notifications.Where(n => n.UserId == userId).ExecuteDeleteAsync(ct);
 
-        // Addresses on past orders stay with those orders; the rest go.
+        // Addresses on past orders and prizes stay with them; the rest go.
         await _db.ShippingAddresses
-            .Where(a => a.UserId == userId && !_db.StoreOrders.Any(o => o.ShippingAddressId == a.Id))
+            .Where(a => a.UserId == userId
+                && !_db.StoreOrders.Any(o => o.ShippingAddressId == a.Id)
+                && !_db.PrizeClaims.Any(c => c.ShippingAddressId == a.Id))
             .ExecuteDeleteAsync(ct);
 
         await _audit.LogAsync(

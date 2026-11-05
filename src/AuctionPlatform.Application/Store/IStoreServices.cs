@@ -21,10 +21,6 @@ public interface IStoreOrderService
     Task<PagedResult<StoreOrderDto>> GetMyOrdersAsync(Guid userId, StoreOrderQuery query, CancellationToken ct = default);
     Task<StoreOrderDto> GetOrderAsync(Guid userId, Guid orderId, CancellationToken ct = default);
     Task<StoreOrderDto> CancelOrderAsync(Guid userId, Guid orderId, string? reason, CancellationToken ct = default);
-
-    Task<IReadOnlyList<ShippingAddressDto>> GetAddressesAsync(Guid userId, CancellationToken ct = default);
-    Task<ShippingAddressDto> SaveAddressAsync(Guid userId, SaveShippingAddressRequest request, CancellationToken ct = default);
-    Task DeleteAddressAsync(Guid userId, Guid addressId, CancellationToken ct = default);
 }
 
 /// <summary>Administrative catalog, inventory, order and settings management.</summary>

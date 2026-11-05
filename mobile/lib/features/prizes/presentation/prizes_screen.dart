@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/auto_refresh.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
+import '../../addresses/presentation/addresses_screen.dart';
 import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/prize_repository.dart';
 
@@ -153,6 +154,10 @@ class _ClaimCard extends StatelessWidget {
                   _PayButton(
                       claimId: claim.id, amount: claim.paymentAmount, currency: claim.currency),
                 ],
+                if (claim.awaitsDelivery) ...[
+                  const SizedBox(height: AppTheme.space3),
+                  _PrizeDelivery(claim: claim),
+                ],
               ],
             ),
           ),
@@ -190,8 +195,11 @@ class _PayButtonState extends ConsumerState<_PayButton> {
       final key = 'prize-${widget.claimId}-${DateTime.now().microsecondsSinceEpoch}';
       await ref.read(prizeRepositoryProvider).pay(widget.claimId, key);
 
-      ref.invalidate(myClaimsProvider);
       ref.invalidate(walletsProvider);
+
+      // Paid: straight on to where it should go. Closing the sheet leaves the card asking.
+      if (mounted) await requestPrizeDelivery(context, ref, widget.claimId);
+      ref.invalidate(myClaimsProvider);
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -220,6 +228,55 @@ class _PayButtonState extends ConsumerState<_PayButton> {
               height: 20, width: 20,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
           : Text(short ? t.topUpAndPay(price) : '${t.payForPrize} · $price'),
+    );
+  }
+}
+
+/// Asks where a paid prize should go and tells the server. True when an address was set.
+Future<bool> requestPrizeDelivery(BuildContext context, WidgetRef ref, String claimId,
+    {String? currentAddressId}) async {
+  final address = await pickDeliveryAddress(context, selectedId: currentAddressId);
+  if (address == null) return false;
+
+  try {
+    await ref.read(prizeRepositoryProvider).claim(claimId, address.id);
+    ref.invalidate(myClaimsProvider);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppStrings.of(context).prizeDeliveryRequested)));
+    }
+    return true;
+  } on ApiException catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.displayMessage), backgroundColor: AppTheme.urgentDeep),
+      );
+    }
+    return false;
+  }
+}
+
+/// A paid prize: where it is going, and a way to choose or change that until it is sent out.
+class _PrizeDelivery extends ConsumerWidget {
+  const _PrizeDelivery({required this.claim});
+
+  final PrizeClaim claim;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppStrings.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(t.deliveryAddress, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: AppTheme.space2),
+        DeliveryAddressCard(
+          address: claim.shippingAddress,
+          onChange: () => requestPrizeDelivery(context, ref, claim.id,
+              currentAddressId: claim.shippingAddress?.id),
+        ),
+      ],
     );
   }
 }

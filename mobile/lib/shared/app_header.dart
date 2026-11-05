@@ -206,6 +206,7 @@ void openAppMenu(BuildContext context) {
             item(Icons.account_balance_wallet_rounded, t.wallet, () => context.go('/wallet')),
             item(Icons.emoji_events_rounded, t.myPrizes, () => context.push('/prizes')),
             item(Icons.receipt_long_rounded, t.myOrders, () => context.push('/store/orders')),
+            item(Icons.location_on_rounded, t.myAddresses, () => context.push('/addresses')),
             item(
               Icons.notifications_none_rounded,
               t.notifications,

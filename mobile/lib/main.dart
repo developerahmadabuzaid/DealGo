@@ -7,6 +7,7 @@ import 'core/localization/app_strings.dart';
 import 'core/providers.dart';
 import 'core/push/push_service.dart';
 import 'core/theme/app_theme.dart';
+import 'features/addresses/presentation/addresses_screen.dart';
 import 'features/auctions/presentation/auction_detail_screen.dart';
 import 'features/auctions/presentation/auction_results_screen.dart';
 import 'features/auctions/presentation/ended_auction_screen.dart';
@@ -45,16 +46,16 @@ class AuctionApp extends ConsumerWidget {
       );
     }
 
-    return MaterialApp.router(
     // A tapped notification opens the auction or the order it is about.
     ref.read(pushServiceProvider).open = (location) {
       final navigator = _rootKey.currentContext;
       if (navigator != null) GoRouter.of(navigator).push(location);
     };
 
+    return MaterialApp.router(
       title: 'DealGo',
-      debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: rootMessengerKey,
+      debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
 
       // The app is light whatever the phone is set to: the catalogue's photographs, the price
@@ -216,6 +217,11 @@ GoRouter _router(WidgetRef ref) {
         parentNavigatorKey: _rootKey,
         path: '/prizes',
         builder: (_, _) => const PrizesScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/addresses',
+        builder: (_, _) => const AddressesScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,

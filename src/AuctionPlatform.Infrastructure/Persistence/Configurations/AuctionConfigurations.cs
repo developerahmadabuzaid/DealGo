@@ -179,6 +179,13 @@ public sealed class PrizeClaimConfiguration : IEntityTypeConfiguration<PrizeClai
             .HasForeignKey(c => c.WinnerId)
             .OnDelete(DeleteBehavior.Restrict)
             .IsRequired(false);
+
+        // An address a prize went to is archived rather than deleted, so this never fires in
+        // normal use; it only stops a stray delete from failing the whole account removal.
+        b.HasOne(c => c.ShippingAddress)
+            .WithMany()
+            .HasForeignKey(c => c.ShippingAddressId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 

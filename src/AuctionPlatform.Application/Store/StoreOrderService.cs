@@ -56,8 +56,13 @@ public sealed class StoreOrderService : IStoreOrderService
         return new CheckoutQuoteDto(
             totals.Subtotal, totals.Discount, totals.ShippingFee, totals.Tax, totals.Total,
             settings.DefaultCurrency, balance,
-            Money.Round(balance - totals.Total), balance >= totals.Total);
+            Money.Round(balance - totals.Total), balance >= totals.Total,
+            NeedsDeliveryAddress(products));
     }
+
+    /// <summary>Anything that is physically sent needs somewhere to send it.</summary>
+    private static bool NeedsDeliveryAddress(IEnumerable<StoreProduct> products) =>
+        products.Any(p => p.RequiresShipping);
 
     public async Task<StoreOrderDto> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken ct = default)
     {
@@ -86,6 +91,12 @@ public sealed class StoreOrderService : IStoreOrderService
         if (!settings.StoreEnabled)
         {
             throw new DomainException(ErrorCodes.StoreDisabled, "The store is currently unavailable.");
+        }
+
+        // Only the buyer's own, current addresses can receive the order.
+        if (request.ShippingAddressId is { } addressId)
+        {
+            await ShippingAddressService.EnsureUsableAsync(_db, userId, addressId, ct);
         }
 
         if (request.PaymentMethod == StorePaymentMethod.ShoppingWallet && !settings.AllowShoppingWalletPurchases)
@@ -154,6 +165,12 @@ public sealed class StoreOrderService : IStoreOrderService
                         ErrorCodes.OutOfStock,
                         $"{product.Name} does not have enough stock ({product.AvailableQuantity} available).");
                 }
+            }
+
+            if (request.ShippingAddressId is null && NeedsDeliveryAddress(products))
+            {
+                throw new DomainException(
+                    ErrorCodes.AddressRequired, "Choose the address this order should be delivered to.");
             }
 
             var totals = CalculateTotals(request, products, settings);
@@ -433,16 +450,12 @@ public sealed class StoreOrderService : IStoreOrderService
         o.Id, o.OrderNumber, o.UserId, o.User?.FullName,
         o.Subtotal, o.Discount, o.ShippingFee, o.Tax, o.Total, o.Currency,
         o.PaymentMethod, o.Status,
-        o.ShippingAddress is null ? null : MapAddress(o.ShippingAddress),
+        o.ShippingAddress is null ? null : ShippingAddressService.Map(o.ShippingAddress),
         o.TrackingNumber,
         o.Items.Select(i => new StoreOrderItemDto(
             i.Id, i.ProductId, i.ProductNameSnapshot, i.ProductSkuSnapshot,
             i.ProductImageSnapshot, i.UnitPrice, i.Quantity, i.TotalPrice)).ToList(),
         o.CreatedAt, o.PaidAt, o.ShippedAt, o.DeliveredAt, o.CompletedAt, o.CancelledAt);
-
-    internal static ShippingAddressDto MapAddress(ShippingAddress a) => new(
-        a.Id, a.FullName, a.Phone, a.Country, a.City, a.Area,
-        a.AddressLine1, a.AddressLine2, a.PostalCode, a.IsDefault);
 
     public async Task<StoreOrderDto> GetOrderAsync(Guid userId, Guid orderId, CancellationToken ct = default)
     {
@@ -555,57 +568,6 @@ public sealed class StoreOrderService : IStoreOrderService
         order.CancelledAt = now;
         order.CancellationReason = reason;
 
-        await _db.SaveChangesAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<ShippingAddressDto>> GetAddressesAsync(Guid userId, CancellationToken ct = default)
-    {
-        var addresses = await _db.ShippingAddresses
-            .AsNoTracking()
-            .Where(a => a.UserId == userId)
-            .OrderByDescending(a => a.IsDefault).ThenByDescending(a => a.CreatedAt)
-            .ToListAsync(ct);
-
-        return addresses.Select(MapAddress).ToList();
-    }
-
-    public async Task<ShippingAddressDto> SaveAddressAsync(
-        Guid userId, SaveShippingAddressRequest request, CancellationToken ct = default)
-    {
-        if (request.IsDefault)
-        {
-            var others = await _db.ShippingAddresses.Where(a => a.UserId == userId && a.IsDefault).ToListAsync(ct);
-            foreach (var other in others) other.IsDefault = false;
-        }
-
-        var address = new ShippingAddress
-        {
-            UserId = userId,
-            FullName = request.FullName,
-            Phone = request.Phone,
-            Country = request.Country,
-            City = request.City,
-            Area = request.Area,
-            AddressLine1 = request.AddressLine1,
-            AddressLine2 = request.AddressLine2,
-            PostalCode = request.PostalCode,
-            IsDefault = request.IsDefault,
-            CreatedAt = _clock.UtcNow
-        };
-
-        _db.ShippingAddresses.Add(address);
-        await _db.SaveChangesAsync(ct);
-
-        return MapAddress(address);
-    }
-
-    public async Task DeleteAddressAsync(Guid userId, Guid addressId, CancellationToken ct = default)
-    {
-        var address = await _db.ShippingAddresses
-            .FirstOrDefaultAsync(a => a.Id == addressId && a.UserId == userId, ct)
-            ?? throw new DomainException(ErrorCodes.NotFound, "Address not found.");
-
-        _db.ShippingAddresses.Remove(address);
         await _db.SaveChangesAsync(ct);
     }
 }

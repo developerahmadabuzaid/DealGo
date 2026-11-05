@@ -174,6 +174,7 @@ public static class DependencyInjection
         services.AddScoped<StoreOrderService>();
         services.AddScoped<IStoreOrderService>(sp => sp.GetRequiredService<StoreOrderService>());
         services.AddScoped<IStoreAdminService, StoreAdminService>();
+        services.AddScoped<IShippingAddressService, ShippingAddressService>();
         services.AddScoped<ISiteContentService, SiteContentService>();
         services.AddScoped<ISupportService, SupportService>();
         services.AddScoped<IAppAdService, AppAdService>();

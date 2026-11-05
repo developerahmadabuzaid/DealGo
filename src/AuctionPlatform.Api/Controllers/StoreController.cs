@@ -77,25 +77,6 @@ public sealed class StoreController : ApiControllerBase
     public async Task<ActionResult<StoreOrderDto>> CancelOrder(
         Guid id, [FromBody] CancelOrderRequest? request, CancellationToken ct) =>
         Ok(await _orders.CancelOrderAsync(CurrentUserId, id, request?.Reason, ct));
-
-    [HttpGet("addresses")]
-    [Authorize]
-    public async Task<ActionResult<IReadOnlyList<ShippingAddressDto>>> Addresses(CancellationToken ct) =>
-        Ok(await _orders.GetAddressesAsync(CurrentUserId, ct));
-
-    [HttpPost("addresses")]
-    [Authorize]
-    public async Task<ActionResult<ShippingAddressDto>> SaveAddress(
-        SaveShippingAddressRequest request, CancellationToken ct) =>
-        Ok(await _orders.SaveAddressAsync(CurrentUserId, request, ct));
-
-    [HttpDelete("addresses/{id:guid}")]
-    [Authorize]
-    public async Task<IActionResult> DeleteAddress(Guid id, CancellationToken ct)
-    {
-        await _orders.DeleteAddressAsync(CurrentUserId, id, ct);
-        return NoContent();
-    }
 }
 
 public sealed record CancelOrderRequest(string? Reason);

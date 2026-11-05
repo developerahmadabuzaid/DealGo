@@ -1,4 +1,5 @@
 using AuctionPlatform.Application.Common;
+using AuctionPlatform.Application.Store;
 using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Entities;
@@ -27,7 +28,9 @@ public sealed record PrizeClaimDto(
     DateTime? FulfilledAt,
     // The prize's full price, before the auction discount that gives PaymentAmount.
     decimal PrizeOriginalPrice,
-    string? PrizeDescription);
+    string? PrizeDescription,
+    // Where the prize goes, once the winner has said.
+    ShippingAddressDto? ShippingAddress = null);
 
 public sealed record MyWinDto(
     Guid AuctionId,
@@ -131,7 +134,13 @@ public sealed class PrizeClaimService : IPrizeClaimService
             c.PaymentAmount, c.Currency, c.Status,
             c.CreatedAt, c.PaymentDeadlineAt, c.PaidAt, c.ClaimedAt, c.FulfilledAt,
             c.Prize != null ? c.Prize.OriginalPrice : c.PaymentAmount,
-            c.Prize != null ? c.Prize.Description : null);
+            c.Prize != null ? c.Prize.Description : null,
+            c.ShippingAddress == null ? null : new ShippingAddressDto(
+                c.ShippingAddress.Id, c.ShippingAddress.FullName, c.ShippingAddress.Phone,
+                c.ShippingAddress.Country, c.ShippingAddress.City, c.ShippingAddress.District,
+                c.ShippingAddress.Street, c.ShippingAddress.BuildingNumber, c.ShippingAddress.Notes,
+                c.ShippingAddress.ShortAddress, c.ShippingAddress.Latitude, c.ShippingAddress.Longitude,
+                c.ShippingAddress.IsDefault));
 
     public async Task<PrizeClaimDto> GetClaimAsync(Guid userId, Guid claimId, CancellationToken ct = default)
     {
@@ -169,6 +178,11 @@ public sealed class PrizeClaimService : IPrizeClaimService
         {
             throw new DomainException(
                 ErrorCodes.PrizeClaimNotPayable, $"A claim in status {claim.Status} cannot be paid.");
+        }
+
+        if (request.ShippingAddressId is { } addressId)
+        {
+            await ShippingAddressService.EnsureUsableAsync(_db, userId, addressId, ct);
         }
 
         var now = _clock.UtcNow;
@@ -229,15 +243,29 @@ public sealed class PrizeClaimService : IPrizeClaimService
             throw new DomainException(ErrorCodes.Forbidden, "This prize claim does not belong to you.");
         }
 
-        if (claim.Status != PrizeClaimStatus.Paid)
+        // A claimed prize can still be redirected until it has been sent out.
+        if (claim.Status is not (PrizeClaimStatus.Paid or PrizeClaimStatus.Claimed))
         {
             throw new DomainException(
                 ErrorCodes.PrizeClaimNotClaimable, "The prize must be paid for before it can be claimed.");
         }
 
-        claim.Status = PrizeClaimStatus.Claimed;
-        claim.ClaimedAt = _clock.UtcNow;
-        if (shippingAddressId.HasValue) claim.ShippingAddressId = shippingAddressId;
+        // Claiming is asking for delivery, so it needs somewhere to deliver to.
+        if (shippingAddressId is not { } addressId)
+        {
+            throw new DomainException(
+                ErrorCodes.ValidationFailed, "Choose the address the prize should be delivered to.");
+        }
+
+        await ShippingAddressService.EnsureUsableAsync(_db, userId, addressId, ct);
+
+        if (claim.Status == PrizeClaimStatus.Paid)
+        {
+            claim.Status = PrizeClaimStatus.Claimed;
+            claim.ClaimedAt = _clock.UtcNow;
+        }
+
+        claim.ShippingAddressId = addressId;
 
         await _db.SaveChangesAsync(ct);
 

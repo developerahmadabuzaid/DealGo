@@ -8,6 +8,8 @@ import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
+import '../../addresses/data/address_repository.dart';
+import '../../addresses/presentation/addresses_screen.dart';
 import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/store_repository.dart';
 
@@ -28,6 +30,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   bool _loadingQuote = false;
   bool _placing = false;
   String? _error;
+
+  /// Where the order goes. Starts as the default address once the quote says one is needed.
+  ShippingAddress? _address;
+  bool _addressLoaded = false;
 
   @override
   void initState() {
@@ -50,6 +56,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     try {
       final quote = await ref.read(storeRepositoryProvider).quote(cart, _paymentMethod);
       if (mounted) setState(() => _quote = quote);
+      if (quote.requiresShippingAddress) await _loadDefaultAddress();
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.displayMessage);
     } finally {
@@ -57,10 +64,35 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
   }
 
+  Future<void> _loadDefaultAddress() async {
+    if (_addressLoaded) return;
+    _addressLoaded = true;
+    try {
+      final list = await ref.read(myAddressesProvider.future);
+      if (mounted && _address == null && list.isNotEmpty) {
+        setState(() => _address = list.firstWhere((a) => a.isDefault, orElse: () => list.first));
+      }
+    } on ApiException {
+      // The card still offers to choose one; checkout asks again if it has to.
+      _addressLoaded = false;
+    }
+  }
+
+  Future<bool> _chooseAddress() async {
+    final picked = await pickDeliveryAddress(context, selectedId: _address?.id);
+    if (picked != null && mounted) setState(() => _address = picked);
+    return picked != null;
+  }
+
   Future<void> _checkout() async {
     final t = AppStrings.of(context);
     final cart = ref.read(cartProvider);
     if (cart.isEmpty) return;
+
+    // Something in the cart is delivered and nowhere has been chosen: ask before anything else.
+    if (_quote?.requiresShippingAddress == true && _address == null) {
+      if (!await _chooseAddress() || !mounted) return;
+    }
 
     setState(() {
       _placing = true;
@@ -84,7 +116,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final key = 'order-${DateTime.now().microsecondsSinceEpoch}';
 
     try {
-      final order = await ref.read(storeRepositoryProvider).checkout(cart, _paymentMethod, key);
+      final order = await ref.read(storeRepositoryProvider).checkout(
+          cart, _paymentMethod, key,
+          shippingAddressId: _quote?.requiresShippingAddress == true ? _address?.id : null);
 
       ref.read(cartProvider.notifier).clear();
       ref.invalidate(walletsProvider);
@@ -148,6 +182,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                     ),
                   ),
+
+                if (_quote?.requiresShippingAddress == true) ...[
+                  const SizedBox(height: AppTheme.space5),
+                  Text(t.deliveryAddress, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: AppTheme.space3),
+                  DeliveryAddressCard(address: _address, onChange: _chooseAddress),
+                ],
 
                 const SizedBox(height: AppTheme.space5),
                 Text(t.payWith, style: Theme.of(context).textTheme.titleMedium),
