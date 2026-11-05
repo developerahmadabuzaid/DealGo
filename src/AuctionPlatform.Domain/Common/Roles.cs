@@ -56,13 +56,16 @@ public static class Permissions
     /// <summary>Editing the public landing page. Separate because it is publishing, not operations.</summary>
     public const string SiteManage = "Site.Manage";
 
+    /// <summary>Sending a notification to every user. Only full admins hold it.</summary>
+    public const string NotificationsSend = "Notifications.Send";
+
     public static readonly string[] All =
     {
         AuctionRead, AuctionCreate, AuctionUpdate, AuctionStart, AuctionCancel,
         StoreRead, StoreCreateProduct, StoreUpdateProduct, StoreDeleteProduct,
         StoreManageInventory, StoreManageOrders, StoreManageSettings,
         WalletRead, WalletAdjust, WalletRefund,
-        UserRead, UserManage, ReportsRead, AuditRead, SiteManage
+        UserRead, UserManage, ReportsRead, AuditRead, SiteManage, NotificationsSend
     };
 
     /// <summary>Default permission grant per role. SUPER_ADMIN implicitly holds everything.</summary>

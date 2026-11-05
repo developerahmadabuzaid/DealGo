@@ -40,6 +40,12 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
     public string ConnectionString { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Notifications for everyone that services queued, across every scope. Nothing sends them: a
+    /// test that cares filters by its own auction, since tests share this list.
+    /// </summary>
+    public RecordingBroadcaster Broadcasts { get; } = new();
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -110,6 +116,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<INumberGenerator, NumberGenerator>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddSingleton<INotificationBroadcaster>(Broadcasts);
+        services.AddScoped<IAdminNotificationService, AdminNotificationService>();
 
         if (failWalletCredits)
         {
@@ -259,6 +267,17 @@ public sealed class DatabaseFixture : IAsyncLifetime
         public Task SendAsync(string destination, OtpChannel channel, OtpPurpose purpose,
             string code, TimeSpan validFor, string language, CancellationToken ct = default) =>
             Task.CompletedTask;
+    }
+
+    public sealed class RecordingBroadcaster : INotificationBroadcaster
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<NotificationTemplate> Queued { get; } = new();
+
+        public ValueTask EnqueueAsync(NotificationTemplate template, CancellationToken ct = default)
+        {
+            Queued.Enqueue(template);
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class NoopPushSender : IPushNotificationSender

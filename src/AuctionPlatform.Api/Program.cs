@@ -6,6 +6,7 @@ using AuctionPlatform.Api.Hubs;
 using AuctionPlatform.Api.Middleware;
 using AuctionPlatform.Api.Services;
 using AuctionPlatform.Application.Common;
+using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Realtime;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Infrastructure;
@@ -303,6 +304,9 @@ builder.Services.AddHostedService<AuctionExpiryService>();
 builder.Services.AddHostedService<AuctionCompletionWorker>();
 builder.Services.AddHostedService<ShoppingCreditExpiryWorker>();
 builder.Services.AddHostedService<PaymobReconciliationWorker>();
+builder.Services.AddSingleton<NotificationBroadcastQueue>();
+builder.Services.AddSingleton<INotificationBroadcaster>(sp => sp.GetRequiredService<NotificationBroadcastQueue>());
+builder.Services.AddHostedService<NotificationBroadcastWorker>();
 
 // ---------------------------------------------------------------- swagger
 

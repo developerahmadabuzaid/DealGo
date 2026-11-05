@@ -1684,3 +1684,18 @@ td.num, th.num { text-align: end; }
 @media (prefers-reduced-motion: reduce) {
   .reorder-row { transition: none; }
 }
+
+/* ---------------------------------------------------------------- notifications */
+
+.notify-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .notify-layout { grid-template-columns: minmax(0, 1fr); } }
+.notify-layout textarea { width: 100%; resize: vertical; }
+
+.push-preview {
+  margin-top: 12px; padding: 12px 14px; border-radius: 14px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  display: grid; gap: 4px; overflow-wrap: anywhere;
+}
+.push-preview-app { color: var(--muted); font-size: 12px; }
+.push-preview strong { color: var(--text); font-size: 14px; }
+.push-preview-body { color: var(--text-2); font-size: 13.5px; line-height: 1.6; white-space: pre-line; }

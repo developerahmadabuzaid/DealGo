@@ -349,6 +349,10 @@ const AR = {
   'Support number saved.': 'تم حفظ رقم الدعم.', 'Save number': 'حفظ الرقم',
   'Open chat': 'فتح المحادثة',
   'Open on map': 'فتح على الخريطة',
+
+  // notifications
+  'Notifications': 'الإشعارات', 'Send notification': 'إرسال إشعار', 'Title': 'العنوان',
+  'Message': 'نص الرسالة', 'Opens': 'عند الضغط يفتح', 'Preview': 'معاينة',
   'Bank transfers waiting to be made. The money has already left the user’s wallet.':
     'تحويلات بنكية بانتظار التنفيذ. المبلغ خُصم من محفظة المستخدم عند الطلب.',
   'To pay': 'بانتظار الدفع', 'Paid': 'مدفوعة', 'Refused': 'مرفوضة', 'All': 'الكل',
@@ -434,6 +438,7 @@ const ICONS = {
   image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.2"/><circle cx="8.7" cy="9.7" r="1.5"/><path d="m4.2 17.4 4.8-4.4 3.2 2.9 2.8-2.4 4.6 4"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.8h.01"/>',
   chat: '<path d="M12 3.5a8.5 8.5 0 0 0-7.4 12.7L3.5 20.5l4.4-1.1A8.5 8.5 0 1 0 12 3.5z"/><path d="M9 9.2c0 3 2.4 5.6 5.6 5.8l1.1-1.3-1.7-.9-.8.8a4 4 0 0 1-2.2-2.2l.8-.8-.9-1.7z"/>',
+  bell: '<path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2h-14z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>',
   arrowUp: '<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>',
   arrowDown: '<path d="M12 5v14"/><path d="m6 13 6 6 6-6"/>',
 };
@@ -1001,6 +1006,10 @@ const NAV = [
     items: [{ id: 'support', label: 'WhatsApp support', icon: 'chat' }],
   },
   {
+    group: 'Notifications',
+    items: [{ id: 'notifications', label: 'Send notification', icon: 'bell' }],
+  },
+  {
     group: 'System',
     items: [
       { id: 'users', label: 'Users', icon: 'users' },
@@ -1099,6 +1108,7 @@ function routeView(route) {
     'site-faqs': viewSiteFaqs,
     'app-ads': viewAppAds,
     'support': viewSupport,
+    'notifications': viewNotifications,
     'users': viewUsers,
     'audit': viewAudit,
   };
@@ -4075,6 +4085,109 @@ async function viewSupport() {
       h('div', { style: 'display:flex;gap:8px;margin-top:12px' },
         h('button', { class: 'btn', onclick: save }, 'Save number'),
         link)));
+}
+
+// ---------------------------------------------------------------- notifications
+
+/*
+ * A message to every user: a push on their phone and an entry in the app's notification list.
+ * The server sends it in the background, so this page returns as soon as it is queued.
+ *
+ * New auctions and auction starts are announced by the server on its own; this page is for
+ * anything else staff want to say.
+ */
+async function viewNotifications() {
+  const [audience, upcoming, live] = await Promise.all([
+    api('/admin/notifications/audience'),
+    api('/admin/auctions?group=upcoming&pageSize=50').catch(() => ({ items: [] })),
+    api('/admin/auctions?group=live&pageSize=50').catch(() => ({ items: [] })),
+  ]);
+
+  const TITLE_MAX = 100;
+  const BODY_MAX = 1000;
+
+  const title = h('input', { maxlength: String(TITLE_MAX), placeholder: 'مثال: عروض نهاية الأسبوع' });
+  const body = h('textarea', { rows: '4', maxlength: String(BODY_MAX), placeholder: 'اكتب نص الإشعار كما سيظهر للمستخدم' });
+  const titleCount = h('div', { class: 'hint' });
+  const bodyCount = h('div', { class: 'hint' });
+
+  // Drafts are left out: users cannot open one.
+  const auctions = [...(live.items || []), ...(upcoming.items || [])]
+    .filter((a) => a.status !== 'Draft');
+  const auction = h('select', {},
+    h('option', { value: '' }, 'قائمة الإشعارات في التطبيق'),
+    ...auctions.map((a) => {
+      const option = h('option', { value: a.id });
+      option.append(document.createTextNode(`مزاد: ${a.title}`));
+      return option;
+    }));
+
+  // Raw text nodes: what staff type is data and must never pass through the translator.
+  const previewTitle = h('strong', {});
+  const previewBody = h('div', { class: 'push-preview-body' });
+
+  const refresh = () => {
+    titleCount.textContent = `${title.value.length} / ${TITLE_MAX}`;
+    bodyCount.textContent = `${body.value.length} / ${BODY_MAX}`;
+    previewTitle.replaceChildren(document.createTextNode(title.value.trim() || 'العنوان'));
+    previewBody.replaceChildren(document.createTextNode(body.value.trim() || 'نص الرسالة'));
+  };
+  title.addEventListener('input', refresh);
+  body.addEventListener('input', refresh);
+  refresh();
+
+  const send = h('button', { class: 'btn' }, icon('bell'), h('span', {}, 'Send notification'));
+
+  send.addEventListener('click', () => {
+    if (!title.value.trim()) { title.focus(); toast('اكتب عنوان الإشعار.', 'err'); return; }
+    if (!body.value.trim()) { body.focus(); toast('اكتب نص الإشعار.', 'err'); return; }
+
+    confirmDialog(
+      'إرسال الإشعار للجميع؟',
+      `سيصل الإشعار إلى ${audience.users} مستخدم فوراً، ولا يمكن التراجع عنه بعد الإرسال.`,
+      async () => {
+        send.disabled = true;
+        try {
+          const sent = await api('/admin/notifications/broadcast', {
+            method: 'POST',
+            body: JSON.stringify({
+              title: title.value,
+              body: body.value,
+              auctionId: auction.value || null,
+            }),
+          });
+          title.value = '';
+          body.value = '';
+          auction.value = '';
+          refresh();
+          toast(`جارٍ إرسال الإشعار إلى ${sent.users} مستخدم.`, 'ok');
+        } catch (e) {
+          toast(e.message, 'err');
+        } finally {
+          send.disabled = false;
+        }
+      });
+  });
+
+  return h('div', {},
+    pageHead('Send notification', 'رسالة تصل لجميع المستخدمين كإشعار على الجوال وفي قائمة الإشعارات داخل التطبيق.'),
+    h('div', { class: 'notify-layout' },
+      h('div', { class: 'card' },
+        h('div', { class: 'hint', style: 'margin-bottom:12px' },
+          `يصل إلى ${audience.users} مستخدم فعّلوا الإشعارات، على ${audience.phones} جهاز.`),
+        h('div', { class: 'field' }, h('label', {}, 'Title'), title, titleCount),
+        h('div', { class: 'field' }, h('label', {}, 'Message'), body, bodyCount),
+        h('div', { class: 'field' }, h('label', {}, 'Opens'), auction,
+          h('div', { class: 'hint' }, 'اختر مزاداً ليفتح عند الضغط على الإشعار، أو اتركه لفتح قائمة الإشعارات.')),
+        h('div', { style: 'display:flex;gap:8px;margin-top:12px' }, send)),
+      h('div', { class: 'card' },
+        h('h3', {}, 'Preview'),
+        h('div', { class: 'push-preview' },
+          h('div', { class: 'push-preview-app' }, h('span', {}, 'DealGo · الآن')),
+          previewTitle,
+          previewBody),
+        h('div', { class: 'hint', style: 'margin-top:16px;line-height:1.7' },
+          'يرسل النظام إشعارات تلقائية أيضاً: عند نشر مزاد جديد يصل إشعار لجميع المستخدمين، وعند بدء المزاد يصل إشعار للمشتركين فيه باسم المزاد.'))));
 }
 
 // ---------------------------------------------------------------- finance

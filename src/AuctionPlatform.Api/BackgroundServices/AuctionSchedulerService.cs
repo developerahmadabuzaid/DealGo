@@ -121,7 +121,7 @@ public sealed class AuctionSchedulerService : BackgroundService
                 NotificationType.AuctionStarted,
                 NotificationKeys.AuctionStartedTitle,
                 NotificationKeys.AuctionStartedBody,
-                null,
+                new object[] { auction.Title },
                 new Dictionary<string, string>
                 {
                     ["type"] = "AUCTION_STARTED",

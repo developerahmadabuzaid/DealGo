@@ -155,6 +155,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<INumberGenerator, NumberGenerator>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IAdminNotificationService, AdminNotificationService>();
         services.AddHttpClient<IPushNotificationSender, FirebasePushNotificationSender>();
 
         services.AddScoped<IWalletService, WalletService>();

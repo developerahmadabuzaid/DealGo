@@ -24,6 +24,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
     private readonly INumberGenerator _numbers;
     private readonly IAuctionRealtimeNotifier _realtime;
     private readonly INotificationService _notifications;
+    private readonly INotificationBroadcaster _broadcaster;
     private readonly IAuditService _audit;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuctionCompletionService _completion;
@@ -37,6 +38,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
         INumberGenerator numbers,
         IAuctionRealtimeNotifier realtime,
         INotificationService notifications,
+        INotificationBroadcaster broadcaster,
         IAuditService audit,
         ICurrentUserService currentUser,
         IAuctionCompletionService completion,
@@ -49,6 +51,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
         _numbers = numbers;
         _realtime = realtime;
         _notifications = notifications;
+        _broadcaster = broadcaster;
         _audit = audit;
         _currentUser = currentUser;
         _completion = completion;
@@ -396,6 +399,18 @@ public sealed class AuctionAdminService : IAuctionAdminService
         await _audit.LogAsync(AuditActionType.AuctionPublished, nameof(Auction), auctionId,
             null, new { auction.AuctionNumber }, ct: ct);
 
+        // Everyone hears about a new auction, since anyone may join it now.
+        await SafeAsync(() => _broadcaster.EnqueueAsync(new NotificationTemplate(
+            NotificationType.NewAuction,
+            NotificationKeys.NewAuctionTitle,
+            NotificationKeys.NewAuctionBody,
+            new object[] { auction.Title },
+            new Dictionary<string, string>
+            {
+                ["type"] = "NEW_AUCTION",
+                ["auctionId"] = auctionId.ToString()
+            }), ct).AsTask());
+
         return await _reader.GetAsync(auctionId, null, ct);
     }
 
@@ -626,12 +641,14 @@ public sealed class AuctionAdminService : IAuctionAdminService
     {
         var userIds = await _db.AuctionParticipants
             .AsNoTracking().Where(p => p.AuctionId == auctionId).Select(p => p.UserId).ToListAsync(ct);
+        var title = await _db.Auctions.AsNoTracking()
+            .Where(a => a.Id == auctionId).Select(a => a.Title).FirstAsync(ct);
 
         await SafeAsync(() => _notifications.NotifyManyAsync(userIds, new NotificationTemplate(
             NotificationType.AuctionStarted,
             NotificationKeys.AuctionStartedTitle,
             NotificationKeys.AuctionStartedBody,
-            null,
+            new object[] { title },
             new Dictionary<string, string>
             {
                 ["type"] = "AUCTION_STARTED",

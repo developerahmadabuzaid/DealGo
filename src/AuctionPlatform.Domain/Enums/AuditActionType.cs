@@ -46,5 +46,8 @@ public enum AuditActionType
     WithdrawalRejected = 28,
 
     /// <summary>The support WhatsApp number shown in the app was changed.</summary>
-    SupportSettingsChanged = 29
+    SupportSettingsChanged = 29,
+
+    /// <summary>Staff sent a notification to every user from the dashboard.</summary>
+    NotificationBroadcast = 30
 }

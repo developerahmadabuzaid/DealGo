@@ -56,4 +56,11 @@ public static class NotificationKeys
 
     public const string LowStockTitle = "notification.low_stock.title";
     public const string LowStockBody = "notification.low_stock.body";
+
+    // Staff write the text themselves; the keys only carry it through, in every language.
+    public const string AdminMessageTitle = "notification.admin_message.title";
+    public const string AdminMessageBody = "notification.admin_message.body";
+
+    public const string NewAuctionTitle = "notification.new_auction.title";
+    public const string NewAuctionBody = "notification.new_auction.body";
 }

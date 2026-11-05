@@ -58,6 +58,7 @@ public sealed class NotificationService : INotificationService
 
             var dataJson = template.Data is null ? null : JsonSerializer.Serialize(template.Data);
             var args = template.BodyArgs?.ToArray() ?? Array.Empty<object>();
+            var titleArgs = template.TitleArgs?.ToArray() ?? Array.Empty<object>();
             var now = _clock.UtcNow;
 
             var notifications = new List<Notification>(recipients.Count);
@@ -70,7 +71,7 @@ public sealed class NotificationService : INotificationService
                     Type = template.Type,
                     TitleKey = template.TitleKey,
                     BodyKey = template.BodyKey,
-                    Title = _localization.Translate(template.TitleKey, recipient.Language),
+                    Title = _localization.Translate(template.TitleKey, recipient.Language, titleArgs),
                     Body = _localization.Translate(template.BodyKey, recipient.Language, args),
                     Data = dataJson,
                     CreatedAt = now
@@ -87,6 +88,31 @@ public sealed class NotificationService : INotificationService
             _logger.LogError(ex, "Failed to deliver {Type} notification to {Count} users.",
                 template.Type, userIds.Count);
         }
+    }
+
+    public async Task<int> NotifyEveryoneAsync(NotificationTemplate template, CancellationToken ct = default)
+    {
+        const int batch = 500;
+        var sent = 0;
+        Guid? after = null;
+
+        // Keyset paging on the id, so accounts created meanwhile neither repeat nor shift a page.
+        while (true)
+        {
+            var q = _db.Users.AsNoTracking().Where(u => u.IsActive && u.NotificationsEnabled);
+            if (after is { } last) q = q.Where(u => u.Id.CompareTo(last) > 0);
+
+            var ids = await q.OrderBy(u => u.Id).Select(u => u.Id).Take(batch).ToListAsync(ct);
+            if (ids.Count == 0) break;
+
+            await NotifyManyAsync(ids, template, ct);
+            sent += ids.Count;
+            after = ids[^1];
+
+            if (ids.Count < batch) break;
+        }
+
+        return sent;
     }
 
     private async Task PushAsync(

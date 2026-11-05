@@ -13,6 +13,13 @@ public interface INotificationService
 
     Task NotifyManyAsync(IReadOnlyCollection<Guid> userIds, NotificationTemplate template, CancellationToken ct = default);
 
+    /// <summary>
+    /// Sends to every active account that has notifications on, a batch at a time. Slow for a large
+    /// audience, so callers in a request go through <see cref="INotificationBroadcaster"/>.
+    /// Returns how many accounts it was written for.
+    /// </summary>
+    Task<int> NotifyEveryoneAsync(NotificationTemplate template, CancellationToken ct = default);
+
     Task<PagedResult<NotificationDto>> GetForUserAsync(Guid userId, PagedQuery query, CancellationToken ct = default);
 
     Task<int> GetUnreadCountAsync(Guid userId, CancellationToken ct = default);
@@ -37,7 +44,17 @@ public sealed record NotificationTemplate(
     string TitleKey,
     string BodyKey,
     IReadOnlyList<object>? BodyArgs = null,
-    IReadOnlyDictionary<string, string>? Data = null);
+    IReadOnlyDictionary<string, string>? Data = null,
+    IReadOnlyList<object>? TitleArgs = null);
+
+/// <summary>
+/// Hands a notification for everyone to a background worker, so the request that caused it (an
+/// admin publishing an auction, or sending a message) returns at once.
+/// </summary>
+public interface INotificationBroadcaster
+{
+    ValueTask EnqueueAsync(NotificationTemplate template, CancellationToken ct = default);
+}
 
 public sealed record NotificationDto(
     Guid Id,
