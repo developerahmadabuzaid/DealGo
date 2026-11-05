@@ -4,6 +4,7 @@ using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Domain.Entities;
 using AuctionPlatform.Infrastructure.Persistence;
+using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -106,15 +107,25 @@ public sealed class NotificationService : INotificationService
             var byUser = tokens.GroupBy(t => t.UserId)
                 .ToDictionary(g => g.Key, g => g.Select(t => t.Token).ToList());
 
+            var gone = new List<string>();
+
             foreach (var notification in notifications)
             {
                 if (!byUser.TryGetValue(notification.UserId, out var deviceTokens)) continue;
 
-                await _push.SendAsync(deviceTokens, notification.Title, notification.Body, template.Data, ct);
+                gone.AddRange(await _push.SendAsync(
+                    deviceTokens, notification.Title, notification.Body, template.Data, ct));
                 notification.SentAt = _clock.UtcNow;
             }
 
             await _db.SaveChangesAsync(ct);
+
+            // A phone that removed the app, or was given a new token, would otherwise be sent every
+            // notification for ever and refused every time.
+            if (gone.Count > 0)
+            {
+                await _db.UserDeviceTokens.Where(t => gone.Contains(t.Token)).ExecuteDeleteAsync(ct);
+            }
         }
         catch (Exception ex)
         {
@@ -189,14 +200,32 @@ public sealed class NotificationService : INotificationService
 }
 
 /// <summary>
-/// Firebase Cloud Messaging sender. When Firebase credentials are not configured the sender logs
-/// what it would have sent, so local development and tests never need a Firebase project.
+/// Firebase Cloud Messaging sender (HTTP v1). Android phones are reached through Firebase directly
+/// and iPhones through Firebase's link to Apple, so one sender covers both.
+///
+/// It signs in with the project's service account, which is a secret: it comes from configuration
+/// (<c>Firebase__CredentialsJson</c> in web.config, or a file named by <c>Firebase__CredentialsPath</c>)
+/// and never from the app. With nothing configured it logs what it would have sent, so local
+/// development and the tests never need a Firebase project.
 /// </summary>
 public sealed class FirebasePushNotificationSender : IPushNotificationSender
 {
+    private const string Scope = "https://www.googleapis.com/auth/firebase.messaging";
+
+    /// <summary>The Android notification channel the app creates; see the app's push service.</summary>
+    private const string AndroidChannel = "dealgo_alerts";
+
     private readonly HttpClient _http;
     private readonly FirebaseOptions _options;
     private readonly ILogger<FirebasePushNotificationSender> _logger;
+
+    /*
+     * The sender is created per request (a typed HttpClient), but the signed-in account is kept for
+     * the life of the process, so its access token is reused for the hour it is valid instead of
+     * being requested again for every notification.
+     */
+    private static readonly object AccountLock = new();
+    private static (string Key, GoogleCredential? Credential, string? ProjectId)? _account;
 
     public FirebasePushNotificationSender(
         HttpClient http,
@@ -208,25 +237,39 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
         _logger = logger;
     }
 
-    public async Task SendAsync(
+    public async Task<IReadOnlyCollection<string>> SendAsync(
         IReadOnlyCollection<string> deviceTokens,
         string title,
         string body,
         IReadOnlyDictionary<string, string>? data = null,
         CancellationToken cancellationToken = default)
     {
-        if (deviceTokens.Count == 0) return;
+        if (deviceTokens.Count == 0) return Array.Empty<string>();
 
-        if (!_options.Enabled || string.IsNullOrWhiteSpace(_options.ProjectId))
+        var (credential, projectId) = _options.Enabled ? Account() : (null, null);
+        if (credential is null || string.IsNullOrWhiteSpace(projectId))
         {
             _logger.LogInformation(
                 "[push disabled] {Title} -> {Count} device(s): {Body}", title, deviceTokens.Count, body);
-            return;
+            return Array.Empty<string>();
         }
 
-        // The FCM HTTP v1 API requires an OAuth2 access token minted from the service account.
-        // Wiring a real credential provider is a deployment concern; the request shape is here so
-        // the integration point is unambiguous.
+        string accessToken;
+        try
+        {
+            // Cached by the credential and renewed shortly before it expires.
+            accessToken = await ((ITokenAccess)credential).GetAccessTokenForRequestAsync(
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not sign in to Firebase; push skipped.");
+            return Array.Empty<string>();
+        }
+
+        var url = $"https://fcm.googleapis.com/v1/projects/{projectId}/messages:send";
+        var gone = new List<string>();
+
         foreach (var token in deviceTokens)
         {
             var payload = new
@@ -235,26 +278,102 @@ public sealed class FirebasePushNotificationSender : IPushNotificationSender
                 {
                     token,
                     notification = new { title, body },
-                    data = data ?? new Dictionary<string, string>()
+                    data = data ?? new Dictionary<string, string>(),
+                    android = new
+                    {
+                        priority = "high",
+                        notification = new { channel_id = AndroidChannel, sound = "default" }
+                    },
+                    apns = new
+                    {
+                        payload = new { aps = new { sound = "default" } }
+                    }
                 }
             };
 
             try
             {
-                var response = await _http.PostAsJsonAsync(
-                    $"https://fcm.googleapis.com/v1/projects/{_options.ProjectId}/messages:send",
-                    payload, cancellationToken);
-
-                if (!response.IsSuccessStatusCode)
+                using var request = new HttpRequestMessage(HttpMethod.Post, url)
                 {
-                    _logger.LogWarning(
-                        "FCM rejected a message with {Status}.", response.StatusCode);
+                    Content = JsonContent.Create(payload)
+                };
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+                using var response = await _http.SendAsync(request, cancellationToken);
+                if (response.IsSuccessStatusCode) continue;
+
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                // 404 UNREGISTERED: the app was removed or the token replaced. A 400 naming the
+                // token as invalid means it was never one. Either way it will never work again.
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound
+                    || error.Contains("UNREGISTERED", StringComparison.Ordinal)
+                    || (response.StatusCode == System.Net.HttpStatusCode.BadRequest
+                        && error.Contains("registration token", StringComparison.OrdinalIgnoreCase)))
+                {
+                    gone.Add(token);
+                    continue;
                 }
+
+                _logger.LogWarning("FCM rejected a message with {Status}.", response.StatusCode);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogWarning(ex, "FCM delivery failed for one device token.");
             }
+        }
+
+        return gone;
+    }
+
+    private (GoogleCredential?, string?) Account()
+    {
+        var key = $"{_options.CredentialsPath}|{_options.ProjectId}|{_options.CredentialsJson?.GetHashCode()}";
+        lock (AccountLock)
+        {
+            if (_account is { } cached && cached.Key == key) return (cached.Credential, cached.ProjectId);
+            var (credential, projectId) = LoadAccount();
+            _account = (key, credential, projectId);
+            return (credential, projectId);
+        }
+    }
+
+    private (GoogleCredential?, string?) LoadAccount()
+    {
+        try
+        {
+            var json = _options.CredentialsJson;
+            if (string.IsNullOrWhiteSpace(json) && !string.IsNullOrWhiteSpace(_options.CredentialsPath)
+                && File.Exists(_options.CredentialsPath))
+            {
+                json = File.ReadAllText(_options.CredentialsPath);
+            }
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                _logger.LogWarning("Firebase is enabled but no service account is configured; push is off.");
+                return (null, null);
+            }
+
+            var projectId = _options.ProjectId;
+            if (string.IsNullOrWhiteSpace(projectId))
+            {
+                using var doc = JsonDocument.Parse(json);
+                projectId = doc.RootElement.TryGetProperty("project_id", out var p) ? p.GetString() : null;
+            }
+
+            var credential = CredentialFactory.FromJson<ServiceAccountCredential>(json)
+                .ToGoogleCredential()
+                .CreateScoped(Scope);
+
+            return (credential, projectId);
+        }
+        catch (Exception ex)
+        {
+            // Never the contents: the file holds a private key.
+            _logger.LogError("Firebase service account could not be read ({Error}); push is off.", ex.GetType().Name);
+            return (null, null);
         }
     }
 }

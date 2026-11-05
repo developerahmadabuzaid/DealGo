@@ -12,6 +12,7 @@ import '../features/store/data/store_repository.dart';
 import '../features/wallets/data/wallet_repository.dart';
 import 'errors/api_exception.dart';
 import 'network/api_client.dart';
+import 'push/push_service.dart';
 import 'realtime/auction_hub_client.dart';
 import 'storage/token_store.dart';
 
@@ -125,7 +126,10 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       final user = await _repo.currentUser();
       state = AuthState(user: user, checked: true, hasSession: user != null);
-      if (user != null) await _ref.read(hubClientProvider).connect();
+      if (user != null) {
+        await _ref.read(hubClientProvider).connect();
+        unawaited(_ref.read(pushServiceProvider).start());
+      }
     } on ApiException catch (e) {
       if (e.code == ErrorCodes.unauthorized || e.code == ErrorCodes.accountDisabled) {
         // The server refused the session; the tokens are already cleared.
@@ -138,6 +142,7 @@ class AuthController extends StateNotifier<AuthState> {
       state = const AuthState(checked: true, isOffline: true, hasSession: true);
       unawaited(_ref.read(hubClientProvider).connect());
       unawaited(refreshProfile());
+      unawaited(_ref.read(pushServiceProvider).start());
     }
   }
 
@@ -164,6 +169,7 @@ class AuthController extends StateNotifier<AuthState> {
       final user = await _repo.verifyLoginOtp(destination, code);
       state = AuthState(user: user, checked: true, hasSession: true);
       await _ref.read(hubClientProvider).connect();
+      unawaited(_ref.read(pushServiceProvider).start());
     } finally {
       state = state.copyWith(isLoading: false);
     }
@@ -183,6 +189,8 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> signOut() async {
+    // First, while the session still lets this phone be removed from the account's devices.
+    await _ref.read(pushServiceProvider).stop();
     await _repo.logout();
     await _ref.read(hubClientProvider).disconnect();
     state = const AuthState(checked: true);

@@ -262,9 +262,10 @@ public sealed class DatabaseFixture : IAsyncLifetime
 
     private sealed class NoopPushSender : IPushNotificationSender
     {
-        public Task SendAsync(IReadOnlyCollection<string> tokens, string title, string body,
-            IReadOnlyDictionary<string, string>? data = null, CancellationToken ct = default) =>
-            Task.CompletedTask;
+        public Task<IReadOnlyCollection<string>> SendAsync(IReadOnlyCollection<string> tokens,
+            string title, string body, IReadOnlyDictionary<string, string>? data = null,
+            CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyCollection<string>>(Array.Empty<string>());
     }
 
     /// <summary>SignalR is not exercised here; broadcasting is a delivery concern, not a rule.</summary>

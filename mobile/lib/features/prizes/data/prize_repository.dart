@@ -174,3 +174,10 @@ class NotificationRepository {
 
   Future<void> markAllRead() => _api.post('/notifications/read-all');
 }
+
+  /// Tells the server where to send push notifications for the signed-in account.
+  Future<void> registerDevice(String token, String platform) =>
+      _api.post('/notifications/devices', body: {'token': token, 'platform': platform});
+
+  Future<void> unregisterDevice(String token) =>
+      _api.delete('/notifications/devices', query: {'token': token});

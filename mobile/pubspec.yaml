@@ -39,6 +39,8 @@ dependencies:
 
   # The live bidding screen's music: a steady loop, and a faster one for the final phase.
   audioplayers: ^6.8.1
+  firebase_core: ^5.1.0
+  firebase_messaging: ^17.0.1
 
 dev_dependencies:
   flutter_test:

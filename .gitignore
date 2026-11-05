@@ -69,3 +69,7 @@ src/AuctionPlatform.Api/wwwroot/app/
 # deployment. Read by deploy\smarterasp\publish-smarterasp.ps1 so a live key is typed once.
 # Never commit it.
 deploy/smarterasp/local-secrets.ps1
+
+# Firebase service account keys (private keys). Keep them outside the repository.
+*firebase-adminsdk*.json
+*service-account*.json

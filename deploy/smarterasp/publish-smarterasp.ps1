@@ -200,6 +200,32 @@ $idLines = for ($i = 0; $i -lt $paymobIds.Count; $i++) {
 }
 $webConfig = $webConfig.Replace($idsMarker, (@($idLines) -join "`n$idsIndent"))
 
+# Firebase: push notifications to the Android and iPhone apps. Optional: without it the site runs
+# and notifications still appear inside the app, only the phone is not woken. Set
+# $FirebaseServiceAccountPath in local-secrets.ps1 to the service account file downloaded from the
+# Firebase console (Project settings > Service accounts). Keep that file outside this repository:
+# it holds a private key.
+$firebaseLines = @()
+if ($FirebaseServiceAccountPath) {
+    if (-not (Test-Path $FirebaseServiceAccountPath)) {
+        throw "FirebaseServiceAccountPath: '$FirebaseServiceAccountPath' does not exist."
+    }
+    $firebaseAccount = Get-Content $FirebaseServiceAccountPath -Raw | ConvertFrom-Json
+    if ($firebaseAccount.type -ne 'service_account' -or -not $firebaseAccount.project_id -or -not $firebaseAccount.private_key) {
+        throw 'FirebaseServiceAccountPath does not point at a Firebase service account file.'
+    }
+    $firebaseJson = [System.Security.SecurityElement]::Escape(($firebaseAccount | ConvertTo-Json -Compress -Depth 5))
+    $firebaseLines = @(
+        '<environmentVariable name="Firebase__Enabled" value="true" />',
+        "<environmentVariable name=""Firebase__ProjectId"" value=""$($firebaseAccount.project_id)"" />",
+        "<environmentVariable name=""Firebase__CredentialsJson"" value=""$firebaseJson"" />"
+    )
+}
+$fbMarker = '<!-- __FIREBASE__ -->'
+$fbLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($fbMarker) } | Select-Object -First 1
+$fbIndent = if ($fbLine) { $fbLine.Substring(0, $fbLine.IndexOf($fbMarker)) } else { '' }
+$webConfig = $webConfig.Replace($fbMarker, (@($firebaseLines) -join "`n$fbIndent"))
+
 $marker = '<!-- __OTP_TEST_ACCOUNTS__ -->'
 $markerLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($marker) } | Select-Object -First 1
 $indent = if ($markerLine) { $markerLine.Substring(0, $markerLine.IndexOf($marker)) } else { '' }
@@ -382,6 +408,13 @@ else {
 if ($paymobComplete) {
     $modeColor = if ($paymobMode -eq 'live') { 'Yellow' } else { 'Cyan' }
     Write-Host "`nPaymob is set up in $($paymobMode.ToUpperInvariant()) mode$(if (-not $paymobApiKey) { ' (no API key: reconciliation can only wait for callbacks)' })." -ForegroundColor $modeColor
+}
+
+if ($firebaseLines.Count -gt 0) {
+    Write-Host "`nPush notifications are on (Firebase project $($firebaseAccount.project_id))." -ForegroundColor Cyan
+}
+else {
+    Write-Warning 'Firebase is not set up: notifications stay inside the app and do not reach the phone. Set $FirebaseServiceAccountPath in local-secrets.ps1.'
 }
 
 if (-not $paymobComplete) {

@@ -4,4 +4,6 @@
     <color name="launch_background">#F7F8FC</color>
     <!-- Behind the app icon's mark. -->
     <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- The tint behind the small notification icon. -->
+    <color name="notification_accent">#F26A1B</color>
 </resources>

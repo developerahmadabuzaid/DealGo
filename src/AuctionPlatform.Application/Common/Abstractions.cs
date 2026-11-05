@@ -58,7 +58,11 @@ public interface IAuditService
 /// <summary>Push delivery. Failure here must never affect whether a transaction committed.</summary>
 public interface IPushNotificationSender
 {
-    Task SendAsync(
+    /// <summary>
+    /// Sends one message to each device and returns the tokens the push service says no longer
+    /// exist (the app was removed, or the token was replaced), so they can be forgotten.
+    /// </summary>
+    Task<IReadOnlyCollection<string>> SendAsync(
         IReadOnlyCollection<string> deviceTokens,
         string title,
         string body,

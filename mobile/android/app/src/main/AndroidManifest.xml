@@ -8,6 +8,8 @@
         The app cannot do anything without the API, so the permission belongs here.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 13 and newer ask before an app may show notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="DealGo"
@@ -40,6 +42,20 @@
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
+        <!--
+            Push notifications (Firebase). Android draws the small icon from its transparency
+            alone, so it is the mark in white; the colour is the circle behind it. Messages
+            arrive on "dealgo_alerts", the channel MainActivity creates.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="dealgo_alerts" />
             android:value="2" />
     </application>
     <!-- Required to query activities that can process text, see:
