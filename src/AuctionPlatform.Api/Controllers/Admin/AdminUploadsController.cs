@@ -1,3 +1,4 @@
+using AuctionPlatform.Api.Services;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
@@ -107,5 +108,28 @@ public sealed class AdminUploadsController : ApiControllerBase
             CurrentUserId, storedName, file.Length, url);
 
         return Ok(new UploadedFileDto(url, storedName, file.Length));
+    }
+
+    /// <summary>
+    /// One-off, after the site has been switched to R2: copies the pictures in wwwroot/uploads and
+    /// wwwroot/catalog into the bucket and points the database's addresses for them at the bucket.
+    /// Safe to run again: it only does what is still left. Nothing is deleted from the host.
+    /// </summary>
+    [HttpPost("move-to-r2")]
+    [Authorize(Roles = Roles.SuperAdmin)]
+    public async Task<ActionResult<MediaToR2Mover.MoveResult>> MoveToR2(CancellationToken ct)
+    {
+        var mover = HttpContext.RequestServices.GetService<MediaToR2Mover>()
+            ?? throw new DomainException(
+                ErrorCodes.ValidationFailed,
+                "R2 is not in use: set Storage:Provider to R2 and the Storage:R2 settings first.");
+
+        var result = await mover.MoveAsync(ct);
+
+        _logger.LogInformation(
+            "Administrator {UserId} moved pictures to R2: {Copied} copied, {Failed} failed, {Updated} addresses updated.",
+            CurrentUserId, result.Copied, result.Failed.Count, result.AddressesUpdated);
+
+        return Ok(result);
     }
 }

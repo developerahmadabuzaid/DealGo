@@ -12,8 +12,14 @@ public sealed class StorageOptions
 {
     public const string SectionName = "Storage";
 
-    /// <summary>"Local" (a folder beside the API) or "AzureBlob" (a storage account).</summary>
+    /// <summary>
+    /// "Local" (a folder beside the API), "AzureBlob" (an Azure storage account) or "R2" (a
+    /// Cloudflare R2 bucket, see <see cref="R2"/>).
+    /// </summary>
     public string Provider { get; set; } = "Local";
+
+    /// <summary>The Cloudflare R2 bucket, read only when <see cref="Provider"/> is "R2".</summary>
+    public R2StorageOptions R2 { get; set; } = new();
 
     /// <summary>
     /// The account's address, e.g. https://dealgomedia.blob.core.windows.net.
@@ -41,6 +47,9 @@ public sealed class StorageOptions
 
     public bool UsesAzureBlob =>
         string.Equals(Provider, "AzureBlob", StringComparison.OrdinalIgnoreCase);
+
+    public bool UsesR2 =>
+        string.Equals(Provider, "R2", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

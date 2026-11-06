@@ -350,9 +350,20 @@ builder.Services.AddSwaggerGen(options =>
  */
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(StorageOptions.SectionName));
 
-if (builder.Configuration
+var storageOptions = builder.Configuration
     .GetSection(StorageOptions.SectionName)
-    .Get<StorageOptions>()?.UsesAzureBlob == true)
+    .Get<StorageOptions>() ?? new StorageOptions();
+
+if (storageOptions.UsesR2)
+{
+    // Cloudflare R2 (docs/R2-STORAGE.md). Registered under its own type too, for the one-off move
+    // of the old local pictures and the redirect that keeps their addresses working.
+    builder.Services.AddSingleton<R2MediaStorage>();
+    builder.Services.AddSingleton<IMediaStorage>(sp => sp.GetRequiredService<R2MediaStorage>());
+    builder.Services.AddScoped<MediaAddressRewriter>();
+    builder.Services.AddScoped<MediaToR2Mover>();
+}
+else if (storageOptions.UsesAzureBlob)
 {
     builder.Services.AddSingleton<IMediaStorage, BlobMediaStorage>();
 }
@@ -513,6 +524,33 @@ app.UseStaticFiles(new StaticFileOptions
                 : "no-cache, must-revalidate";
     }
 });
+
+// With R2 in use, an old "/uploads/x.jpg" or "/catalog/x.webp" address that is no longer on this
+// disk is sent to the same path in the bucket, where the one-off move
+// (POST /api/v1/admin/uploads/move-to-r2) put it. The static files above still serve a picture
+// that is here, so this only matters for an address something kept from before the move.
+if (storageOptions.UsesR2)
+{
+    var r2 = app.Services.GetRequiredService<R2MediaStorage>();
+    app.Use(async (ctx, next) =>
+    {
+        if (HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method))
+        {
+            foreach (var folder in MediaToR2Mover.Folders)
+            {
+                if (ctx.Request.Path.StartsWithSegments("/" + folder, out var rest)
+                    && rest.Value is { Length: > 1 } tail
+                    && MediaToR2Mover.FileNamePattern().IsMatch(tail[1..]))
+                {
+                    ctx.Response.Redirect(r2.PublicUrlForKey($"{folder}/{tail[1..]}"), permanent: false);
+                    return;
+                }
+            }
+        }
+
+        await next();
+    });
+}
 
 app.UseRateLimiter();
 

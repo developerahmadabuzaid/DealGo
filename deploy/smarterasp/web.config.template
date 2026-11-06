@@ -49,6 +49,7 @@
           <environmentVariable name="Paymob__Mode" value="__PAYMOB_MODE__" />
           <!-- __PAYMOB_INTEGRATION_IDS__ -->
           <!-- __FIREBASE__ -->
+          <!-- __R2_STORAGE__ -->
         </environmentVariables>
       </aspNetCore>
     </system.webServer>

@@ -221,6 +221,38 @@ if ($FirebaseServiceAccountPath) {
         "<environmentVariable name=""Firebase__CredentialsJson"" value=""$firebaseJson"" />"
     )
 }
+
+# Cloudflare R2: where uploaded pictures are kept. Optional: without it pictures go into
+# wwwroot/uploads on the host, as before. Set $R2AccountId, $R2AccessKeyId, $R2SecretAccessKey,
+# $R2Bucket and $R2PublicBaseUrl in local-secrets.ps1; docs/R2-STORAGE.md says where each comes from.
+$r2Values = [ordered]@{
+    AccountId       = if ($R2AccountId) { "$R2AccountId".Trim() } else { '' }
+    AccessKeyId     = if ($R2AccessKeyId) { "$R2AccessKeyId".Trim() } else { '' }
+    SecretAccessKey = if ($R2SecretAccessKey) { "$R2SecretAccessKey".Trim() } else { '' }
+    Bucket          = if ($R2Bucket) { "$R2Bucket".Trim() } else { '' }
+    PublicBaseUrl   = if ($R2PublicBaseUrl) { "$R2PublicBaseUrl".Trim().TrimEnd('/') } else { '' }
+}
+$r2Set = @($r2Values.Values | Where-Object { $_ })
+$r2Complete = $r2Set.Count -eq $r2Values.Count
+if ($r2Set.Count -gt 0 -and -not $r2Complete) {
+    $r2Missing = ($r2Values.Keys | Where-Object { -not $r2Values[$_] } | ForEach-Object { "R2$_" }) -join ', '
+    throw "R2 is half set up: $r2Missing missing in local-secrets.ps1. All five are needed (see docs/R2-STORAGE.md)."
+}
+if ($r2Complete -and $r2Values.PublicBaseUrl -notmatch '^https://[^/\s]+') {
+    throw "R2PublicBaseUrl must be the bucket's public https address, such as https://images.dealgosa.com (it is '$($r2Values.PublicBaseUrl)')."
+}
+$r2Lines = @()
+if ($r2Complete) {
+    $r2Lines += '<environmentVariable name="Storage__Provider" value="R2" />'
+    foreach ($key in $r2Values.Keys) {
+        $r2Lines += "<environmentVariable name=""Storage__R2__$key"" value=""$([System.Security.SecurityElement]::Escape($r2Values[$key]))"" />"
+    }
+}
+$r2Marker = '<!-- __R2_STORAGE__ -->'
+$r2Line = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($r2Marker) } | Select-Object -First 1
+$r2Indent = if ($r2Line) { $r2Line.Substring(0, $r2Line.IndexOf($r2Marker)) } else { '' }
+$webConfig = $webConfig.Replace($r2Marker, (@($r2Lines) -join "`n$r2Indent"))
+
 $fbMarker = '<!-- __FIREBASE__ -->'
 $fbLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($fbMarker) } | Select-Object -First 1
 $fbIndent = if ($fbLine) { $fbLine.Substring(0, $fbLine.IndexOf($fbMarker)) } else { '' }
@@ -415,6 +447,13 @@ if ($firebaseLines.Count -gt 0) {
 }
 else {
     Write-Warning 'Firebase is not set up: notifications stay inside the app and do not reach the phone. Set $FirebaseServiceAccountPath in local-secrets.ps1.'
+}
+
+if ($r2Complete) {
+    Write-Host "`nUploaded pictures go to Cloudflare R2 (bucket $($r2Values.Bucket), served from $($r2Values.PublicBaseUrl))." -ForegroundColor Cyan
+}
+else {
+    Write-Warning 'Cloudflare R2 is not set up: uploaded pictures stay in wwwroot/uploads on the host and are lost if the site folder is wiped. Set the R2 values in local-secrets.ps1 (docs/R2-STORAGE.md).'
 }
 
 if (-not $paymobComplete) {
