@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../providers.dart';
 import 'firebase_config.dart';
@@ -142,8 +143,7 @@ class PushService {
   }
 
   void _openFor(RemoteMessage message) {
-    _ref.invalidate(unreadCountProvider);
-    _ref.invalidate(notificationsProvider);
+    unawaited(_markRead(message.data['notificationId']));
 
     final location = locationFor(message.data);
     final open = _open;
@@ -154,14 +154,59 @@ class PushService {
     }
   }
 
-  /// The page a notification is about.
-  static String locationFor(Map<String, dynamic> data) {
-    final auctionId = data['auctionId'];
-    if (auctionId is String && auctionId.isNotEmpty) return '/auctions/$auctionId';
+  /// Opening a notification from the phone counts as reading it, as tapping it in the list does.
+  Future<void> _markRead(Object? id) async {
+    try {
+      if (id is String && id.isNotEmpty) {
+        await _ref.read(notificationRepositoryProvider).markRead(id);
+      }
+    } catch (_) {
+      // Only the unread dot is affected.
+    }
+    _ref.invalidate(unreadCountProvider);
+    _ref.invalidate(notificationsProvider);
+  }
 
-    final orderId = data['orderId'];
-    if (orderId is String && orderId.isNotEmpty) return '/store/orders';
+  /// Where a tapped push leads: the page it is about, or the list for a plain message.
+  static String locationFor(Map<String, dynamic> data) => pageFor(data) ?? '/notifications';
 
-    return '/notifications';
+  /// The page a notification is about, or null when it is only a message (an announcement).
+  static String? pageFor(Map<String, dynamic> data) {
+    String? value(String key) {
+      final v = data[key];
+      return v is String && v.isNotEmpty ? v : null;
+    }
+
+    switch (value('type')) {
+      // A prize won, or one waiting to be paid for or claimed: the prizes page.
+      case 'YOU_WON':
+      case 'PRIZE_CLAIM_AVAILABLE':
+      case 'PRIZE_PAYMENT_REMINDER':
+        return '/prizes';
+      // Money back or shopping credit: the wallet shows the new balance.
+      case 'SHOPPING_CREDIT_ADDED':
+      case 'SHOPPING_CREDIT_EXPIRING':
+      case 'ENTRY_FEE_REFUNDED':
+        return '/wallet';
+    }
+
+    if (value('orderId') != null) return '/store/orders';
+    if (value('prizeClaimId') != null) return '/prizes';
+
+    final auctionId = value('auctionId');
+    if (auctionId != null) return '/auctions/$auctionId';
+
+    return null;
+  }
+
+  /// The tabs live in the app's shell: opening one switches tab; any other page goes on top.
+  static const _tabs = {'/', '/auctions', '/store', '/wallet', '/profile'};
+
+  static void openIn(GoRouter router, String location) {
+    if (_tabs.contains(location)) {
+      router.go(location);
+    } else {
+      router.push(location);
+    }
   }
 }

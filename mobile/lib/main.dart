@@ -49,7 +49,7 @@ class AuctionApp extends ConsumerWidget {
     // A tapped notification opens the auction or the order it is about.
     ref.read(pushServiceProvider).open = (location) {
       final navigator = _rootKey.currentContext;
-      if (navigator != null) GoRouter.of(navigator).push(location);
+      if (navigator != null) PushService.openIn(GoRouter.of(navigator), location);
     };
 
     return MaterialApp.router(

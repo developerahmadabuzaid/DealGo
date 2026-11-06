@@ -6,6 +6,7 @@ import '../../../core/errors/api_exception.dart';
 import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
+import '../../../core/push/push_service.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/legal_links.dart';
 import '../../../shared/otp_input.dart';
@@ -321,8 +322,14 @@ class NotificationsScreen extends ConsumerWidget {
                     trailing: Text(Fmt.dateTime(n.createdAt, locale: locale),
                         style: Theme.of(context).textTheme.labelSmall),
                     onTap: () async {
+                      // Open the page it is about first; the unread dot can follow.
+                      final page = PushService.pageFor(n.data);
+                      if (page != null) PushService.openIn(GoRouter.of(context), page);
+
                       if (n.isUnread) {
-                        await ref.read(notificationRepositoryProvider).markRead(n.id);
+                        try {
+                          await ref.read(notificationRepositoryProvider).markRead(n.id);
+                        } catch (_) {}
                         ref.invalidate(notificationsProvider);
                         ref.invalidate(unreadCountProvider);
                       }

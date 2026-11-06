@@ -139,8 +139,15 @@ public sealed class NotificationService : INotificationService
             {
                 if (!byUser.TryGetValue(notification.UserId, out var deviceTokens)) continue;
 
+                // The notification's own id rides along, so the phone can mark it read when tapped.
+                var data = new Dictionary<string, string>(
+                    template.Data ?? new Dictionary<string, string>())
+                {
+                    ["notificationId"] = notification.Id.ToString()
+                };
+
                 gone.AddRange(await _push.SendAsync(
-                    deviceTokens, notification.Title, notification.Body, template.Data, ct));
+                    deviceTokens, notification.Title, notification.Body, data, ct));
                 notification.SentAt = _clock.UtcNow;
             }
 

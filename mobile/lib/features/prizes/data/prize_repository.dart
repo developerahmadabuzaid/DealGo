@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../core/network/api_client.dart';
 import '../../addresses/data/address_repository.dart';
 
@@ -117,6 +119,7 @@ class AppNotification {
     required this.body,
     required this.readAt,
     required this.createdAt,
+    this.data = const {},
   });
 
   final String id;
@@ -126,13 +129,29 @@ class AppNotification {
   final DateTime? readAt;
   final DateTime createdAt;
 
+  /// What the notification is about (auctionId, orderId, ...), the same values its push carries.
+  final Map<String, dynamic> data;
+
   bool get isUnread => readAt == null;
+
+  /// The server keeps the data as a JSON text; anything unreadable just means "no page".
+  static Map<String, dynamic> _data(Object? raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is! String || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : const {};
+    } catch (_) {
+      return const {};
+    }
+  }
 
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
         id: j['id'] as String,
-        type: j['type'] as String? ?? '',
+        type: j['type']?.toString() ?? '',
         title: j['title'] as String? ?? '',
         body: j['body'] as String? ?? '',
+        data: _data(j['data']),
         readAt: j['readAt'] == null ? null : DateTime.parse(j['readAt'] as String).toUtc(),
         createdAt: DateTime.parse(j['createdAt'] as String).toUtc(),
       );
