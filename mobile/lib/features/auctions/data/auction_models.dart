@@ -414,6 +414,8 @@ class AuctionSnapshot {
     int? participantCount,
     List<LeaderboardEntry>? leaderboard,
     String? lastBidParticipantId,
+    int? myRank,
+    double? myHighestPrice,
   }) =>
       AuctionSnapshot(
         id: id, status: status, currentPrice: currentPrice ?? this.currentPrice,
@@ -424,7 +426,8 @@ class AuctionSnapshot {
         remainingSeconds: remainingSeconds, endsAt: endsAt,
         targetReached: targetReached ?? this.targetReached,
         progress: progress ?? this.progress,
-        myRank: myRank, myHighestPrice: myHighestPrice,
+        myRank: myRank ?? this.myRank,
+        myHighestPrice: myHighestPrice ?? this.myHighestPrice,
         leaderboard: leaderboard ?? this.leaderboard,
         lastSequenceNumber: lastSequenceNumber, serverTime: serverTime,
         myParticipantId: myParticipantId,

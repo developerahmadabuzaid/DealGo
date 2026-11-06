@@ -272,9 +272,32 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
 
     try {
       final result = await _ref.read(auctionRepositoryProvider).placeBid(auctionId, key);
-      final previousRank = state.snapshot?.myRank;
+      final before = state.snapshot;
+      final previousRank = before?.myRank;
 
-      await resync();
+      // The answer already says what the bid did, so the button is free again at once. Waiting
+      // for a full refetch as well kept it spinning for as long as the slower of two requests
+      // took, and doubled the requests every bidder made. The price itself keeps arriving live.
+      if (before != null) {
+        final price =
+            result.newPrice > before.currentPrice ? result.newPrice : before.currentPrice;
+        state = state.copyWith(
+          snapshot: before.copyWith(
+            currentPrice: price,
+            targetReached: result.reachedTarget || before.targetReached,
+            progress: _progress(before, price),
+            // Still the last bid only when no newer price has arrived meanwhile.
+            lastBidParticipantId:
+                price == result.newPrice ? before.myParticipantId : before.lastBidParticipantId,
+            myRank: result.myRank,
+            myHighestPrice: result.myHighestPrice,
+          ),
+        );
+      }
+      // A change of phase or the end changes what the screen shows, which the server owns.
+      if (before == null || result.reachedTarget || result.auctionStatus != before.status) {
+        unawaited(resync());
+      }
 
       final rank = result.myRank;
       String? message;

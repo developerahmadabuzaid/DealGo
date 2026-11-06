@@ -245,7 +245,9 @@ builder.Services.AddRateLimiter(options =>
             PartitionKey(context),
             _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 300,
+                // A person bidding steadily through a live auction makes a few requests a second;
+                // the per-bid limits above are what stop abuse of the bid itself.
+                PermitLimit = 1200,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             }));
@@ -552,9 +554,13 @@ if (storageOptions.UsesR2)
     });
 }
 
-app.UseRateLimiter();
-
+// After authentication, so the limits count per signed-in person. Before, the user was never
+// known yet at this point and every limit was keyed on the IP address: everyone bidding from one
+// office WiFi or one mobile carrier shared a single allowance, used it up within seconds of a busy
+// auction, and then had every request refused until the minute was over. The price froze for all
+// of them at once.
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

@@ -34,11 +34,31 @@ class ApiClient {
   void Function()? onSessionExpired;
 
   Future<void> _onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
-    final tokens = await _tokenStore.read();
-    if (tokens != null) {
-      options.headers['Authorization'] = 'Bearer ${tokens.accessToken}';
+    // A token that has run out is refreshed before it is sent, not after a 401. Pages anyone may
+    // open (an auction, its live state) never answer 401: the server just treats the caller as
+    // signed out. Someone who waited on an auction page longer than the token lasts was then told
+    // they had not joined, and got no bid button when the auction started.
+    final isAuthCall = options.path.startsWith('/auth/') && options.path != '/auth/change-password';
+    final token = isAuthCall
+        ? (await _tokenStore.read())?.accessToken
+        : await _freshAccessToken();
+    if (token != null) {
+      options.headers['Authorization'] = 'Bearer $token';
     }
     handler.next(options);
+  }
+
+  /// The stored token, refreshed first when it is expired or about to be. When the refresh cannot
+  /// happen (offline), the old token is sent anyway and the server's answer decides.
+  Future<String?> _freshAccessToken() async {
+    final tokens = await _tokenStore.read();
+    if (tokens == null) return null;
+
+    final soon = DateTime.now().toUtc().add(const Duration(seconds: 60));
+    if (tokens.accessTokenExpiresAt.isAfter(soon)) return tokens.accessToken;
+
+    await _refresh();
+    return (await _tokenStore.read())?.accessToken ?? tokens.accessToken;
   }
 
   /// A token the server will still accept, refreshed first when it is expired or about to be.
@@ -147,7 +167,11 @@ class ApiClient {
       )).post('/auth/refresh', data: {'refreshToken': tokens.refreshToken});
 
       if (response.statusCode != 200 || response.data is! Map) {
-        await _tokenStore.clear();
+        // Only a refusal of the refresh token itself ends the session. A busy or failing server
+        // (429, 5xx) says nothing about it, and signing the person out mid-auction for that
+        // would be worse than trying again on the next request.
+        final status = response.statusCode ?? 0;
+        if (status == 400 || status == 401 || status == 403) await _tokenStore.clear();
         completer.complete(false);
         return false;
       }
@@ -161,6 +185,10 @@ class ApiClient {
 
       completer.complete(true);
       return true;
+    } on DioException {
+      // No connection: the session is fine, the network is not.
+      completer.complete(false);
+      return false;
     } catch (_) {
       await _tokenStore.clear();
       completer.complete(false);

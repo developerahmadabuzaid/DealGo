@@ -32,20 +32,73 @@ class _AlreadyConnectedHub extends AuctionHubClient {
 class _Repo extends AuctionRepository {
   _Repo() : super(ApiClient(tokenStore: TokenStore()));
 
+  int snapshots = 0;
+
   @override
-  Future<AuctionSnapshot> snapshot(String id) async => AuctionSnapshot.fromJson({
-        'id': id,
-        'status': 'Live',
-        'currentPrice': 1500,
-        'targetPrice': 2500,
-        'serverTime': DateTime.now().toUtc().toIso8601String(),
-      });
+  Future<AuctionSnapshot> snapshot(String id) async {
+    snapshots++;
+    return AuctionSnapshot.fromJson({
+      'id': id,
+      'status': 'Live',
+      'currentPrice': 1500,
+      'targetPrice': 2500,
+      'myParticipantId': 'me',
+      'serverTime': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
 
   @override
   Future<AuctionDetail> detail(String id) async => throw Exception('not needed');
+
+  @override
+  Future<BidResult> placeBid(String auctionId, String idempotencyKey) async =>
+      BidResult.fromJson({
+        'bidId': 'b1',
+        'sequenceNumber': 7,
+        'previousPrice': 1500,
+        'newPrice': 1501,
+        'targetPrice': 2500,
+        'reachedTarget': false,
+        'finalPhase': false,
+        'auctionStatus': 'Live',
+        'myRank': 1,
+        'myHighestPrice': 1501,
+        'wasDuplicate': false,
+      });
+}
+
+Future<ProviderContainer> _openScreen(_Repo repo) async {
+  final container = ProviderContainer(overrides: [
+    hubClientProvider.overrideWithValue(_AlreadyConnectedHub()),
+    auctionRepositoryProvider.overrideWithValue(repo),
+  ]);
+  container.listen(liveAuctionProvider('a1'), (_, _) {});
+  for (var i = 0; i < 20 && container.read(liveAuctionProvider('a1')).snapshot == null; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  return container;
 }
 
 void main() {
+  test('a bid frees the button from its own answer, without a second request', () async {
+    final repo = _Repo();
+    final container = await _openScreen(repo);
+    final before = repo.snapshots;
+
+    await container.read(liveAuctionProvider('a1').notifier).placeBid();
+
+    final state = container.read(liveAuctionProvider('a1'));
+    expect(state.isBidding, isFalse);
+    expect(state.snapshot!.currentPrice, 1501);
+    expect(state.snapshot!.myRank, 1);
+    expect(state.snapshot!.myHighestPrice, 1501);
+    expect(state.snapshot!.lastBidIsMine, isTrue,
+        reason: 'the button stays off until someone else bids, as the server requires');
+    expect(repo.snapshots, before, reason: 'every bidder refetching after every bid doubled the load');
+
+    container.dispose();
+  });
+
   test('a screen opened on an already-connected hub can bid', () async {
     final container = ProviderContainer(overrides: [
       hubClientProvider.overrideWithValue(_AlreadyConnectedHub()),
