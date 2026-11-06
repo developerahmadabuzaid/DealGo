@@ -11,14 +11,14 @@ import 'package:flutter/foundation.dart';
 /// its own app id and API key; the sender id and project id are the project's. While they are
 /// empty the app simply runs without push.
 abstract final class FirebaseConfig {
-  static const projectId = '';
-  static const messagingSenderId = '';
+  static const projectId = 'dealgo-121bf';
+  static const messagingSenderId = '420004607897';
 
-  static const androidApiKey = '';
-  static const androidAppId = '';
+  static const androidApiKey = 'AIzaSyDwzoLnxqiLEis90Tkop5Z7jLcDRG0sN9o';
+  static const androidAppId = '1:420004607897:android:40e0d293dc3970687a8508';
 
-  static const iosApiKey = '';
-  static const iosAppId = '';
+  static const iosApiKey = 'AIzaSyAp90uVCgVm5vEy2Irrgu8omfwIyFYfe68';
+  static const iosAppId = '1:420004607897:ios:31adfd07462dcce37a8508';
   static const iosBundleId = 'com.dealgosa.app';
 
   /// Push is for the installed apps; the browser version keeps its in-app list only.
