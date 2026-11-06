@@ -45,8 +45,8 @@ workflows:
       - name: Build the IPA
         script: |
           # Each upload needs a higher build number than the last. BUILD_NUMBER is Codemagic's
-          # own counter for this app and goes up by one every build. The version (1.0.0) still
-          # comes from pubspec.yaml.
+          # own counter for this app and goes up by one every build. The version (1.0.1 etc.) still
+          # comes from pubspec.yaml; raise it there once a version has been approved by Apple.
           flutter build ipa --release \
             --build-number=$BUILD_NUMBER \
             --export-options-plist=/Users/builder/export_options.plist
