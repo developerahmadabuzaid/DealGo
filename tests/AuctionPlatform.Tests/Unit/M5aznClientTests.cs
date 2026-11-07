@@ -458,6 +458,108 @@ public class M5aznClientTests
         result.Outcome.Should().Be(M5aznSubmitOutcome.NotSent);
     }
 
+    // The shapes below are M5azn's real answers as seen on 2026-11-07 (field names; values made up).
+
+    [Fact]
+    public async Task The_real_category_tree_is_read_through_p_id_and_getChild()
+    {
+        var router = new Router();
+        var child = new { id = 488, p_id = 12, name_en = "Skin, Face & Body Care", name_ar = "العناية بالبشرة والوجه والجسم", status = 1, category_products_count = 30 };
+        router.On("GET", "/api/v1/catalog/categories", _ => Json(HttpStatusCode.OK, new
+        {
+            status = 200,
+            success = true,
+            data = new
+            {
+                userInfo = new { userId = 1, email = "seller@example.test", mobile = "0500000000", wallet = 10 },
+                records = new object[]
+                {
+                    new { id = 12, p_id = 0, name_en = "Care", name_ar = "العناية", category_products_count = 300, getChild = new[] { child }, get_child = new[] { child } },
+                    new { id = 109, p_id = 0, name_en = "Devices", name_ar = "الأجهزة", category_products_count = 9, get_child = Array.Empty<object>() }
+                }
+            },
+            error = false,
+            message = ""
+        }));
+
+        var list = await Build(router).GetCategoriesAsync();
+
+        list.Problem.Should().BeNull();
+        list.Categories.Should().BeEquivalentTo(new[]
+        {
+            new M5aznCategory(12, "العناية", null, null),
+            new M5aznCategory(488, "العناية بالبشرة والوجه والجسم", 12, null),
+            new M5aznCategory(109, "الأجهزة", null, null)
+        }, "p_id 0 is a main category, and getChild/get_child repeat the same children");
+    }
+
+    [Fact]
+    public async Task The_real_product_details_give_the_category_every_picture_and_the_description()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/product/details/3072551", _ => Json(HttpStatusCode.OK, new
+        {
+            status = 200,
+            success = true,
+            data = new
+            {
+                records = new
+                {
+                    id = 3072551, sku = "8809562192770", name_en = "Arencia Vitamin C Booster Shot 30ml", name_ar = "ارينسيا - سيروم",
+                    category_id = 488, category_name = "العناية بالبشرة والوجه والجسم", brand_id = "", brand_name = "",
+                    qty = 29, price = 35.15, suggest_price = 69, image = "https://cdn.m5azn.test/main.jpg",
+                    delivery_time = "1-5 أيام",
+                    multi_images = new object[] { new { id = 1, image = "https://cdn.m5azn.test/1.jpg" }, new { id = 2, image = "https://cdn.m5azn.test/2.jpg" } },
+                    description = new { ar = "<p>سيروم بفيتامين سي</p>", en = "Vitamin C serum" },
+                    has_attributes = Array.Empty<object>()
+                }
+            },
+            error = false
+        }));
+
+        var product = await Build(router).GetProductAsync(3072551);
+
+        product.Should().NotBeNull();
+        product!.Should().BeEquivalentTo(new
+        {
+            ProductId = 3072551L, Sku = "8809562192770", Name = "ارينسيا - سيروم", Price = 35.15m, Quantity = 29,
+            CategoryId = 488L, CategoryName = "العناية بالبشرة والوجه والجسم", Description = "سيروم بفيتامين سي", DeliveryTime = "1-5 أيام"
+        });
+        product.Images.Should().Equal("https://cdn.m5azn.test/main.jpg", "https://cdn.m5azn.test/1.jpg", "https://cdn.m5azn.test/2.jpg");
+    }
+
+    [Fact]
+    public async Task The_real_product_list_gives_the_category_id_and_the_description()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/seller/myproductlist", _ => Json(HttpStatusCode.OK, new
+        {
+            status = 200,
+            success = true,
+            data = new { records = new
+            {
+                current_page = 1, last_page = 1, next_page_url = (string?)null,
+                data = new object[]
+                {
+                    new
+                    {
+                        id = 3072551, name_en = "Arencia", name_ar = "ارينسيا", sku = "8809562192770", qty = 29, price = 35.15,
+                        suggest_price = 69, sale_price = 50, image = "https://cdn.m5azn.test/main.jpg",
+                        product_detail_en = "Serum", product_detail_ar = "سيروم", category_id = 488, brand_id = (int?)null,
+                        delivery_time = "1-5 أيام", has_attributes = Array.Empty<object>()
+                    }
+                }
+            } }
+        }));
+
+        var page = await Build(router).GetMyProductsAsync(1);
+
+        page.Products.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            ProductId = 3072551L, CategoryId = 488L, CategoryName = (string?)null, Description = "سيروم", Price = 35.15m
+        });
+    }
+
     [Fact]
     public async Task An_unknown_answer_is_said_to_be_unreadable_not_empty()
     {

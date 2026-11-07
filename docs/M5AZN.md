@@ -123,6 +123,10 @@ Environment variables (or user secrets in development):
 What an import never does: touch a product added in the dashboard, delete anything, or show
 again a product you set to *draft* yourself.
 
+Only one import runs at a time, on any server: pressing the button while the hourly sync runs
+says "already running; try again in a minute". If a product is changed while an import saves (staff
+editing it, say), the import applies once more from fresh data without asking M5azn again.
+
 A product is **skipped**, and the result says so, when M5azn gives it no SKU (M5azn needs one on
 every order) or no price (nothing is sold without one). If M5azn's answer as a whole cannot be
 read, nothing at all is changed: an unreadable answer is never taken for an empty shop.
@@ -134,25 +138,32 @@ categories are made the first time, with M5azn's Arabic names and pictures; a su
 under its main category (the store has two levels). An existing store category with the same name
 is used rather than duplicated.
 
-M5azn's product list does not name the category, so the import reads M5azn's category list
-(`GET /api/v1/catalog/categories`) and:
+M5azn's product list gives every product its `category_id` (a number, no name), so the import
+reads M5azn's category list once (`GET /api/v1/catalog/categories`) and looks the number up there:
+no further request. The order the import tries:
 
-1. uses the category id a product carries, when it carries one;
-2. otherwise reads the product's details (`product/details/{id}`), which may name it;
-3. otherwise asks the product list one category at a time (`?category_id=`): main categories first,
-   then deeper ones, so the most specific one wins. A main category may list only its own
-   products, not its sub-categories', so the search goes on while a product has no category.
+1. the `category_id` (or a category name) the product carries, looked up in M5azn's category list;
+2. else the product's details (`product/details/{id}`), which have `category_id` and `category_name`;
+3. only as a last resort, the product list asked one category at a time (`?category_id=`), checked
+   first against a category that cannot exist, so a list that ignores the filter is never trusted.
 
 When a product still has none, the result lists the field names of M5azn's details for it (names
-only, never values), which says where M5azn keeps the category.
+only, never values). A product the store already has in a category keeps it: an import never
+re-files it, so a category chosen by staff stays. When every product is already in a category, the
+import asks nothing about categories at all.
 
-Before trusting step 2 it asks for a category that cannot exist: if products still come back,
-M5azn ignores the filter, nothing is guessed, and the import says so. Products already in a store
-category are not asked about again, so the hourly sync stays light. The questions are paced (one a
-second, `M5azn__CatalogRequestDelayMs`), stop as soon as every product has a category, and a
-"too many requests" answer (429) is waited out and asked again; if M5azn still refuses, what was
-sorted is kept and the rest are asked about on the next import. A category you change by hand on
-a product stays as long as M5azn names none.
+Requests per import: one per page of the product list, one for the category list (only while some
+product has no category), and the details of a product only while the store has fewer than two
+of its pictures or no description (in practice once, when it is new). The questions are a second
+apart (`M5azn__CatalogRequestDelayMs`), and a "too many requests" answer (429) is waited out.
+
+### What M5azn really sends (seen 2026-11-07)
+
+| Call | Fields used |
+|---|---|
+| `seller/myproductlist` | `data.records.data[]`: `id`, `name_ar`, `name_en`, `sku`, `barcode`, `qty`, `price`, `suggest_price`, `sale_price`, `image` (one), `product_detail_ar`/`_en`, `category_id`, `brand_id`, `delivery_time`, `has_attributes[]` (variants with their own `sku`); paging `current_page`, `last_page`, `next_page_url`. |
+| `product/details/{id}` | `data.records`: the same plus `category_id`, `category_name`, `multi_images[]{ id, image }`, `description{ ar, en }`. |
+| `catalog/categories` | `data.records[]`: `id`, `p_id` (0 = main category), `name_ar`, `name_en`, sub-categories in `getChild[]` (repeated as `get_child[]`). `data.userInfo` (account details) is never read. |
 
 ### Prices and profit
 

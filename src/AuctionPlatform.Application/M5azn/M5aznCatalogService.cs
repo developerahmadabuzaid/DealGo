@@ -95,6 +95,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
     private readonly IAuditService _audit;
     private readonly ICacheService _cache;
     private readonly IDateTimeProvider _clock;
+    private readonly IDistributedLockService _locks;
     private readonly M5aznOptions _options;
     private readonly ILogger<M5aznCatalogService> _logger;
 
@@ -105,6 +106,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         IAuditService audit,
         ICacheService cache,
         IDateTimeProvider clock,
+        IDistributedLockService locks,
         IOptions<M5aznOptions> options,
         ILogger<M5aznCatalogService> logger)
     {
@@ -114,6 +116,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         _audit = audit;
         _cache = cache;
         _clock = clock;
+        _locks = locks;
         _options = options.Value;
         _logger = logger;
     }
@@ -127,6 +130,15 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         {
             throw new DomainException(ErrorCodes.ServiceUnavailable,
                 "M5azn is switched off, or its seller account is missing. Set both on the M5azn page.");
+        }
+
+        // One import at a time, across servers: the button and the hourly sync otherwise change the
+        // same products at once, and one of them is refused.
+        await using var importLock = await _locks.AcquireAsync("m5azn:import", TimeSpan.FromMinutes(20), ct);
+        if (importLock is null)
+        {
+            throw new DomainException(ErrorCodes.Conflict,
+                "An import from M5azn is already running (it also runs every hour on its own). Try again in a minute.");
         }
 
         var problems = new List<string>();
@@ -168,17 +180,36 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             if (!result.HasMore || result.Products.Count == 0) break;
         }
 
-        // ---- fill in what the list leaves out from the product's details
+        // ---- fill in what the list leaves out from the product's details: only for products the
+        // store does not have complete yet, so an hourly sync of known products asks nothing more.
+        var stored = (await _db.StoreProducts.AsNoTracking()
+                .Where(p => p.Source == StoreProductSource.M5azn && p.M5aznProductId != null)
+                .Select(p => new { Id = p.M5aznProductId!.Value, Pictures = p.Images.Count, HasDescription = p.Description != null })
+                .ToListAsync(ct))
+            .ToDictionary(p => p.Id);
+
+        var detailed = new HashSet<long>();
         var detailCalls = 0;
         foreach (var id in found.Keys.ToList())
         {
             var item = found[id];
-            if (item.Images.Count >= 2 && item.Description is not null && item.Price is not null && item.Sku is not null) continue;
-            if (detailCalls++ >= MaxDetailCalls) break;
+            var complete = stored.TryGetValue(id, out var known) && known.Pictures >= 2 && known.HasDescription;
+            var listIsEnough = item.Images.Count >= 2 && item.Description is not null && item.Price is not null && item.Sku is not null;
+            if (complete || listIsEnough) continue;
+            if (detailCalls >= MaxDetailCalls) break;
 
             try
             {
-                if (await _client.GetProductAsync(id, ct) is { } details) found[id] = Merge(item, details);
+                if (detailCalls++ > 0 && _options.CatalogRequestDelayMs > 0)
+                {
+                    await Task.Delay(Math.Min(_options.CatalogRequestDelayMs, 10_000), ct);
+                }
+
+                if (await _client.GetProductAsync(id, ct) is { } details)
+                {
+                    found[id] = Merge(item, details);
+                    detailed.Add(id);
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -198,8 +229,52 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             .ToListAsync(ct);
         await AssignCategoriesAsync(found, placed.ToHashSet(), Problem, ct);
 
-        // ---- apply
+        // ---- apply; once more from fresh data if a product was changed meanwhile (staff editing
+        // it, say): what M5azn said is still in hand, so it is not asked again.
         var now = _clock.UtcNow;
+        var problemsBefore = problems.Count;
+        (int Created, int Updated, int Unchanged, int Hidden, int Skipped) counts;
+        try
+        {
+            counts = await ApplyAllAsync(found, detailed, account, Problem, now, ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _logger.LogInformation("M5azn import: products were changed meanwhile; applying once more from fresh data.");
+            ForgetTracked();
+            problems.RemoveRange(problemsBefore, problems.Count - problemsBefore);
+
+            try
+            {
+                counts = await ApplyAllAsync(found, detailed, account, Problem, now, ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                ForgetTracked();
+                throw new DomainException(ErrorCodes.Conflict,
+                    "Some M5azn products were being changed at the same time. Nothing was saved; import again in a minute.");
+            }
+        }
+
+        var (created, updated, unchanged, hidden, skipped) = counts;
+
+        var summary = new M5aznImportSummary(now, found.Count, created, updated, unchanged, hidden, skipped, problems);
+        await RecordAsync(summary, account, ct);
+        await _cache.RemoveByPrefixAsync("store:", ct);
+
+        _logger.LogInformation("M5azn import: {Summary}", summary.Describe());
+        return summary;
+    }
+
+    /// <summary>Writes what M5azn said onto the store's imported products, in one save.</summary>
+    private async Task<(int Created, int Updated, int Unchanged, int Hidden, int Skipped)> ApplyAllAsync(
+        Dictionary<long, M5aznCatalogProduct> found,
+        HashSet<long> detailed,
+        M5aznAccount account,
+        Action<string> Problem,
+        DateTime now,
+        CancellationToken ct)
+    {
         var existing = await _db.StoreProducts
             .Include(p => p.Images)
             .Where(p => p.Source == StoreProductSource.M5azn)
@@ -245,7 +320,9 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
                 byRemoteId[item.ProductId] = product;
             }
 
-            var changed = Apply(product, item, account, categories, takenCategorySlugs, now, isNew);
+            // The list has one picture only: it never shrinks a gallery the details filled in.
+            var fullGallery = isNew || detailed.Contains(item.ProductId) || item.Images.Count >= product.Images.Count;
+            var changed = Apply(product, item, account, categories, takenCategorySlugs, now, isNew, fullGallery);
             product.M5aznSyncedAt = now;
 
             if (isNew) created++;
@@ -266,22 +343,13 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             hidden++;
         }
 
-        try
-        {
-            await _db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new DomainException(ErrorCodes.Conflict,
-                "Some M5azn products were changed meanwhile. Nothing was saved; import again.");
-        }
+        await _db.SaveChangesAsync(ct);
+        return (created, updated, unchanged, hidden, skipped);
+    }
 
-        var summary = new M5aznImportSummary(now, found.Count, created, updated, unchanged, hidden, skipped, problems);
-        await RecordAsync(summary, account, ct);
-        await _cache.RemoveByPrefixAsync("store:", ct);
-
-        _logger.LogInformation("M5azn import: {Summary}", summary.Describe());
-        return summary;
+    private void ForgetTracked()
+    {
+        if (_db is DbContext context) context.ChangeTracker.Clear();
     }
 
     /// <summary>The list's fields, with what only the details have filled in. Pictures from both.</summary>
@@ -294,6 +362,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         Quantity = list.Quantity ?? details.Quantity,
         Images = list.Images.Concat(details.Images).Distinct(StringComparer.OrdinalIgnoreCase).Take(12).ToList(),
         CategoryName = list.CategoryName ?? details.CategoryName,
+        CategoryId = list.CategoryId ?? details.CategoryId,
+        ParentCategoryName = list.ParentCategoryName ?? details.ParentCategoryName,
         DeliveryTime = list.DeliveryTime ?? details.DeliveryTime
     };
 
@@ -305,7 +375,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         List<StoreCategory> categories,
         HashSet<string> takenCategorySlugs,
         DateTime now,
-        bool isNew)
+        bool isNew,
+        bool fullGallery = true)
     {
         var changed = false;
         void Set<T>(T current, T value, Action<T> assign)
@@ -379,7 +450,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         // Pictures: replaced as a set when M5azn's differ, main one first.
         var wanted = item.Images.Where(u => u.Length <= 1024).ToList();
         var current = product.Images.OrderBy(i => i.DisplayOrder).Select(i => i.Url).ToList();
-        if (wanted.Count > 0 && !wanted.SequenceEqual(current, StringComparer.Ordinal))
+        if (wanted.Count > 0 && fullGallery && !wanted.SequenceEqual(current, StringComparer.Ordinal))
         {
             foreach (var old in product.Images.ToList())
             {
@@ -387,12 +458,17 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
                 product.Images.Remove(old);
             }
 
+            // Added to the set itself, as everywhere else: an image already carries its new id, and
+            // one found only through an existing product's collection would be taken for a row to
+            // update, which matches nothing ("changed meanwhile").
             for (var i = 0; i < wanted.Count; i++)
             {
-                product.Images.Add(new StoreProductImage
+                var image = new StoreProductImage
                 {
-                    Url = wanted[i], IsPrimary = i == 0, DisplayOrder = i, CreatedAt = now
-                });
+                    ProductId = product.Id, Product = product, Url = wanted[i], IsPrimary = i == 0, DisplayOrder = i, CreatedAt = now
+                };
+                _db.StoreProductImages.Add(image);
+                product.Images.Add(image);
             }
 
             changed = true;
@@ -472,10 +548,12 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         Dictionary<long, M5aznCatalogProduct> found, HashSet<long> alreadyPlaced, Action<string> problem, CancellationToken ct)
     {
         _categoryImages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        // Nothing to look up: every product is named with its main category, or already placed.
-        var anyToPlace = found.Values.Any(p => p.CategoryName is null && (!alreadyPlaced.Contains(p.ProductId) || p.CategoryId is not null));
-        var needsParent = found.Values.Any(p => p.CategoryName is not null && p.ParentCategoryName is null);
-        if (!anyToPlace && !needsParent) return;
+        // Nothing to look up when every product is already in a store category: then no request at all.
+        if (found.Values.All(p => alreadyPlaced.Contains(p.ProductId)))
+        {
+            foreach (var id in found.Keys.ToList()) found[id] = found[id] with { CategoryName = null, ParentCategoryName = null };
+            return;
+        }
 
         M5aznCategoryList list;
         try
@@ -508,9 +586,17 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         void Place(long productId, M5aznCategory c) =>
             found[productId] = found[productId] with { CategoryName = c.Name, ParentCategoryName = ParentOf(c) };
 
-        // 1. By the id or name the product carries.
+        // 1. By the category id or name the product carries (M5azn's list gives category_id on
+        //    every product): no further request. A product the store already has in a category
+        //    keeps it, so a category staff chose is never overwritten.
         foreach (var item in found.Values.ToList())
         {
+            if (alreadyPlaced.Contains(item.ProductId))
+            {
+                found[item.ProductId] = item with { CategoryName = null, ParentCategoryName = null };
+                continue;
+            }
+
             if (item.CategoryName is null && item.CategoryId is { } cid && byId.TryGetValue(cid, out var c))
             {
                 Place(item.ProductId, c);

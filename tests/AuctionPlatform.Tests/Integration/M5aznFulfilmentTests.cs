@@ -604,6 +604,108 @@ public class M5aznFulfilmentTests
     }
 
     [Fact]
+    public async Task The_category_id_in_the_list_places_products_without_searching_any_category()
+    {
+        var serum = NextRemoteId();
+        var shoe = NextRemoteId();
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        long care = NextRemoteId(), skin = NextRemoteId(), shoes = NextRemoteId(), women = NextRemoteId();
+
+        var m5azn = new FakeM5azn();
+        m5azn.Categories.AddRange([
+            new M5aznCategory(care, $"العناية {tag}", null, null),
+            new M5aznCategory(skin, $"العناية بالبشرة والوجه والجسم {tag}", care, null),
+            new M5aznCategory(shoes, $"الأحذية {tag}", null, null),
+            new M5aznCategory(women, $"الأحذية النسائية {tag}", shoes, null)
+        ]);
+        // As M5azn's real list: one picture, the category id, no category name.
+        m5azn.ListPage(
+            Catalog(serum, $"S-{serum}", "Serum", 35.15m, 29, ["https://cdn.m5azn.test/s.jpg"], null, "x") with { CategoryId = skin },
+            Catalog(shoe, $"W-{shoe}", "Shoe", 30m, 0, ["https://cdn.m5azn.test/w.jpg"], null, "x") with { CategoryId = women });
+        m5azn.Details[serum] = Catalog(serum, null, null, null, null, ["https://cdn.m5azn.test/s.jpg", "https://cdn.m5azn.test/s2.jpg"], null, "Serum details.");
+        m5azn.Details[shoe] = Catalog(shoe, null, null, null, null, ["https://cdn.m5azn.test/w.jpg", "https://cdn.m5azn.test/w2.jpg"], null, "Shoe details.");
+
+        try
+        {
+            var first = await ImportAsync(m5azn);
+            first.Problems.Should().BeEmpty();
+            m5azn.CategoryFilterCalls.Should().Be(0, "the list's category_id is enough: no category is searched");
+
+            var s = await ImportedAsync(serum);
+            s.Category!.Name.Should().Be($"العناية بالبشرة والوجه والجسم {tag}", "the most specific category");
+            s.Images.Should().HaveCount(2, "the details' pictures are used for a new product");
+            (await ImportedAsync(shoe)).Category!.Name.Should().Be($"الأحذية النسائية {tag}");
+
+            await using (var scope = _fixture.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var sub = await db.StoreCategories.AsNoTracking().Include(c => c.Parent).FirstAsync(c => c.Id == s.CategoryId);
+                sub.Parent!.Name.Should().Be($"العناية {tag}");
+            }
+
+            // The hourly sync of known, complete products: no details and no category request.
+            m5azn.DetailCalls = 0;
+            var second = await ImportAsync(m5azn);
+            second.Problems.Should().BeEmpty();
+            m5azn.DetailCalls.Should().Be(0);
+            m5azn.CategoryFilterCalls.Should().Be(0);
+            (await ImportedAsync(serum)).Images.Should().HaveCount(2, "the list's single picture never shrinks the gallery");
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_category_staff_chose_is_never_overwritten_by_an_import()
+    {
+        var kept = NextRemoteId();
+        var newcomer = NextRemoteId();
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        long devices = NextRemoteId(), toys = NextRemoteId();
+
+        var m5azn = new FakeM5azn();
+        m5azn.Categories.AddRange([
+            new M5aznCategory(devices, $"الأجهزة {tag}", null, null),
+            new M5aznCategory(toys, $"الألعاب {tag}", null, null)
+        ]);
+        m5azn.ListPage(Catalog(kept, $"K-{kept}", "Kept", 4.3m, 6, ["https://cdn.m5azn.test/k.jpg", "https://cdn.m5azn.test/k2.jpg"], null, "x") with { CategoryId = devices });
+
+        try
+        {
+            await ImportAsync(m5azn);
+
+            Guid chosen;
+            await using (var scope = _fixture.CreateScope())
+            {
+                // Staff move it to a category of their own.
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var category = new StoreCategory { Name = $"اختيار الإدارة {tag}", Slug = $"staff-choice-{tag}" };
+                db.StoreCategories.Add(category);
+                var product = await db.StoreProducts.FirstAsync(x => x.Source == StoreProductSource.M5azn && x.M5aznProductId == kept);
+                product.CategoryId = category.Id;
+                await db.SaveChangesAsync();
+                chosen = category.Id;
+            }
+
+            // A new product makes the import look categories up again; the moved one keeps its own.
+            m5azn.Pages.Clear();
+            m5azn.ListPage(
+                Catalog(kept, $"K-{kept}", "Kept", 4.3m, 6, ["https://cdn.m5azn.test/k.jpg", "https://cdn.m5azn.test/k2.jpg"], null, "x") with { CategoryId = devices },
+                Catalog(newcomer, $"N-{newcomer}", "New", 9m, 1, ["https://cdn.m5azn.test/n.jpg", "https://cdn.m5azn.test/n2.jpg"], null, "x") with { CategoryId = toys });
+            await ImportAsync(m5azn);
+
+            (await ImportedAsync(kept)).CategoryId.Should().Be(chosen);
+            (await ImportedAsync(newcomer)).Category!.Name.Should().Be($"الألعاب {tag}");
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
     public async Task A_list_that_ignores_the_category_filter_puts_nobody_in_the_wrong_category()
     {
         var id = NextRemoteId();
@@ -617,6 +719,69 @@ public class M5aznFulfilmentTests
             var summary = await ImportAsync(m5azn);
             summary.Problems.Should().Contain(p => p.Contains("does not filter by category"));
             (await ImportedAsync(id)).CategoryId.Should().BeNull();
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    /// <summary>
+    /// What the real account hit on 2026-11-07: products imported with one picture, then M5azn's
+    /// details giving the whole gallery. The new pictures must be added, not taken for rows to update.
+    /// </summary>
+    [Fact]
+    public async Task An_existing_product_with_one_picture_gets_its_whole_gallery()
+    {
+        var id = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(id, $"G-{id}", "Gallery", 35.15m, 29, ["https://cdn.m5azn.test/g0.jpg"], null, "x"));
+
+        try
+        {
+            await ImportAsync(m5azn);   // no details yet: one picture
+            (await ImportedAsync(id)).Images.Should().ContainSingle();
+
+            m5azn.Details[id] = Catalog(id, null, null, null, null,
+                ["https://cdn.m5azn.test/g0.jpg", "https://cdn.m5azn.test/g1.jpg", "https://cdn.m5azn.test/g2.jpg"], null, "Full description.");
+            var summary = await ImportAsync(m5azn);
+
+            summary.Problems.Should().BeEmpty();
+            summary.Updated.Should().BeGreaterThanOrEqualTo(1);
+            var product = await ImportedAsync(id);
+            product.Images.OrderBy(x => x.DisplayOrder).Select(x => x.Url).Should().Equal(
+                "https://cdn.m5azn.test/g0.jpg", "https://cdn.m5azn.test/g1.jpg", "https://cdn.m5azn.test/g2.jpg");
+            product.Images.Count(x => x.IsPrimary).Should().Be(1);
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Only_one_import_runs_at_a_time()
+    {
+        var id = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(id, $"ONE-{id}", "One", 10m, 1, ["https://cdn.m5azn.test/o1.jpg", "https://cdn.m5azn.test/o2.jpg"], null, "x"));
+
+        try
+        {
+            await using var scope = _fixture.CreateScope(m5azn: m5azn);
+            var locks = scope.ServiceProvider.GetRequiredService<IDistributedLockService>();
+            var catalog = scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>();
+
+            // The hourly sync is running.
+            await using (var running = await locks.AcquireAsync("m5azn:import", TimeSpan.FromMinutes(1)))
+            {
+                running.Should().NotBeNull();
+                var second = () => catalog.ImportAsync();
+                (await second.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.Conflict);
+            }
+
+            // Finished: the button works again.
+            (await catalog.ImportAsync()).Found.Should().BeGreaterThanOrEqualTo(1);
         }
         finally
         {
@@ -1030,8 +1195,12 @@ public class M5aznFulfilmentTests
         /// <summary>True: M5azn answers every category with the whole list, as if it ignored the filter.</summary>
         public bool IgnoresCategoryFilter { get; set; }
 
+        public int CategoryFilterCalls;
+        public int DetailCalls;
+
         public Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default)
         {
+            if (categoryId is not null) Interlocked.Increment(ref CategoryFilterCalls);
             var all = page <= Pages.Count
                 ? Pages[page - 1] with { HasMore = page < Pages.Count }
                 : new M5aznProductPage([], false, null);
@@ -1044,8 +1213,11 @@ public class M5aznFulfilmentTests
         public Task<M5aznCategoryList> GetCategoriesAsync(CancellationToken ct = default) =>
             Task.FromResult(new M5aznCategoryList(Categories.ToList(), null));
 
-        public Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default) =>
-            Task.FromResult(Details.TryGetValue(productId, out var d) ? d : null);
+        public Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default)
+        {
+            Interlocked.Increment(ref DetailCalls);
+            return Task.FromResult(Details.TryGetValue(productId, out var d) ? d : null);
+        }
 
         public Task<string?> CheckSignInAsync(CancellationToken ct = default) => Task.FromResult<string?>(null);
     }

@@ -284,6 +284,7 @@ public sealed class M5aznClient : IM5aznClient
         if (root is null || IsFalse(root["success"])) return null;
         var data = root is JsonObject obj && obj.ContainsKey("data") ? obj["data"] : root;
         if (data is JsonObject { Count: 1 } wrapper && wrapper["product"] is JsonObject inner) data = inner;
+        if (data is JsonObject holder && holder["records"] is JsonObject records) data = records;
         if (data is not JsonObject product) return null;
 
         var parsed = ParseProduct(product);
@@ -596,7 +597,7 @@ public sealed class M5aznClient : IM5aznClient
                 if (name is null) continue;
 
                 long? parentId = parent;
-                if (parentId is null && long.TryParse(Find(node, ["parent_id", "parentId", "parent"], false),
+                if (parentId is null && long.TryParse(Find(node, ["p_id", "parent_id", "parentId", "parent"], false),
                         NumberStyles.Integer, CultureInfo.InvariantCulture, out var p) && p > 0 && p != id)
                 {
                     parentId = p;
@@ -607,7 +608,7 @@ public sealed class M5aznClient : IM5aznClient
 
                 if (depth < 4)
                 {
-                    foreach (var key in new[] { "children", "sub_categories", "subcategories", "subCategories", "childs", "sub" })
+                    foreach (var key in new[] { "getChild", "get_child", "children", "sub_categories", "subcategories", "subCategories", "childs", "sub" })
                     {
                         if (node[key] is JsonArray children) Walk(children, id, depth + 1);
                     }
@@ -630,12 +631,14 @@ public sealed class M5aznClient : IM5aznClient
     private static readonly string[] IdKeys = ["product_id", "productId", "id"];
     private static readonly string[] SkuKeys = ["sku", "product_sku", "barcode"];
     private static readonly string[] NameKeys = ["name", "title", "product_name", "name_ar", "name_en"];
+    // M5azn's list has product_detail_ar/_en; its details have description { ar, en }.
     private static readonly string[] DescriptionKeys =
-        ["description", "long_description", "details", "desc", "description_ar", "description_en", "short_description"];
+        ["product_detail_ar", "description_ar", "description", "long_description", "details", "desc",
+         "product_detail_en", "description_en", "short_description"];
 
     // What the seller pays M5azn comes first; the plain price is the fallback (docs/M5AZN.md).
     private static readonly string[] PriceKeys = ["seller_price", "wholesale_price", "cost_price", "price", "sale_price"];
-    private static readonly string[] ImageListKeys = ["images", "gallery", "product_images", "photos", "pictures", "media"];
+    private static readonly string[] ImageListKeys = ["multi_images", "images", "gallery", "product_images", "photos", "pictures", "media"];
     private static readonly string[] ImageKeys = ["image", "main_image", "image_url", "thumbnail", "cover", "photo"];
     private static readonly string[] ImageUrlKeys = ["url", "image", "src", "path", "original", "large", "image_url", "full"];
     private static readonly string[] CategoryKeys = ["category_name", "category", "sub_category", "main_category", "category_title"];
@@ -712,7 +715,7 @@ public sealed class M5aznClient : IM5aznClient
             id,
             sku,
             First(NameKeys),
-            PlainText(First(DescriptionKeys)),
+            PlainText(First(DescriptionKeys) ?? Localized(sources, "description")),
             price,
             quantity,
             Images(sources),
@@ -721,6 +724,13 @@ public sealed class M5aznClient : IM5aznClient
             categoryId,
             parentCategory);
     }
+
+    /// <summary>A text given per language, <c>{ "ar": "...", "en": "..." }</c>: Arabic first.</summary>
+    private static string? Localized(IEnumerable<JsonObject> sources, string key) =>
+        sources.Select(src => src[key] as JsonObject)
+            .Where(o => o is not null)
+            .Select(o => Text(o!["ar"]) ?? Text(o!["en"]))
+            .FirstOrDefault(t => t is not null);
 
     /// <summary>Every picture of the product, main one first, without repeats; at most twelve.</summary>
     private IReadOnlyList<string> Images(IEnumerable<JsonObject> sources)
