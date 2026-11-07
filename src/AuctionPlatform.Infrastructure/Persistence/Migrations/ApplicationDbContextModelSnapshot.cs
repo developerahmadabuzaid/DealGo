@@ -769,12 +769,24 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DeliveryTime")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastImportAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastImportSummary")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<string>("PasswordProtected")
                         .HasMaxLength(2048)
@@ -2017,6 +2029,10 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<string>("DeliveryTime")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("Description")
                         .HasMaxLength(8000)
                         .HasColumnType("character varying(8000)");
@@ -2033,9 +2049,15 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<long?>("M5aznProductId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("M5aznRemovedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("M5aznSku")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("M5aznSyncedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2070,6 +2092,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<int>("SoldQuantity")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -2095,12 +2120,15 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("M5aznProductId")
-                        .HasFilter("\"M5aznProductId\" IS NOT NULL");
+                        .IsUnique()
+                        .HasFilter("\"Source\" = 1 AND \"M5aznProductId\" IS NOT NULL");
 
                     b.HasIndex("Sku")
                         .IsUnique();
 
                     b.HasIndex("Slug");
+
+                    b.HasIndex("Source");
 
                     b.HasIndex("Status");
 

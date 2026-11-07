@@ -178,6 +178,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
         services.AddSingleton<IM5aznAccountProvider, M5aznAccountProvider>();
         services.AddScoped<IM5aznFulfilmentService, M5aznFulfilmentService>();
+        services.AddScoped<IM5aznCatalogService, M5aznCatalogService>();
 
         return services.BuildServiceProvider().CreateAsyncScope();
     }
@@ -296,7 +297,10 @@ public sealed class DatabaseFixture : IAsyncLifetime
         public Task<IReadOnlyList<M5aznStockChange>> GetQuantityChangesAsync(int hours, CancellationToken ct = default) =>
             throw new InvalidOperationException("M5azn is disabled and must not be called.");
 
-        public Task<M5aznProductInfo?> GetProductAsync(long productId, CancellationToken ct = default) =>
+        public Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default) =>
+            throw new InvalidOperationException("M5azn is disabled and must not be called.");
+
+        public Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default) =>
             throw new InvalidOperationException("M5azn is disabled and must not be called.");
     }
 

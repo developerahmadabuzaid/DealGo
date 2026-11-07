@@ -5,7 +5,8 @@ using Microsoft.Extensions.Options;
 namespace AuctionPlatform.Api.BackgroundServices;
 
 /// <summary>
-/// Sends paid store orders with M5azn products, follows them, and copies M5azn's stock (docs/M5AZN.md).
+/// Imports the seller's M5azn products every hour, sends paid store orders for them, follows the
+/// orders, and copies M5azn's stock changes (docs/M5AZN.md).
 /// M5azn documents no webhooks, so following an order means asking about it now and then.
 /// It keeps running while M5azn is switched off, so switching it on from the dashboard takes
 /// effect within one interval; while off, each pass only reads the settings.
@@ -17,6 +18,7 @@ public sealed class M5aznWorker : BackgroundService
     private readonly ILogger<M5aznWorker> _logger;
     private readonly IM5aznAccountProvider _account;
     private DateTime _nextStockSync = DateTime.MinValue;
+    private DateTime _nextProductSync = DateTime.MinValue;
     private bool? _wasActive;
 
     public M5aznWorker(
@@ -64,6 +66,20 @@ public sealed class M5aznWorker : BackgroundService
 
                 var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
                 await service.RunAsync(stoppingToken);
+
+                // The seller's products: names, pictures, prices and stock (read-only calls).
+                if (_options.ProductSyncEnabled && DateTime.UtcNow >= _nextProductSync)
+                {
+                    _nextProductSync = DateTime.UtcNow.AddMinutes(Math.Max(15, _options.ProductSyncMinutes));
+                    try
+                    {
+                        await scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>().ImportAsync(stoppingToken);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogWarning(ex, "M5azn: the scheduled product import failed; it is tried again next time.");
+                    }
+                }
 
                 if (_options.StockSyncEnabled && DateTime.UtcNow >= _nextStockSync)
                 {

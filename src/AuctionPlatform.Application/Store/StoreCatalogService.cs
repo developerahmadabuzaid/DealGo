@@ -168,7 +168,8 @@ public sealed class StoreCatalogService : IStoreCatalogService
             .Select(i => new StoreProductImageDto(i.Id, i.Url, i.ThumbnailUrl, i.IsPrimary, i.DisplayOrder))
             .ToList(),
         p.CreatedAt, p.UpdatedAt,
-        p.Category?.ParentId, p.Category?.Parent?.Name);
+        p.Category?.ParentId, p.Category?.Parent?.Name,
+        p.DeliveryTime, p.Source);
 
     public async Task<IReadOnlyList<StoreCategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
     {

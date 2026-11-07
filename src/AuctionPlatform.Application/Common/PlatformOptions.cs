@@ -310,6 +310,11 @@ public sealed class M5aznOptions
 
     public int StockSyncMinutes { get; set; } = 60;
 
+    /// <summary>Import the seller's M5azn products again (names, pictures, prices, stock) on a schedule.</summary>
+    public bool ProductSyncEnabled { get; set; } = true;
+
+    public int ProductSyncMinutes { get; set; } = 60;
+
     /// <summary>Attempts at sending one order before it is marked failed for an administrator.</summary>
     public int MaxAttempts { get; set; } = 5;
 

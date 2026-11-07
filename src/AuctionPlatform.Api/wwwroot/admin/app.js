@@ -345,34 +345,25 @@ const AR = {
   'Seller password': 'كلمة مرور حساب البائع', 'M5azn address': 'عنوان مخزن',
   'Automatic sending': 'الإرسال التلقائي', 'Profit %': 'نسبة الربح %',
   'Leave empty to keep the saved password': 'اتركها فارغة للإبقاء على كلمة المرور المحفوظة',
-  'Check sign-in': 'اختبار تسجيل الدخول', 'Signed in to M5azn.': 'تم تسجيل الدخول إلى مخزن بنجاح.',
+  'Check sign-in': 'اختبار تسجيل الدخول',
+  'Products from M5azn': 'منتجات مخزن', 'Import from M5azn': 'استيراد من مخزن',
+  'Imported products': 'منتجات مستوردة', 'Delivery time': 'مدة التوصيل', 'Pictures': 'الصور',
+  'Last import': 'آخر استيراد', 'Never imported yet.': 'لم يتم الاستيراد بعد.',
+  'Removed at M5azn': 'أُزيل من مخزن', 'Last synced': 'آخر مزامنة',
+  'Name, SKU or M5azn product id': 'الاسم أو رمز المنتج أو رقم المنتج في مخزن',
+  'Imported automatically from your M5azn seller account every hour. Products you add in the dashboard are never shown here and never go to M5azn.':
+    'تُستورد تلقائيًا من حساب البائع في مخزن كل ساعة. المنتجات التي تضيفها من لوحة التحكم لا تظهر هنا ولا تُرسل إلى مخزن أبدًا.',
+  'The DealGo price is the M5azn price plus this profit. Changing it re-prices the imported products.':
+    'سعر DealGo هو سعر مخزن مضافًا إليه هذه النسبة. تغييرها يعيد تسعير المنتجات المستوردة.',
+  'Shown to customers when M5azn gives no delivery time of its own.': 'تظهر للعملاء إذا لم يحدد مخزن مدة توصيل.', 'Signed in to M5azn.': 'تم تسجيل الدخول إلى مخزن بنجاح.',
   'Off: nothing is sent to M5azn. Switch it on and enter the seller account below.':
     'موقوف: لا يُرسل شيء إلى مخزن. فعّله وأدخل حساب البائع أدناه.',
   'On, but the seller account is missing.': 'مفعّل، لكن حساب البائع غير مُدخل.',
-  'M5azn is switched off, so its price was not read. The price was left as it is.':
-    'مخزن موقوف، لذلك لم يُقرأ سعره وبقي السعر كما هو.',
-  'M5azn does not know this product. The price was left as it is.':
-    'مخزن لا يعرف هذا المنتج، وبقي السعر كما هو.',
-  'M5azn could not be asked right now. The price was left as it is.':
-    'تعذّر الاتصال بمخزن الآن، وبقي السعر كما هو.',
-  'M5azn gave no price for this product. The price was left as it is.':
-    'لم يُعطِ مخزن سعرًا لهذا المنتج، وبقي السعر كما هو.',
-  'Update prices from M5azn': 'تحديث الأسعار من مخزن', 'M5azn price': 'سعر مخزن',
+  'M5azn price': 'سعر مخزن',
   'Account from the server settings': 'الحساب من إعدادات الخادم',
   'The saved password cannot be read any more. Enter it again.': 'لا يمكن قراءة كلمة المرور المحفوظة. أدخلها مرة أخرى.',
-  'The DealGo price is the M5azn price plus this profit. Changing it re-prices the linked products.':
-    'سعر DealGo هو سعر مخزن مضافًا إليه هذه النسبة. تغييرها يعيد تسعير المنتجات المرتبطة.',
-  'M5azn product id': 'رقم المنتج في مخزن', 'M5azn SKU': 'رمز SKU في مخزن',
-  'Linked to M5azn.': 'تم الربط بمخزن.', 'Link removed.': 'تم إلغاء الربط.',
-  'Enter the M5azn product id first.': 'أدخل رقم المنتج في مخزن أولاً.',
-  'M5azn does not know this product.': 'هذا المنتج غير موجود في مخزن.',
-  'Both the M5azn product id and its SKU are needed. Clear both and save to remove the link.':
-    'يلزم رقم المنتج ورمز SKU معاً. امسحهما واحفظ لإلغاء الربط.',
   'This places a paid order at M5azn for this delivery. If it failed with an unclear answer, check M5azn for this reference first.':
     'سيُنشئ هذا طلباً مدفوعاً في مخزن لهذا التوصيل. إن فشل سابقاً بردّ غير واضح فتحقق من هذا المرجع في مخزن أولاً.',
-  'Off: nothing is sent to M5azn. Set M5azn__Enabled and the seller account on the server to switch it on.':
-    'متوقف: لا يُرسل شيء إلى مخزن. فعّل M5azn__Enabled وأضف حساب البائع على الخادم لتشغيله.',
-  'On, but the seller account is missing.': 'مفعّل، لكن حساب البائع غير مضاف.',
   'Reference, M5azn order, tracking or order number': 'المرجع أو رقم طلب مخزن أو التتبع أو رقم الطلب',
   'AwaitingApproval': 'بانتظار الموافقة', 'Queued': 'في قائمة الإرسال', 'Submitted': 'أُرسل',
 
@@ -4099,10 +4090,14 @@ async function viewM5azn() {
   if (q.status) params.set('status', q.status);
   if (q.search) params.set('search', q.search);
 
-  const [o, data, links, settings] = await Promise.all([
+  const pq = state.cache.m5aznProducts || (state.cache.m5aznProducts = { page: 1, search: '' });
+  const productParams = new URLSearchParams({ page: pq.page, pageSize: 20 });
+  if (pq.search) productParams.set('search', pq.search);
+
+  const [o, data, products, settings] = await Promise.all([
     api('/admin/m5azn/overview'),
     api(`/admin/m5azn/shipments?${params}`),
-    api('/admin/m5azn/links'),
+    api(`/admin/m5azn/products?${productParams}`),
     // Only staff who may change store settings see the account; for the others this is null.
     api('/admin/m5azn/settings').catch(() => null),
   ]);
@@ -4119,65 +4114,58 @@ async function viewM5azn() {
   const status = h('select', {}, h('option', { value: '' }, 'Any status'),
     ...M5AZN_STATUSES.map((s) => h('option', { value: s, selected: s === q.status ? '' : null }, s)));
 
-  const linkRow = (item) => {
-    const id = h('input', { type: 'number', min: '1', placeholder: 'M5azn product id', value: item.m5aznProductId ?? '', style: 'width:140px' });
-    const sku = h('input', { placeholder: 'M5azn SKU', value: item.m5aznSku ?? '', style: 'width:150px' });
-    const save = async () => {
-      const body = id.value || sku.value
-        ? { m5aznProductId: Number(id.value) || null, m5aznSku: sku.value || null }
-        : { m5aznProductId: null, m5aznSku: null };
-      try {
-        const r = await api(`/admin/m5azn/links/store-products/${item.id}`, { method: 'PUT', body: JSON.stringify(body) });
-        const priced = r && r.priced ? ` ${money(r.m5aznPrice, 'SAR')} → ${money(r.price, 'SAR')}` : '';
-        toast((body.m5aznProductId ? tr('Linked to M5azn.') : tr('Link removed.')) + priced + (r && r.note ? ` ${tr(r.note)}` : ''),
-          r && r.note ? 'err' : 'ok');
-        render();
-      } catch (e) { toast(e.message, 'err'); }
-    };
-    // Reads M5azn's catalogue only; nothing is ordered.
-    const check = async () => {
-      if (!id.value) return toast('Enter the M5azn product id first.', 'err');
-      try {
-        const p = await api(`/admin/m5azn/products/${Number(id.value)}`);
-        if (!p) return toast('M5azn does not know this product.', 'err');
-        if (!sku.value && p.sku) sku.value = p.sku;
-        toast([p.name, p.sku, p.price != null ? money(p.price, 'SAR') : null,
-          p.quantity != null ? `stock ${p.quantity}` : null].filter(Boolean).join(' · '), 'ok');
-      } catch (e) { toast(e.message, 'err'); }
-    };
-    return h('tr', {},
-      h('td', {}, text(item.name)),
-      h('td', { class: 'hint' }, text(item.sku || '')),
-      h('td', { class: 'num' }, item.stock ?? '—'),
-      h('td', { class: 'num' }, money(item.price, 'SAR')),
-      h('td', { class: 'num' }, item.m5aznCostPrice != null ? money(item.m5aznCostPrice, 'SAR') : '—'),
-      h('td', {}, id), h('td', {}, sku),
-      h('td', {}, h('div', { class: 'toolbar' },
-        o.enabled ? h('button', { class: 'btn ghost sm', onclick: check }, 'Check') : null,
-        h('button', { class: 'btn sm', onclick: save }, 'Save'))));
+  // Reads the seller's list from M5azn (nothing is ordered) and creates, updates or hides products.
+  const runImport = async (button) => {
+    button.disabled = true;
+    try {
+      const r = await api('/admin/m5azn/import', { method: 'POST' });
+      const line = `${r.found} · +${r.created} · ↻${r.updated} · ${r.hidden} ⨯ · ${r.skipped} !`;
+      toast(r.problems && r.problems.length ? `${line} — ${r.problems[0]}` : line, r.problems && r.problems.length ? 'err' : 'ok');
+      render();
+    } catch (e) {
+      toast(e.message, 'err');
+      button.disabled = false;
+    }
   };
 
-  const refreshPrices = () => confirmDialog('Update prices from M5azn',
-    `Reads each linked product's price from M5azn (nothing is ordered) and sets the DealGo price to it plus ${o.profitPercentage}%.`,
-    async () => {
-      try {
-        const r = await api('/admin/m5azn/prices/refresh', { method: 'POST' });
-        toast(`${r.updated} / ${r.checked}` + (r.failed ? ` · ${r.failed} ✕` : ''), r.failed ? 'err' : 'ok');
-        render();
-      } catch (e) { toast(e.message, 'err'); }
-    });
-
-  const linkTable = (rows) => h('div', { class: 'card' },
+  const productSearch = h('input', { placeholder: 'Name, SKU or M5azn product id', value: pq.search });
+  const productsCard = () => h('div', { class: 'card' },
     h('div', { class: 'toolbar', style: 'justify-content:space-between' },
-      h('h3', {}, 'Store products'),
-      o.enabled && o.configured ? h('button', { class: 'btn ghost sm', onclick: refreshPrices }, 'Update prices from M5azn') : null),
-    h('p', { class: 'hint' }, 'Both the M5azn product id and its SKU are needed. Clear both and save to remove the link.'),
-    h('div', { class: 'table-wrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'SKU'),
-        h('th', { class: 'num' }, 'Stock'),
-        h('th', { class: 'num' }, 'Price'), h('th', { class: 'num' }, 'M5azn price'),
-        h('th', {}, 'M5azn product id'), h('th', {}, 'M5azn SKU'), h('th', {}, ''))),
-      h('tbody', {}, ...rows.map((r) => linkRow(r))))));
+      h('h3', {}, 'Products from M5azn'),
+      o.enabled && o.configured
+        ? h('button', { class: 'btn sm', onclick: (e) => runImport(e.currentTarget) }, 'Import from M5azn') : null),
+    h('p', { class: 'hint' },
+      'Imported automatically from your M5azn seller account every hour. Products you add in the dashboard are never shown here and never go to M5azn.'),
+    h('div', { class: 'hint' }, 'Last import', ': ',
+      o.lastImportAt ? when(o.lastImportAt) : 'Never imported yet.',
+      o.lastImportSummary ? h('div', { class: 'mono', style: 'white-space:pre-wrap;margin-top:4px' }, text(o.lastImportSummary)) : null),
+    h('div', { class: 'toolbar', style: 'margin-top:8px' }, productSearch,
+      h('button', {
+        class: 'btn ghost sm',
+        onclick: () => { pq.search = productSearch.value; pq.page = 1; render(); },
+      }, 'Apply')),
+    pagedTable({
+      columns: [
+        { label: '', render: (p) => (p.imageUrl
+            ? h('img', { src: p.imageUrl, alt: '', loading: 'lazy', style: 'width:44px;height:44px;object-fit:contain;border-radius:8px;background:#f4f4f5' })
+            : '—') },
+        { label: 'Name', render: (p) => h('div', {}, text(p.name),
+            h('div', { class: 'hint' }, text([p.categoryName, `${p.imageCount} ${tr('Pictures')}`].filter(Boolean).join(' · ')))) },
+        { label: 'SKU', render: (p) => h('div', {}, h('span', { class: 'mono' }, text(p.m5aznSku || p.sku)),
+            h('div', { class: 'hint mono' }, text(`#${p.m5aznProductId}`))) },
+        { label: 'M5azn price', render: (p) => (p.m5aznCostPrice != null ? money(p.m5aznCostPrice, 'SAR') : '—') },
+        { label: 'Price', render: (p) => money(p.price, 'SAR') },
+        { label: 'Stock', render: (p) => num(p.stock) },
+        { label: 'Status', render: (p) => h('div', {}, h('span', { class: badgeClass(p.status) }, p.status),
+            p.m5aznRemovedAt ? h('div', { class: 'hint' }, 'Removed at M5azn') : null) },
+        { label: 'Last synced', render: (p) => (p.m5aznSyncedAt ? when(p.m5aznSyncedAt) : '—') },
+      ],
+      rows: products.items,
+      page: products.page,
+      totalPages: products.totalPages,
+      totalCount: products.totalCount,
+      onPage: (pg) => { pq.page = pg; render(); },
+    }));
 
   const settingsCard = () => {
     if (!settings) return null;
@@ -4194,6 +4182,7 @@ async function viewM5azn() {
         h('option', { value: u, selected: u === settings.baseUrl ? '' : null }, u))),
       autoSubmit: onOff(settings.autoSubmit),
       profit: h('input', { type: 'number', min: '0', max: '1000', step: '0.01', value: settings.profitPercentage }),
+      deliveryTime: h('input', { maxlength: '64', value: settings.deliveryTime || '' }),
     };
     const field = (label, input, hint) => h('div', {}, h('label', {}, label), input, hint ? h('div', { class: 'hint' }, hint) : null);
     const save = async () => {
@@ -4207,6 +4196,7 @@ async function viewM5azn() {
             baseUrl: f.baseUrl.value,
             autoSubmit: f.autoSubmit.value === 'true',
             profitPercentage: Number(f.profit.value),
+            deliveryTime: f.deliveryTime.value.trim() || null,
           }),
         });
         toast(tr('Settings saved.') + (r.repriced ? ` · ${r.repriced} ${tr('Price')}` : ''), 'ok');
@@ -4230,7 +4220,8 @@ async function viewM5azn() {
         field('Seller email', f.email, settings.source === 'Server' && settings.email ? tr('Account from the server settings') : null),
         field('Seller password', f.password),
         field('M5azn address', f.baseUrl),
-        field('Profit %', f.profit, 'The DealGo price is the M5azn price plus this profit. Changing it re-prices the linked products.')),
+        field('Profit %', f.profit, 'The DealGo price is the M5azn price plus this profit. Changing it re-prices the imported products.'),
+        field('Delivery time', f.deliveryTime, 'Shown to customers when M5azn gives no delivery time of its own.')),
       h('div', { class: 'toolbar', style: 'margin-top:12px' },
         h('button', { class: 'btn', onclick: save }, 'Save'),
         settings.hasPassword ? h('button', { class: 'btn ghost', onclick: check }, 'Check sign-in') : null));
@@ -4240,12 +4231,13 @@ async function viewM5azn() {
     pageHead('M5azn', 'Store products M5azn packs and delivers from its warehouse.'),
     h('div', { class: 'card' }, h('div', { class: o.enabled && o.configured ? 'hint' : 'err-text' }, stateLine)),
     settingsCard(),
+    productsCard(),
     h('div', { class: 'kpi-grid cols-5' },
       kpi('Waiting for approval', num(c.AwaitingApproval || 0), false, { icon: 'clock' }),
       kpi('On the way', num((c.Submitted || 0) + (c.Processing || 0) + (c.Shipped || 0)), false, { icon: 'box' }),
       kpi('Delivered', num(c.Delivered || 0), false, { icon: 'check' }),
       kpi('Failed', num(c.Failed || 0), false, { icon: 'alert' }),
-      kpi('Linked products', num(o.linkedStoreProducts), false, { icon: 'tag' })),
+      kpi('Imported products', num(o.importedProducts), false, { icon: 'tag' })),
     h('div', { class: 'card' },
       h('h3', {}, 'Shipments'),
       h('div', { class: 'toolbar' }, search, status,
@@ -4271,8 +4263,7 @@ async function viewM5azn() {
         totalPages: data.totalPages,
         totalCount: data.totalCount,
         onPage: (p) => { q.page = p; render(); },
-      })),
-    linkTable(links.storeProducts));
+      })));
 }
 
 async function viewStoreSettings() {

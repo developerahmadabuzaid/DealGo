@@ -61,5 +61,8 @@ public enum AuditActionType
     M5aznSettingsChanged = 33,
 
     /// <summary>Staff re-priced the M5azn products from M5azn's prices and the profit percentage.</summary>
-    M5aznPricesUpdated = 34
+    M5aznPricesUpdated = 34,
+
+    /// <summary>Products were imported from (or synced with) the M5azn seller account.</summary>
+    M5aznProductsImported = 35
 }

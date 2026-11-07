@@ -17,6 +17,8 @@ void main() {
     bool inStock = true,
     int available = 3,
     String description = 'وصف قصير',
+    List<String> images = const [],
+    String? deliveryTime,
   }) =>
       StoreProductDetail(
         id: 'p1',
@@ -35,8 +37,9 @@ void main() {
         description: description,
         requiresShipping: true,
         shippingFee: 15,
-        images: const [],
+        images: images,
         categoryId: 'c1',
+        deliveryTime: deliveryTime,
       );
 
   StoreProduct other(String id) => StoreProduct(
@@ -105,7 +108,15 @@ void main() {
   for (final width in [320.0, 412.0]) {
     for (final scale in [1.0, 1.3]) {
       testWidgets('fits at $width wide, text x$scale', (tester) async {
-        await open(tester, detail(), size: Size(width, 800), textScale: scale);
+        await open(
+          tester,
+          detail(
+            images: const ['https://cdn.test/1.jpg', 'https://cdn.test/2.jpg', 'https://cdn.test/3.jpg', 'https://cdn.test/4.jpg'],
+            deliveryTime: '1-5 أيام',
+          ),
+          size: Size(width, 800),
+          textScale: scale,
+        );
         expect(tester.takeException(), isNull);
       });
     }
@@ -126,6 +137,40 @@ void main() {
     final cart = container.read(cartProvider);
     expect(cart.single.quantity, 3);
     expect(find.text('تمت الإضافة إلى السلة'), findsOneWidget);
+  });
+
+  testWidgets('every picture has a thumbnail, and the facts show SKU, stock and delivery time', (tester) async {
+    await open(tester, detail(
+      available: 7,
+      images: const ['https://cdn.test/1.jpg', 'https://cdn.test/2.jpg', 'https://cdn.test/3.jpg'],
+      deliveryTime: '1-5 أيام',
+    ));
+
+    final strip = find.byKey(const ValueKey('product-thumbnails'));
+    expect(strip, findsOneWidget);
+    expect(find.descendant(of: strip, matching: find.byType(GestureDetector)), findsNWidgets(3));
+
+    final facts = find.byKey(const ValueKey('product-facts'));
+    expect(find.descendant(of: facts, matching: find.text('رمز المنتج (SKU)')), findsOneWidget);
+    expect(find.descendant(of: facts, matching: find.text('AD-01')), findsOneWidget);
+    expect(find.descendant(of: facts, matching: find.text('7 قطعة')), findsOneWidget);
+    expect(find.descendant(of: facts, matching: find.text('1-5 أيام')), findsOneWidget);
+
+    // A thumbnail shows its picture: the second one becomes the framed one.
+    await tester.tap(find.descendant(of: strip, matching: find.byType(GestureDetector)).at(1));
+    await tester.pumpAndSettle();
+    final selected = tester.widgetList<Semantics>(find.descendant(of: strip, matching: find.byType(Semantics)))
+        .where((s) => s.properties.selected == true)
+        .map((s) => s.properties.label)
+        .toList();
+    expect(selected, ['2 / 3']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('one picture needs no thumbnails, and no delivery time shows no row', (tester) async {
+    await open(tester, detail(images: const ['https://cdn.test/1.jpg']));
+    expect(find.byKey(const ValueKey('product-thumbnails')), findsNothing);
+    expect(find.text('مدة التوصيل'), findsNothing);
   });
 
   testWidgets('low stock is called out', (tester) async {

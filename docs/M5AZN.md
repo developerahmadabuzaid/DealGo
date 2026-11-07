@@ -7,9 +7,13 @@ its own warehouse, delivers it, and charges the cost to your M5azn seller balanc
 **Store only.** M5azn is used for the store and nothing else: auctions, their prizes and
 anything won in an auction are never sent to M5azn and are delivered by you as before.
 
-M5azn is **not** a general courier. It can only deliver products that are in its own warehouse,
-so DealGo's own stock (ADOMO, the demo catalogue, anything you keep yourself) is still shipped by
-you as before. The integration only touches store products you link to an M5azn product.
+M5azn is **not** a general courier. It can only deliver products that are in its own warehouse.
+So the store has two kinds of product, kept apart:
+
+- **Imported from M5azn**: the products you added to your shop on m5azn.com. DealGo imports them
+  (name, description, every picture, category, price, stock) and keeps them in step. M5azn ships them.
+- **Added in the dashboard** (ADOMO, the demo catalogue, anything you keep yourself): never shown on
+  the M5azn page, never sent to M5azn. You ship them as before.
 
 It is **off** by default. With it off nothing is sent, synced or called, and the app works
 exactly as it did.
@@ -18,13 +22,14 @@ exactly as it did.
 
 | Part | What happens |
 |---|---|
-| Store orders | A paid order with at least one linked product, and a delivery address, is sent to M5azn. Only the linked lines are sent; the rest stay DealGo's to ship. |
+| Products | **Import from M5azn** (and every hour on its own) reads your M5azn shop's product list and creates a store product for each, with every picture, the description, the category (made if the store has none of that name), the stock and the price. Importing again updates them by M5azn's product id and never duplicates them. A product no longer in the list is **hidden**, never deleted, and shown again if it comes back. |
+| Store orders | A paid order with at least one imported product, and a delivery address, is sent to M5azn. Only those lines are sent; the rest stay DealGo's to ship. |
 | Tracking | Every 30 minutes the server asks M5azn about each order on its way and copies its status, tracking number, tracking link and courier. |
 | Order status | Sent → the DealGo order becomes **Processing** (the customer can no longer cancel it). When M5azn delivers *everything* on the order: **Shipped** (with the tracking number) and **Delivered**, with the usual notifications. A mixed order stays Processing for you to finish. |
-| Prices | The DealGo price of a linked product is **M5azn's price plus a profit percentage**, 70% unless you change it: a product M5azn sells you for 100 SAR is priced 170 SAR. It is set when you link the product, again for every linked product when you change the percentage, and on demand with *Update prices from M5azn*. |
-| Stock | Every hour the server reads M5azn's recent stock changes and sets the stock of linked store products to M5azn's quantity (an inventory entry "Stock synced from M5azn" is written). A product at 0 shows as out of stock. |
-| App | "My orders" shows a *Shipping and tracking* box once the order has gone to M5azn: progress, courier, tracking number (copyable) and a *Track shipment* link. |
-| Admin | **Store → M5azn**: the on/off switch, the seller account and the profit percentage; shipments and their status, the reason for any failure, *Send to M5azn* / *Send again* / *Refresh*, and the store product links. The order window also shows its M5azn delivery. |
+| Prices | The DealGo price of an imported product is **M5azn's price plus a profit percentage**, 70% unless you change it: a product M5azn sells you for 100 SAR is priced 170 SAR. Set on every import, and for every imported product at once when you change the percentage. |
+| Stock | Every import sets the stock to M5azn's, and every hour the server also reads M5azn's recent stock changes (an inventory entry is written for each change). A product at 0 shows as out of stock. |
+| App | The product page shows the main picture with a thumbnail of every picture under it (for every product, not only M5azn's), the SKU, the available stock and the delivery time. "My orders" shows a *Shipping and tracking* box once the order has gone to M5azn: progress, courier, tracking number (copyable) and a *Track shipment* link. |
+| Admin | **Store → M5azn**: the on/off switch, the seller account, the profit percentage and the delivery time; the imported products and the last import's result; shipments and their status, the reason for any failure, *Send to M5azn* / *Send again* / *Refresh*. The order window also shows its M5azn delivery. |
 
 What it never does on its own: cancel or refund a DealGo order. If M5azn cancels or returns an
 order, the shipment shows *Cancelled* with a note, and the decision is yours.
@@ -106,32 +111,44 @@ Environment variables (or user secrets in development):
 | `M5azn__MaxAttempts` | `5` | Attempts before a send is marked failed. |
 | `M5azn__Language` / `Website` / `ApiVersion` / `AppVersion` / `Device` | `ar` / `M5AZN` / `1.0` / `1.0` / `Web` | The fixed headers M5azn's API asks for. |
 
-## 2. Link store products
+## 2. Import your M5azn products
 
-In the admin console, **Store → M5azn**:
+1. On m5azn.com, add the products you want to sell to your shop (*أضف إلى متجري*). The ones you
+   added show as *مضاف مسبقاً*.
+2. On **Store → M5azn**, press **Import from M5azn**. It only reads your product list (nothing is
+   ordered) and says what it did: found, new, updated, hidden, skipped, and any problem in words.
+3. The products appear in the store at once, under M5azn's categories, priced at M5azn's price
+   plus the profit percentage. After that the import runs every hour on its own.
 
-1. Find the product in M5azn's catalogue and note its **product id** and the **SKU** of the exact
-   variant (size, colour). Both are needed: M5azn's order line carries the two.
-2. Type them into the product's row and press **Check**: this only reads M5azn's catalogue (no
-   order is placed) and fills in the SKU if it was empty. Then **Save**.
-3. **Save** reads M5azn's price and sets the DealGo price to it plus the profit percentage; the
-   message shows both (for example *100.00 SAR → 170.00 SAR*). If M5azn is off or gives no price,
-   the link is saved and the price is left as it was.
-4. With stock sync on, the stock follows M5azn's within the hour after M5azn's stock next changes.
+What an import never does: touch a product added in the dashboard, delete anything, or show
+again a product you set to *draft* yourself.
+
+A product is **skipped**, and the result says so, when M5azn gives it no SKU (M5azn needs one on
+every order) or no price (nothing is sold without one). If M5azn's answer as a whole cannot be
+read, nothing at all is changed: an unreadable answer is never taken for an empty shop.
 
 ### Prices and profit
 
 - **The rule**: DealGo price = M5azn price × (1 + profit % ÷ 100), rounded to the halala.
-- **Changing the percentage** re-prices every linked product at once from the M5azn price last
+- **Changing the percentage** re-prices every imported product at once from the M5azn price last
   read. M5azn is not asked.
-- **Update prices from M5azn** (above the product table) reads each linked product's price from
-  M5azn again (read-only, nothing is ordered) and re-prices it. Use it when M5azn changes prices;
-  it does not run on its own.
-- The table shows each product's DealGo price and M5azn price.
-- A price set this way overwrites one typed on the product page. Offers (*compare at* prices) are
-  not touched.
+- **Every import** reads M5azn's price again, so a price change at M5azn reaches DealGo within the
+  hour.
+- A price typed on the product page for an imported product is overwritten by the next import.
+  Offers (*compare at* prices) are not touched.
 
-To unlink, clear both boxes and save. Linking and unlinking are recorded in the audit log.
+### Delivery time
+
+The product page shows a delivery time. For imported products it is M5azn's when M5azn gives one,
+else the *Delivery time* set on the M5azn page (**1-5 أيام** by default). Products added in the
+dashboard show none.
+
+### Products linked by hand before
+
+Earlier versions let you link a dashboard product to an M5azn product by hand. That is gone: the
+migration `M5aznProductImport` clears any such link, so those products are DealGo's to ship again.
+There should have been none in production. An order for one that was still waiting to be sent is
+cancelled at M5azn's end of the queue, never sent.
 
 ## 3. Start carefully
 
@@ -139,7 +156,7 @@ Every order sent costs money at M5azn. For the first days:
 
 1. Set *Automatic sending* to **Disabled** on the M5azn page (or `$M5aznAutoSubmit = 'false'`),
    so each paid order waits there.
-2. Link **one** cheap product, buy it yourself with a real address, and press **Send to M5azn**.
+2. Import, buy **one** cheap imported product yourself with a real address, and press **Send to M5azn**.
 3. Check that the order appears in your M5azn dashboard with the right address, then watch its
    status and tracking arrive in the admin page and the app (press **Refresh** to ask at once).
 4. Only then switch automatic sending on.
@@ -183,7 +200,8 @@ From the documentation at <https://m5azn-api.stoplight.io> (project *M5azn Api D
 | `POST /api/v1/orders` | Sending an order: `id, total, payment_method, cod_amount, order_created_at, platform_name, shipping_info{address, country, country_code, city}, customer_info{first_name, last_name, email, phone}, items[{id, product_id, sku, name, qty_ordered}]`. `order_created_at` is written in Saudi time, `yyyy-MM-dd HH:mm:ss`, as in M5azn's example. |
 | `GET /api/orders/{id}` | Status and tracking. Note: documented **without** `/v1`. |
 | `GET /api/v1/products/qty-changed?hours=N` | Stock changes. |
-| `GET /api/v1/product/details/{id}` | The **Check** button. |
+| `GET /api/v1/seller/myproductlist?page=N` | The import: the products in your M5azn shop. |
+| `GET /api/v1/product/details/{id}` | The import, to fill in pictures and the description when the list has too few. |
 
 Every call carries `X-Lang`, `X-Website: M5AZN`, `X-Api`, `X-Device`, `X-Version`,
 `Accept: application/json` and `Authorization: Bearer <token>`.
@@ -206,9 +224,25 @@ Apart from sign-in, M5azn documents no answers. The client reads them loosely, a
 - Order details can be fetched by M5azn's id, or by our reference when M5azn gave none. Whether
   M5azn finds an order by the `id` we sent is unknown; it is what makes an unclear answer safe.
 - Whether M5azn rejects a second order with the same `id` is unknown, so the code never relies on it.
+- **The product list** (`seller/myproductlist`) is the first list of objects with an id found in
+  the answer (`data`, `data.data`, `products`, `items`, ...). A row may carry the product inside it
+  (`{ id, seller_price, product: { id, ... } }`): the product's own id is used, and fields are read
+  from the row first, then the product. Paging follows `last_page`, `total_pages`, `next_page_url`
+  or `links.next`; without any of them one page is read. Only the default `product_type` (local)
+  is asked for.
+- Product fields: id `product_id`/`id`; SKU `sku`/`product_sku`/`barcode` (else the first
+  variant's); name `name`/`title`/`product_name`/`name_ar`; description `description`/
+  `long_description`/`details`/... (HTML becomes plain text); pictures `image`/`main_image`/
+  `thumbnail` and the lists `images`/`gallery`/`product_images`/`photos`/`media` (strings or objects
+  with `url`/`image`/`src`/`path`; a path is made absolute against M5azn's address); category
+  `category_name`/`category` (an object's `name`)/`categories[0]`; delivery time `delivery_time`/
+  `shipping_time`/`delivery_days`/....
 - The price used for pricing is the first of `seller_price`, `wholesale_price`, `cost_price`,
-  `price`, `sale_price` in the product's details: what the seller pays M5azn is assumed to be one
-  of the first three. Check it against your M5azn dashboard on the first product you link.
+  `price`, `sale_price`: what the seller pays M5azn is assumed to be one of the first three.
+  **Check it on the first import**: the Arencia vitamin C serum (SKU 8809562192770) should come in
+  at the 35.15 SAR M5azn shows, so 59.76 SAR at 70%.
+- A product with variants (sizes, colours) is imported once, with its own SKU or its first
+  variant's; variants are not separate products yet.
 - Stock changes are a list of `{product_id | id, sku, qty | quantity | stock}`, or with a
   `variants` list per product.
 
@@ -221,6 +255,8 @@ When the real answers are known, `M5aznClient` (`src/AuctionPlatform.Infrastruct
 |---|---|
 | `Domain/Entities/M5aznShipment.cs`, `Domain/Enums/M5aznEnums.cs` | The shipment and its statuses. `StoreProduct` gains `M5aznProductId` and `M5aznSku`. Migration `M5aznDropshipping`. |
 | `Domain/Entities/M5aznSettings.cs` | The dashboard's settings row. `StoreProduct.M5aznCostPrice` keeps M5azn's price. Migration `M5aznSettingsAndProfit`. |
+| `StoreProduct.Source`, `DeliveryTime`, `M5aznSyncedAt`, `M5aznRemovedAt` | Imported or added in the dashboard, and the import's bookkeeping. Migration `M5aznProductImport`. |
+| `Application/M5azn/M5aznCatalogService.cs` | The import, the imported products list, re-pricing. |
 | `Application/M5azn/` | `IM5aznClient`, `M5aznFulfilmentService` (pick up, send, follow, stock, prices, settings, admin and customer reads), `M5aznStatusMap`, `M5aznAccount` (the settings in effect and the pricing rule). |
 | `Infrastructure/Services/M5aznAccountProvider.cs`, `AesSecretProtector.cs` | Which settings are in effect, and the password's encryption. |
 | `Infrastructure/Services/M5aznClient.cs` | The typed `HttpClient`. |

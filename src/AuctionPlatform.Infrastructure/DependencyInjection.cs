@@ -197,5 +197,6 @@ public static class DependencyInjection
         services.AddSingleton<IM5aznAccountProvider, M5aznAccountProvider>();
         services.AddHttpClient<IM5aznClient, M5aznClient>();
         services.AddScoped<IM5aznFulfilmentService, M5aznFulfilmentService>();
+        services.AddScoped<IM5aznCatalogService, M5aznCatalogService>();
     }
 }

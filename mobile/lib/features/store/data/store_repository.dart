@@ -120,7 +120,11 @@ class StoreProductDetail extends StoreProduct {
     required this.images,
     this.categoryId,
     this.parentCategoryName,
+    this.deliveryTime,
   });
+
+  /// How long delivery takes ("1-5 أيام"), when the store says; null shows nothing.
+  final String? deliveryTime;
 
   /// The department it sits in, for the "similar products" row under it.
   final String? categoryId;
@@ -163,6 +167,7 @@ class StoreProductDetail extends StoreProduct {
       images: images,
       categoryId: j['categoryId'] as String?,
       parentCategoryName: j['parentCategoryName'] as String?,
+      deliveryTime: (j['deliveryTime'] as String?)?.trim().isEmpty ?? true ? null : (j['deliveryTime'] as String).trim(),
     );
   }
 }

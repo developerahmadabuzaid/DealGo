@@ -1590,29 +1590,46 @@ class _ProductGalleryState extends State<_ProductGallery> {
           ),
         ),
 
-        // Where they are in the pictures.
+        // Every picture as a thumbnail: the one showing is framed, a tap shows another.
         if (pictures.length > 1) ...[
           const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var i = 0; i < pictures.length; i++)
-                GestureDetector(
-                  onTap: () => _pages.animateToPage(i,
-                      duration: const Duration(milliseconds: 300), curve: Curves.easeOut),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: i == _index ? 22 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: i == _index ? AppTheme.accent : Colors.grey[300],
-                      borderRadius: BorderRadius.circular(4),
+          SizedBox(
+            height: 64,
+            child: ListView.separated(
+              key: const ValueKey('product-thumbnails'),
+              scrollDirection: Axis.horizontal,
+              itemCount: pictures.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final selected = i == _index;
+                return Semantics(
+                  button: true,
+                  selected: selected,
+                  label: '${i + 1} / ${pictures.length}',
+                  child: GestureDetector(
+                    onTap: () => _pages.animateToPage(i,
+                        duration: const Duration(milliseconds: 300), curve: Curves.easeOut),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 64,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: dark ? Colors.white10 : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected ? AppTheme.accent : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                      child: Opacity(
+                        opacity: selected ? 1 : 0.7,
+                        child: RemoteImage(pictures[i], radius: 8, fit: BoxFit.contain),
+                      ),
                     ),
                   ),
-                ),
-            ],
+                );
+              },
+            ),
           ),
         ],
       ],
@@ -1838,6 +1855,9 @@ class _ProductInfo extends StatelessWidget {
           ],
         ),
 
+        const SizedBox(height: 16),
+        _ProductFacts(product: p),
+
         if (p.description != null && p.description!.trim().isNotEmpty) ...[
           const SizedBox(height: 20),
           const Divider(height: 1),
@@ -1848,6 +1868,68 @@ class _ProductInfo extends StatelessWidget {
           _ExpandableText(p.description!.trim()),
         ],
       ],
+    );
+  }
+}
+
+/// The plain facts, one per line: SKU, how many are available, and how long delivery takes.
+class _ProductFacts extends StatelessWidget {
+  const _ProductFacts({required this.product});
+
+  final StoreProductDetail product;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppStrings.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final p = product;
+
+    final rows = <(IconData, String, String)>[
+      if (p.sku.trim().isNotEmpty) (Icons.qr_code_2_rounded, t.skuLabel, p.sku.trim()),
+      (
+        Icons.inventory_2_outlined,
+        t.availableStock,
+        p.inStock && p.availableQuantity > 0 ? t.pieces(p.availableQuantity) : t.outOfStock,
+      ),
+      if (p.deliveryTime != null) (Icons.local_shipping_outlined, t.deliveryTimeLabel, p.deliveryTime!),
+    ];
+
+    return Container(
+      key: const ValueKey('product-facts'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: dark ? Colors.white.withValues(alpha: 0.04) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Icon(rows[i].$1, size: 18, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(rows[i].$2, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13.5)),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: SelectableText(
+                      rows[i].$3,
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, fontFeatures: AppTheme.numeric),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

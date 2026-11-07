@@ -34,4 +34,13 @@ public class M5aznSettings : AuditableEntity
     public decimal ProfitPercentage { get; set; } = DefaultProfitPercentage;
 
     public const decimal DefaultProfitPercentage = 70m;
+
+    /// <summary>Shown to customers on imported products when M5azn gives no delivery time of its own.</summary>
+    public string DeliveryTime { get; set; } = DefaultDeliveryTime;
+
+    public const string DefaultDeliveryTime = "1-5 أيام";
+
+    /// <summary>When products were last imported from M5azn, and what came of it, for the dashboard.</summary>
+    public DateTime? LastImportAt { get; set; }
+    public string? LastImportSummary { get; set; }
 }

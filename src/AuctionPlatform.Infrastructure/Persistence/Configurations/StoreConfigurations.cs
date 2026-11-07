@@ -43,9 +43,13 @@ public sealed class StoreProductConfiguration : IEntityTypeConfiguration<StorePr
         b.Property(p => p.Currency).HasMaxLength(3).IsRequired();
         b.Property(p => p.Version).IsRowVersion();
         b.Property(p => p.M5aznSku).HasMaxLength(128);
+        b.Property(p => p.DeliveryTime).HasMaxLength(64);
 
         b.HasIndex(p => p.Sku).IsUnique();
-        b.HasIndex(p => p.M5aznProductId).HasFilter("\"M5aznProductId\" IS NOT NULL");
+
+        // One DealGo product per imported M5azn product, so importing again updates instead of duplicating.
+        b.HasIndex(p => p.M5aznProductId).IsUnique().HasFilter("\"Source\" = 1 AND \"M5aznProductId\" IS NOT NULL");
+        b.HasIndex(p => p.Source);
         b.HasIndex(p => p.Slug);
         b.HasIndex(p => p.Status);
         b.HasIndex(p => p.CategoryId);

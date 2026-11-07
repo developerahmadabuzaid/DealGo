@@ -272,7 +272,7 @@ public sealed class M5aznClient : IM5aznClient
         return changes;
     }
 
-    public async Task<M5aznProductInfo?> GetProductAsync(long productId, CancellationToken ct = default)
+    public async Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default)
     {
         using var response = await SendAsync(
             () => new HttpRequestMessage(HttpMethod.Get, $"api/v1/product/details/{productId}"), ct);
@@ -282,22 +282,51 @@ public sealed class M5aznClient : IM5aznClient
 
         var root = await ReadJsonAsync(response, ct);
         if (root is null || IsFalse(root["success"])) return null;
-        var data = Data(root);
+        var data = root is JsonObject obj && obj.ContainsKey("data") ? obj["data"] : root;
         if (data is JsonObject { Count: 1 } wrapper && wrapper["product"] is JsonObject inner) data = inner;
         if (data is not JsonObject product) return null;
 
-        // What the seller pays M5azn comes first; the plain price is the fallback (docs/M5AZN.md).
-        decimal? price = decimal.TryParse(Find(product, ["seller_price", "wholesale_price", "cost_price", "price", "sale_price"], false),
-            NumberStyles.Number, CultureInfo.InvariantCulture, out var p) ? p : null;
-        int? quantity = TryQuantity(product, out var q) ? q : null;
+        var parsed = ParseProduct(product);
+        return parsed is null ? null : parsed with { ProductId = productId };
+    }
 
-        return new M5aznProductInfo(
-            productId,
-            Find(product, ["name", "title", "name_ar", "name_en"], false),
-            Find(product, ["sku"], false),
-            price,
-            quantity,
-            Find(product, ["image", "thumbnail", "image_url", "main_image"], false));
+    public async Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        using var response = await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, $"api/v1/seller/myproductlist?page={page}"), ct);
+        response.EnsureSuccessStatusCode();
+
+        var root = await ReadJsonAsync(response, ct);
+        if (root is JsonObject o && IsFalse(o["success"]))
+        {
+            return new M5aznProductPage([], false, $"M5azn refused the product list: {Text(o["message"]) ?? Snippet(root)}", Unreadable: true);
+        }
+
+        var list = FindProductList(root);
+        if (list is null)
+        {
+            _logger.LogWarning("M5azn: the product list came in an unknown shape: {Shape}", Snippet(root));
+            return new M5aznProductPage([], false,
+                $"M5azn's product list came in a shape DealGo does not know yet: {Snippet(root)}", Unreadable: true);
+        }
+
+        var products = new List<M5aznCatalogProduct>();
+        JsonNode? firstUnreadable = null;
+        foreach (var node in list)
+        {
+            if (node is JsonObject item && ParseProduct(item) is { } product) products.Add(product);
+            else firstUnreadable ??= node;
+        }
+
+        string? problem = null;
+        if (firstUnreadable is not null)
+        {
+            problem = $"{list.Count - products.Count} item(s) on page {page} had no product id and were skipped, for example: {Snippet(firstUnreadable)}";
+            _logger.LogWarning("M5azn: {Problem}", problem);
+        }
+
+        return new M5aznProductPage(products, HasMorePages(root, page, list.Count), problem);
     }
 
     // ---------------------------------------------------------------- transport
@@ -494,6 +523,179 @@ public sealed class M5aznClient : IM5aznClient
         }
 
         quantity = 0;
+        return false;
+    }
+
+    // ---------------------------------------------------------------- products
+
+    private static readonly string[] IdKeys = ["product_id", "productId", "id"];
+    private static readonly string[] SkuKeys = ["sku", "product_sku", "barcode"];
+    private static readonly string[] NameKeys = ["name", "title", "product_name", "name_ar", "name_en"];
+    private static readonly string[] DescriptionKeys =
+        ["description", "long_description", "details", "desc", "description_ar", "short_description"];
+
+    // What the seller pays M5azn comes first; the plain price is the fallback (docs/M5AZN.md).
+    private static readonly string[] PriceKeys = ["seller_price", "wholesale_price", "cost_price", "price", "sale_price"];
+    private static readonly string[] ImageListKeys = ["images", "gallery", "product_images", "photos", "pictures", "media"];
+    private static readonly string[] ImageKeys = ["image", "main_image", "image_url", "thumbnail", "cover", "photo"];
+    private static readonly string[] ImageUrlKeys = ["url", "image", "src", "path", "original", "large", "image_url", "full"];
+    private static readonly string[] CategoryKeys = ["category_name", "category", "main_category", "category_title"];
+    private static readonly string[] DeliveryKeys =
+        ["delivery_time", "shipping_time", "delivery_days", "delivery_period", "delivery_duration", "estimated_delivery"];
+
+    /// <summary>
+    /// One product of a list or a details answer. A seller's list row may carry the product inside
+    /// it (<c>{ id, price, product: { ... } }</c>), so both are read: the row first, then the
+    /// product. Null when no product id can be found.
+    /// </summary>
+    internal M5aznCatalogProduct? ParseProduct(JsonObject item)
+    {
+        var sources = new List<JsonObject> { item };
+        if (item["product"] is JsonObject inner) sources.Add(inner);
+
+        string? First(string[] keys) => sources.Select(src => Find(src, keys, nested: false)).FirstOrDefault(v => v is not null);
+
+        var idText = Find(item, ["product_id", "productId"], false)
+                     ?? (sources.Count > 1 ? Find(sources[1], ["id"], false) : null)
+                     ?? Find(item, ["id"], false);
+        if (!long.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) || id <= 0) return null;
+
+        var sku = First(SkuKeys);
+        if (sku is null)
+        {
+            var variants = sources.Select(src => AsArray(src["variants"]) ?? AsArray(src["skus"])).FirstOrDefault(v => v is { Count: > 0 });
+            sku = variants?.OfType<JsonObject>().Select(v => Find(v, SkuKeys, false)).FirstOrDefault(v => v is not null);
+        }
+
+        decimal? price = decimal.TryParse(First(PriceKeys), NumberStyles.Number, CultureInfo.InvariantCulture, out var pr) ? pr : null;
+
+        int? quantity = null;
+        foreach (var src in sources)
+        {
+            if (TryQuantity(src, out var q)) { quantity = q; break; }
+        }
+
+        string? category = null;
+        foreach (var src in sources)
+        {
+            category = Find(src, CategoryKeys, false)
+                       ?? (AsArray(src["categories"])?.FirstOrDefault() is { } c ? Text(c) : null);
+            if (category is not null) break;
+        }
+
+        return new M5aznCatalogProduct(
+            id,
+            sku,
+            First(NameKeys),
+            PlainText(First(DescriptionKeys)),
+            price,
+            quantity,
+            Images(sources),
+            category,
+            First(DeliveryKeys));
+    }
+
+    /// <summary>Every picture of the product, main one first, without repeats; at most twelve.</summary>
+    private IReadOnlyList<string> Images(IEnumerable<JsonObject> sources)
+    {
+        var urls = new List<string>();
+
+        void Add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            var url = Absolute(value.Trim());
+            if (url is not null && !urls.Contains(url, StringComparer.OrdinalIgnoreCase)) urls.Add(url);
+        }
+
+        var all = sources.ToList();
+        foreach (var src in all) Add(Find(src, ImageKeys, false));
+
+        foreach (var src in all)
+        {
+            foreach (var key in ImageListKeys)
+            {
+                if (src[key] is not JsonArray list) continue;
+                foreach (var entry in list)
+                {
+                    Add(entry is JsonObject o ? Find(o, ImageUrlKeys, false) : Text(entry));
+                }
+            }
+        }
+
+        return urls.Take(12).ToList();
+    }
+
+    /// <summary>An http(s) address as it is; a path made absolute against M5azn's address; anything else dropped.</summary>
+    private string? Absolute(string value)
+    {
+        if (Uri.TryCreate(value, UriKind.Absolute, out var abs))
+        {
+            return abs.Scheme is "http" or "https" ? abs.ToString() : null;
+        }
+
+        if (value.StartsWith("//", StringComparison.Ordinal)) return "https:" + value;
+        return _http.BaseAddress is { } baseUri && Uri.TryCreate(baseUri, value, out var rel) ? rel.ToString() : null;
+    }
+
+    /// <summary>Descriptions often come as HTML; the app shows text, so tags go and paragraphs become lines.</summary>
+    internal static string? PlainText(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+        var text = System.Text.RegularExpressions.Regex.Replace(html, @"<\s*(br|/p|/div|/li|/h\d)\s*/?>", "\n",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", string.Empty);
+        text = WebUtility.HtmlDecode(text).Replace(' ', ' ');   // &nbsp; is a space to the reader
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"[ \t]+", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s*\n\s*", "\n").Trim();
+        return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>The first list of objects that look like products, searched a few levels down.</summary>
+    internal static JsonArray? FindProductList(JsonNode? root)
+    {
+        var level = new List<JsonNode?> { root };
+        for (var depth = 0; depth < 4 && level.Count > 0; depth++)
+        {
+            foreach (var node in level)
+            {
+                if (node is JsonArray a && (a.Count == 0 || a.Any(e => e is JsonObject eo && LooksLikeProduct(eo)))) return a;
+            }
+
+            var next = new List<JsonNode?>();
+            foreach (var node in level.OfType<JsonObject>())
+            {
+                // Lists named like products first, so a "categories" list is never taken for them.
+                foreach (var key in new[] { "data", "products", "items", "product_list", "list", "result" })
+                {
+                    if (node[key] is { } child) next.Add(child);
+                }
+            }
+
+            level = next;
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikeProduct(JsonObject o) =>
+        Find(o, IdKeys, false) is not null && (Find(o, NameKeys, false) is not null || o["product"] is JsonObject
+                                               || Find(o, SkuKeys, false) is not null);
+
+    /// <summary>Whether a later page exists, from the usual paging fields. None of them: one page only.</summary>
+    private static bool HasMorePages(JsonNode? root, int page, int count)
+    {
+        if (count == 0) return false;
+
+        foreach (var holder in new[] { root, root?["data"], root?["meta"], root?["data"]?["meta"], root?["pagination"], root?["data"]?["pagination"] })
+        {
+            if (holder is not JsonObject h) continue;
+
+            if (int.TryParse(Find(h, ["last_page", "total_pages", "lastPage", "pages"], false), out var last)) return page < last;
+
+            if (h.ContainsKey("next_page_url")) return Text(h["next_page_url"]) is not null;
+            if (h["links"] is JsonObject links && links.ContainsKey("next")) return Text(links["next"]) is not null;
+        }
+
         return false;
     }
 

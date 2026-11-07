@@ -87,7 +87,13 @@ public sealed record StoreProductDetailDto(
 
     /// <summary>The main department above the product's own, for the "main › sub" path.</summary>
     Guid? ParentCategoryId = null,
-    string? ParentCategoryName = null)
+    string? ParentCategoryName = null,
+
+    /// <summary>How long delivery takes, for the customer ("1-5 أيام"); null when not given.</summary>
+    string? DeliveryTime = null,
+
+    /// <summary>Admin, or M5azn for a product imported from the M5azn seller account.</summary>
+    StoreProductSource Source = StoreProductSource.Admin)
 {
     public bool IsOnOffer => StoreDiscount.Applies(Price, CompareAtPrice);
     public int DiscountPercentage => StoreDiscount.Percentage(Price, CompareAtPrice);

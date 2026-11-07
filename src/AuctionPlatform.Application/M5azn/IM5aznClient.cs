@@ -52,10 +52,28 @@ public sealed record M5aznRemoteOrder(
 public sealed record M5aznStockChange(long ProductId, string? Sku, int Quantity);
 
 /// <summary>
-/// The few fields of <c>GET /api/v1/product/details/{id}</c> an administrator needs to link a product.
-/// <c>Price</c> is what M5azn charges the seller (its seller or wholesale price where it gives one).
+/// A product of the seller's M5azn list (<c>GET /api/v1/seller/myproductlist</c>) or its details
+/// (<c>GET /api/v1/product/details/{id}</c>). Neither answer is documented, so every field but the id
+/// is optional. <c>Price</c> is what M5azn charges the seller.
 /// </summary>
-public sealed record M5aznProductInfo(long ProductId, string? Name, string? Sku, decimal? Price, int? Quantity, string? ImageUrl);
+public sealed record M5aznCatalogProduct(
+    long ProductId,
+    string? Sku,
+    string? Name,
+    string? Description,
+    decimal? Price,
+    int? Quantity,
+    IReadOnlyList<string> Images,
+    string? CategoryName,
+    string? DeliveryTime);
+
+/// <summary>
+/// One page of the seller's product list. <c>Problem</c> says what could not be read, in words.
+/// <c>Unreadable</c>: the answer as a whole was not understood, so nothing may be concluded from it
+/// (above all, not that the seller has no products).
+/// </summary>
+public sealed record M5aznProductPage(
+    IReadOnlyList<M5aznCatalogProduct> Products, bool HasMore, string? Problem, bool Unreadable = false);
 
 /// <summary>
 /// M5azn's seller API. Implemented in Infrastructure with a typed HttpClient; the application only
@@ -79,5 +97,8 @@ public interface IM5aznClient
 
     Task<IReadOnlyList<M5aznStockChange>> GetQuantityChangesAsync(int hours, CancellationToken ct = default);
 
-    Task<M5aznProductInfo?> GetProductAsync(long productId, CancellationToken ct = default);
+    Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default);
+
+    /// <summary>One page (from 1) of the products the seller has added to their M5azn shop. Read-only.</summary>
+    Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default);
 }

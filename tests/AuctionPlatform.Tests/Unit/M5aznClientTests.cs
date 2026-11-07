@@ -244,6 +244,94 @@ public class M5aznClientTests
     public void Status_words_are_read_by_meaning(string remote, M5aznShipmentStatus? expected) =>
         M5aznStatusMap.Map(remote).Should().Be(expected);
 
+    // ---------------------------------------------------------------- the seller's product list
+
+    [Fact]
+    public async Task A_paged_product_list_is_read_with_every_picture_and_plain_text()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/seller/myproductlist", req => Json(HttpStatusCode.OK, new
+        {
+            status = 200,
+            success = true,
+            data = new
+            {
+                current_page = 1,
+                last_page = 2,
+                data = new object[]
+                {
+                    // A seller row carrying the product inside it.
+                    new
+                    {
+                        id = 77,
+                        seller_price = "35.15",
+                        product = new
+                        {
+                            id = 313658,
+                            name = "سيروم فيتامين سي من أرينسيا",
+                            sku = "8809562192770",
+                            description = "<p>Brightening&nbsp;serum</p><ul><li>30 ml</li></ul>",
+                            quantity = 12,
+                            image = "/storage/products/main.jpg",
+                            images = new object[] { new { url = "https://cdn.m5azn.test/1.jpg" }, "https://cdn.m5azn.test/2.jpg" },
+                            category = new { id = 5, name = "العناية بالبشرة" },
+                            delivery_time = "1-5 أيام"
+                        }
+                    },
+                    // A flat one.
+                    new { product_id = 99, title = "Flat", sku = "F-1", price = 20, stock = 0 }
+                }
+            }
+        }));
+
+        var page = await Build(router).GetMyProductsAsync(1);
+
+        page.Unreadable.Should().BeFalse();
+        page.HasMore.Should().BeTrue("last_page is 2");
+        page.Problem.Should().BeNull();
+        page.Products.Should().HaveCount(2);
+
+        var serum = page.Products[0];
+        serum.ProductId.Should().Be(313658, "the product's own id, not the seller row's");
+        serum.Sku.Should().Be("8809562192770");
+        serum.Price.Should().Be(35.15m);
+        serum.Quantity.Should().Be(12);
+        serum.Description.Should().Be("Brightening serum\n30 ml");
+        serum.CategoryName.Should().Be("العناية بالبشرة");
+        serum.DeliveryTime.Should().Be("1-5 أيام");
+        serum.Images.Should().Equal(
+            "https://m5azn.test/storage/products/main.jpg", "https://cdn.m5azn.test/1.jpg", "https://cdn.m5azn.test/2.jpg");
+
+        page.Products[1].Should().BeEquivalentTo(new { ProductId = 99L, Name = "Flat", Sku = "F-1", Price = 20m, Quantity = 0 });
+        router.Calls.Should().Contain(c => c.Method == "GET" && c.Path == "/api/v1/seller/myproductlist");
+    }
+
+    [Fact]
+    public async Task An_unknown_answer_is_said_to_be_unreadable_not_empty()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/seller/myproductlist", _ => Json(HttpStatusCode.OK, new { success = true, data = new { shop = "x" } }));
+
+        var page = await Build(router).GetMyProductsAsync(1);
+
+        page.Unreadable.Should().BeTrue();
+        page.Products.Should().BeEmpty();
+        page.Problem.Should().Contain("shape DealGo does not know");
+    }
+
+    [Fact]
+    public async Task An_empty_list_is_an_empty_shop()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/seller/myproductlist", _ => Json(HttpStatusCode.OK, new { success = true, data = Array.Empty<object>() }));
+
+        var page = await Build(router).GetMyProductsAsync(1);
+
+        page.Unreadable.Should().BeFalse();
+        page.Products.Should().BeEmpty();
+        page.HasMore.Should().BeFalse();
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static M5aznClient Build(Router router, bool enabled = true, string password = "secret-pass")

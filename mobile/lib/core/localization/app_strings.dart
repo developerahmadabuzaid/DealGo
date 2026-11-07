@@ -391,6 +391,10 @@ class AppStrings {
   String get fastShipping => _t('شحن سريع', 'Fast shipping');
   String get freeShipping => _t('شحن مجاني', 'Free shipping');
   String onlyLeft(int n) => _t('بقي $n فقط', 'Only $n left');
+  String get skuLabel => _t('رمز المنتج (SKU)', 'SKU');
+  String get availableStock => _t('المخزون المتوفر', 'Available stock');
+  String pieces(int n) => _t('$n قطعة', '$n pcs');
+  String get deliveryTimeLabel => _t('مدة التوصيل', 'Delivery time');
   String get menu => _t('القائمة', 'Menu');
 
   // The app's own banners, for the strip under the search box.

@@ -1,4 +1,4 @@
-using AuctionPlatform.Application.Common;
+﻿using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.M5azn;
 using AuctionPlatform.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
@@ -6,14 +6,19 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AuctionPlatform.Api.Controllers.Admin;
 
-/// <summary>M5azn dropshipping for staff: what was sent, what failed, and which products are M5azn's.</summary>
+/// <summary>M5azn dropshipping for staff: the imported products, what was sent, what failed, and the settings.</summary>
 [Route("api/v1/admin/m5azn")]
 [Authorize]
 public sealed class AdminM5aznController : ApiControllerBase
 {
     private readonly IM5aznFulfilmentService _m5azn;
+    private readonly IM5aznCatalogService _catalog;
 
-    public AdminM5aznController(IM5aznFulfilmentService m5azn) => _m5azn = m5azn;
+    public AdminM5aznController(IM5aznFulfilmentService m5azn, IM5aznCatalogService catalog)
+    {
+        _m5azn = m5azn;
+        _catalog = catalog;
+    }
 
     [HttpGet("overview")]
     [Authorize(Policy = Permissions.StoreRead)]
@@ -42,22 +47,21 @@ public sealed class AdminM5aznController : ApiControllerBase
     public async Task<ActionResult<M5aznShipmentDto>> Refresh(Guid id, CancellationToken ct) =>
         Ok(await _m5azn.RefreshAsync(id, ct));
 
-    [HttpGet("links")]
+    /// <summary>The products imported from M5azn. Products added in the dashboard are never listed here.</summary>
+    [HttpGet("products")]
     [Authorize(Policy = Permissions.StoreRead)]
-    public async Task<ActionResult<M5aznLinksDto>> Links(CancellationToken ct) =>
-        Ok(await _m5azn.GetLinksAsync(ct));
+    public async Task<ActionResult<PagedResult<M5aznImportedProductDto>>> Products(
+        [FromQuery] M5aznProductQuery query, CancellationToken ct) =>
+        Ok(await _catalog.GetImportedProductsAsync(query, ct));
 
-    /// <summary>Links a product. When M5azn can be asked, its price plus the profit percentage becomes the product's price.</summary>
-    [HttpPut("links/store-products/{id:guid}")]
+    /// <summary>
+    /// Reads the seller's M5azn product list (read-only; nothing is ordered) and creates, updates or
+    /// hides the imported products. It also runs on its own every hour while M5azn is on.
+    /// </summary>
+    [HttpPost("import")]
     [Authorize(Policy = Permissions.StoreUpdateProduct)]
-    public async Task<ActionResult<M5aznLinkResult>> LinkStoreProduct(Guid id, M5aznLinkRequest request, CancellationToken ct) =>
-        Ok(await _m5azn.LinkStoreProductAsync(id, request, ct));
-
-    /// <summary>Reads every linked product's price from M5azn (read-only) and re-prices it with the profit percentage.</summary>
-    [HttpPost("prices/refresh")]
-    [Authorize(Policy = Permissions.StoreUpdateProduct)]
-    public async Task<ActionResult<M5aznRepriceSummary>> RefreshPrices(CancellationToken ct) =>
-        Ok(await _m5azn.RefreshPricesAsync(ct));
+    public async Task<ActionResult<M5aznImportSummary>> Import(CancellationToken ct) =>
+        Ok(await _catalog.ImportAsync(ct));
 
     /// <summary>The on/off switch, the seller account (never its password), the address and the profit percentage.</summary>
     [HttpGet("settings")]
@@ -76,9 +80,4 @@ public sealed class AdminM5aznController : ApiControllerBase
     public async Task<ActionResult<M5aznSignInCheck>> CheckSignIn(CancellationToken ct) =>
         Ok(await _m5azn.CheckSignInAsync(ct));
 
-    /// <summary>Reads a product from M5azn's catalogue, to check an id before linking it. Read-only.</summary>
-    [HttpGet("products/{m5aznProductId:long}")]
-    [Authorize(Policy = Permissions.StoreRead)]
-    public async Task<ActionResult<M5aznProductInfo>> Product(long m5aznProductId, CancellationToken ct) =>
-        await _m5azn.LookupProductAsync(m5aznProductId, ct) is { } p ? Ok(p) : NotFound();
 }

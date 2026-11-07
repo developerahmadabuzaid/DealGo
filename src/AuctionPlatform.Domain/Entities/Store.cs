@@ -66,9 +66,17 @@ public class StoreProduct : AuditableEntity
     public int ViewCount { get; set; }
 
     /// <summary>
-    /// The M5azn product this item is, when M5azn packs and delivers it (docs/M5AZN.md). Null for
-    /// everything DealGo ships itself. Paid lines of a linked product are sent to M5azn, and its
-    /// stock follows M5azn's when stock sync is on.
+    /// Admin: added in the dashboard and shipped by DealGo. M5azn: imported from the M5azn seller
+    /// account (docs/M5AZN.md); only these are ever sent to M5azn.
+    /// </summary>
+    public StoreProductSource Source { get; set; } = StoreProductSource.Admin;
+
+    /// <summary>How long delivery takes, as shown to the customer ("1-5 أيام"). Null: not shown.</summary>
+    public string? DeliveryTime { get; set; }
+
+    /// <summary>
+    /// The M5azn product this item is, for products imported from M5azn. Null for everything DealGo
+    /// ships itself. Paid lines are sent to M5azn, and stock and price follow M5azn's.
     /// </summary>
     public long? M5aznProductId { get; set; }
 
@@ -80,6 +88,15 @@ public class StoreProduct : AuditableEntity
     /// profit percentage set on the M5azn page. Null until M5azn has been asked.
     /// </summary>
     public decimal? M5aznCostPrice { get; set; }
+
+    /// <summary>When the last import found the product in the M5azn seller list.</summary>
+    public DateTime? M5aznSyncedAt { get; set; }
+
+    /// <summary>
+    /// Set when an import no longer finds the product in the M5azn seller list, and the product was
+    /// hidden for it. Cleared, and the product shown again, if a later import finds it.
+    /// </summary>
+    public DateTime? M5aznRemovedAt { get; set; }
 
     /// <summary>Optimistic concurrency token mapped to the PostgreSQL xmin system column.</summary>
     public uint Version { get; set; }

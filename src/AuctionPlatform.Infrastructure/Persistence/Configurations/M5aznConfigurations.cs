@@ -43,5 +43,7 @@ public sealed class M5aznSettingsConfiguration : IEntityTypeConfiguration<M5aznS
         b.Property(s => s.Email).HasMaxLength(256);
         b.Property(s => s.PasswordProtected).HasMaxLength(2048);
         b.Property(s => s.BaseUrl).HasMaxLength(256);
+        b.Property(s => s.DeliveryTime).HasMaxLength(64);
+        b.Property(s => s.LastImportSummary).HasMaxLength(4000);
     }
 }

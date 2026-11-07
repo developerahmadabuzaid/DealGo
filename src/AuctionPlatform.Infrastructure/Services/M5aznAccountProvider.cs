@@ -102,6 +102,7 @@ public sealed class M5aznAccountProvider : IM5aznAccountProvider
             row.AutoSubmit,
             row.ProfitPercentage,
             M5aznSettingsSource.Dashboard,
-            unreadable);
+            unreadable,
+            string.IsNullOrWhiteSpace(row.DeliveryTime) ? M5aznSettings.DefaultDeliveryTime : row.DeliveryTime.Trim());
     }
 }

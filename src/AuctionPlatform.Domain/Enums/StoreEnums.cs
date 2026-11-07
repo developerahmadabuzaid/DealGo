@@ -17,6 +17,16 @@ public enum StoreCategoryStatus
 }
 
 /// <summary>Which wallet(s) a store product accepts.</summary>
+/// <summary>Where a store product came from.</summary>
+public enum StoreProductSource
+{
+    /// <summary>Added by staff in the dashboard. DealGo ships it; it never goes to M5azn.</summary>
+    Admin = 0,
+
+    /// <summary>Imported from the M5azn seller account and kept in step with it; M5azn ships it.</summary>
+    M5azn = 1
+}
+
 public enum StorePaymentMode
 {
     ShoppingWallet = 0,

@@ -23,7 +23,6 @@ namespace AuctionPlatform.Tests.Integration;
 [Collection("database")]
 public class M5aznFulfilmentTests
 {
-    private const long M5aznProduct = 1947201;
     private const string M5aznSku = "M2-4-3-4-S";
 
     private readonly DatabaseFixture _fixture;
@@ -65,7 +64,7 @@ public class M5aznFulfilmentTests
         body.CustomerInfo.Phone.Should().Be("+966551234567");
         body.CustomerInfo.Email.Should().EndWith("@test.local");
         body.Items.Should().ContainSingle().Which.Should().BeEquivalentTo(
-            new M5aznOrderItem(1, M5aznProduct, M5aznSku, "Test Item", 2));
+            new M5aznOrderItem(1, RemoteIdOf(product), M5aznSku, "Test Item", 2));
 
         (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Processing);
     }
@@ -149,7 +148,7 @@ public class M5aznFulfilmentTests
         var shipment = await ShipmentForAsync(orderId);
 
         var body = m5azn.Created.Single(c => c.Id == shipment.Reference);
-        body.Items.Should().ContainSingle().Which.ProductId.Should().Be(M5aznProduct);
+        body.Items.Should().ContainSingle().Which.ProductId.Should().Be(RemoteIdOf(theirs));
         body.Total.Should().Be(20m, "only M5azn's line is M5azn's to deliver");
 
         m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "delivered", "AWB-1", null, null);
@@ -424,52 +423,199 @@ public class M5aznFulfilmentTests
         }
     }
 
-    [Fact]
-    public async Task Linking_prices_the_product_at_M5azn_price_plus_the_profit()
-    {
-        var product = await NewProductAsync(price: 99m, linked: false);
-        var m5azn = new FakeM5azn { Price = 100m };
-
-        await using var scope = _fixture.CreateScope(m5azn: m5azn);
-        var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
-
-        var result = await service.LinkStoreProductAsync(product, new M5aznLinkRequest(4242, "SKU-1"));
-        result.Should().Be(new M5aznLinkResult(true, 100m, 170m, null));
-
-        var row = (await service.GetLinksAsync()).StoreProducts.Single(l => l.Id == product);
-        row.Price.Should().Be(170m);
-        row.M5aznCostPrice.Should().Be(100m);
-    }
+    // ---------------------------------------------------------------- importing products
 
     [Fact]
-    public async Task Changing_the_profit_reprices_linked_products_and_prices_can_be_read_again()
+    public async Task Importing_creates_products_with_every_picture_category_price_and_stock_and_never_duplicates()
     {
-        var product = await NewProductAsync(price: 99m, linked: false);
-        var m5azn = new FakeM5azn { Price = 40m };
+        var full = NextRemoteId();
+        var thin = NextRemoteId();
+        var category = $"عناية بالبشرة {Guid.NewGuid():N}"[..24];
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(
+            Catalog(full, $"8809562192770-{full}", "سيروم فيتامين سي", 35.15m, 7, ["https://cdn.m5azn.test/a.jpg", "https://cdn.m5azn.test/b.jpg", "https://cdn.m5azn.test/c.jpg"], category, "Brightening serum."),
+            Catalog(thin, $"THIN-{thin}", "Thin item", 10m, 3, ["https://cdn.m5azn.test/x.jpg"], null, null));
+        m5azn.Details[thin] = Catalog(thin, null, null, null, null, ["https://cdn.m5azn.test/x.jpg", "https://cdn.m5azn.test/y.jpg"], null, "From the details.");
+
+        var adminProduct = await NewProductAsync(price: 12m, linked: false);
 
         try
         {
+            var first = await ImportAsync(m5azn);
+            first.Created.Should().BeGreaterThanOrEqualTo(2);
+            first.Problems.Should().BeEmpty();
+
+            var a = await ImportedAsync(full);
+            a.Source.Should().Be(StoreProductSource.M5azn);
+            a.Name.Should().Be("سيروم فيتامين سي");
+            a.Description.Should().Be("Brightening serum.");
+            a.M5aznSku.Should().Be($"8809562192770-{full}");
+            a.Sku.Should().Be($"8809562192770-{full}", "M5azn's own SKU when nobody else uses it");
+            a.M5aznCostPrice.Should().Be(35.15m);
+            a.Price.Should().Be(59.76m, "35.15 + 70%, rounded");
+            a.StockQuantity.Should().Be(7);
+            a.Status.Should().Be(StoreProductStatus.Active);
+            a.DeliveryTime.Should().Be("1-5 أيام");
+            a.Category!.Name.Should().Be(category);
+            a.Images.OrderBy(x => x.DisplayOrder).Select(x => x.Url).Should().Equal(
+                "https://cdn.m5azn.test/a.jpg", "https://cdn.m5azn.test/b.jpg", "https://cdn.m5azn.test/c.jpg");
+            a.Images.Single(x => x.IsPrimary).Url.Should().Be("https://cdn.m5azn.test/a.jpg");
+
+            var b = await ImportedAsync(thin);
+            b.Description.Should().Be("From the details.", "the details fill in what the list leaves out");
+            b.Images.Select(x => x.Url).Should().BeEquivalentTo("https://cdn.m5azn.test/x.jpg", "https://cdn.m5azn.test/y.jpg");
+
+            // Again: M5azn's price and stock changed, and the thin one is gone from the list.
+            m5azn.Pages.Clear();
+            m5azn.ListPage(Catalog(full, $"8809562192770-{full}", "سيروم فيتامين سي", 40m, 0,
+                ["https://cdn.m5azn.test/a.jpg", "https://cdn.m5azn.test/b.jpg", "https://cdn.m5azn.test/c.jpg"], category, "Brightening serum."));
+            var second = await ImportAsync(m5azn);
+            second.Hidden.Should().BeGreaterThanOrEqualTo(1);
+
+            a = await ImportedAsync(full);
+            a.Price.Should().Be(68m);
+            a.StockQuantity.Should().Be(0);
+            a.Status.Should().Be(StoreProductStatus.OutOfStock);
+
+            b = await ImportedAsync(thin);
+            b.Status.Should().Be(StoreProductStatus.Hidden, "a product M5azn no longer lists is hidden, never deleted");
+            b.M5aznRemovedAt.Should().NotBeNull();
+
+            // Back in the list: shown again.
+            m5azn.ListPage(Catalog(thin, $"THIN-{thin}", "Thin item", 10m, 3, ["https://cdn.m5azn.test/x.jpg", "https://cdn.m5azn.test/y.jpg"], null, "From the details."));
+            await ImportAsync(m5azn);
+            (await ImportedAsync(thin)).Status.Should().Be(StoreProductStatus.Active);
+
+            await using (var scope = _fixture.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                (await db.StoreProducts.CountAsync(x => x.M5aznProductId == full)).Should().Be(1, "importing again never duplicates");
+
+                var admin = await db.StoreProducts.AsNoTracking().FirstAsync(x => x.Id == adminProduct);
+                admin.Source.Should().Be(StoreProductSource.Admin);
+                admin.Price.Should().Be(12m);
+                admin.Status.Should().NotBe(StoreProductStatus.Hidden);
+            }
+
             await using (var scope = _fixture.CreateScope(m5azn: m5azn))
             {
-                var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
-                await service.LinkStoreProductAsync(product, new M5aznLinkRequest(4343, "SKU-2"));
-                (await PriceOfAsync(product)).Should().Be(68m);   // 40 + 70%
+                var listed = await scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>()
+                    .GetImportedProductsAsync(new M5aznProductQuery { PageSize = 100, Search = full.ToString() });
+                listed.Items.Should().ContainSingle(x => x.M5aznProductId == full);
 
-                // A new profit re-prices from the M5azn price already known; M5azn is not asked.
-                m5azn.Price = 1000m;
-                var saved = await service.UpdateSettingsAsync(new M5aznSettingsRequest(true, null, null, null, true, 25m));
+                var all = await scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>()
+                    .GetImportedProductsAsync(new M5aznProductQuery { PageSize = 100 });
+                all.Items.Should().NotContain(x => x.Id == adminProduct, "the M5azn page lists imported products only");
+            }
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task An_answer_that_cannot_be_read_changes_nothing()
+    {
+        var id = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(id, $"KEEP-{id}", "Kept", 10m, 5, ["https://cdn.m5azn.test/k.jpg"], null, "x"));
+
+        try
+        {
+            await ImportAsync(m5azn);
+
+            m5azn.Pages.Clear();
+            m5azn.Pages.Add(new M5aznProductPage([], false, "M5azn's product list came in a shape DealGo does not know yet: {}", Unreadable: true));
+            var summary = await ImportAsync(m5azn);
+
+            summary.Problems.Should().Contain(x => x.Contains("shape DealGo does not know"));
+            summary.Hidden.Should().Be(0);
+            (await ImportedAsync(id)).Status.Should().Be(StoreProductStatus.Active, "an unreadable answer is not an empty shop");
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_product_without_a_sku_or_a_price_is_skipped_and_said_so()
+    {
+        var noSku = NextRemoteId();
+        var noPrice = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(
+            Catalog(noSku, null, "No SKU", 10m, 1, [], null, "x"),
+            Catalog(noPrice, $"NP-{noPrice}", "No price", null, 1, [], null, "x"));
+        m5azn.Details[noSku] = Catalog(noSku, null, null, null, null, [], null, null);
+
+        try
+        {
+            var summary = await ImportAsync(m5azn);
+            summary.Skipped.Should().Be(2);
+            summary.Problems.Should().Contain(x => x.Contains($"{noSku}") && x.Contains("no SKU"));
+            summary.Problems.Should().Contain(x => x.Contains($"{noPrice}") && x.Contains("no price"));
+
+            await using var scope = _fixture.CreateScope();
+            (await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().StoreProducts
+                .AnyAsync(x => x.M5aznProductId == noSku || x.M5aznProductId == noPrice)).Should().BeFalse();
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_product_added_by_staff_never_goes_to_M5azn_even_with_an_old_link()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var adminProduct = await NewProductAsync(price: 15m, linked: false);
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            // A link made by hand before products were imported.
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var p = await db.StoreProducts.FirstAsync(x => x.Id == adminProduct);
+            p.M5aznProductId = NextRemoteId();
+            p.M5aznSku = "OLD-LINK";
+            await db.SaveChangesAsync();
+        }
+
+        var orderId = await CheckoutAsync(buyer, addressId, (adminProduct, 1));
+        await RunAsync(m5azn);
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().M5aznShipments
+                .AnyAsync(x => x.SourceId == orderId)).Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task Changing_the_profit_reprices_imported_products_without_asking_M5azn()
+    {
+        var id = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(id, $"PROFIT-{id}", "Profit item", 40m, 5, ["https://cdn.m5azn.test/p.jpg", "https://cdn.m5azn.test/q.jpg"], null, "x"));
+
+        try
+        {
+            await ImportAsync(m5azn);
+            (await ImportedAsync(id)).Price.Should().Be(68m);   // 40 + 70%
+
+            m5azn.Pages.Clear();   // M5azn is not asked: a call would find nothing
+            await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+            {
+                var saved = await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>()
+                    .UpdateSettingsAsync(new M5aznSettingsRequest(true, null, null, null, true, 25m, "2-4 أيام"));
                 saved.Repriced.Should().BeGreaterThanOrEqualTo(1);
-                (await PriceOfAsync(product)).Should().Be(50m);   // 40 + 25%
+                saved.Settings.DeliveryTime.Should().Be("2-4 أيام");
             }
 
-            await using (var scope = _fixture.CreateScope(m5azn: m5azn))
-            {
-                // Reading prices again takes M5azn's new price.
-                m5azn.Price = 44.44m;
-                var summary = await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().RefreshPricesAsync();
-                summary.Updated.Should().BeGreaterThanOrEqualTo(1);
-                (await PriceOfAsync(product)).Should().Be(55.55m);   // 44.44 + 25%, rounded
-            }
+            (await ImportedAsync(id)).Price.Should().Be(50m);   // 40 + 25%
         }
         finally
         {
@@ -499,34 +645,12 @@ public class M5aznFulfilmentTests
         await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().M5aznSettings.ExecuteDeleteAsync();
     }
 
-    // ---------------------------------------------------------------- links and stock
-
-    [Fact]
-    public async Task A_link_needs_both_the_product_id_and_the_sku_and_can_be_removed()
-    {
-        var product = await NewProductAsync(price: 10m, linked: false);
-
-        await using var scope = _fixture.CreateScope(m5azn: new FakeM5azn());
-        var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
-
-        var noSku = () => service.LinkStoreProductAsync(product, new M5aznLinkRequest(123, " "));
-        (await noSku.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
-
-        var badId = () => service.LinkStoreProductAsync(product, new M5aznLinkRequest(0, "X"));
-        (await badId.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
-
-        await service.LinkStoreProductAsync(product, new M5aznLinkRequest(123, " ABC-1 "));
-        var links = await service.GetLinksAsync();
-        links.StoreProducts.Should().Contain(l => l.Id == product && l.M5aznProductId == 123 && l.M5aznSku == "ABC-1");
-
-        await service.LinkStoreProductAsync(product, new M5aznLinkRequest(null, null));
-        (await service.GetLinksAsync()).StoreProducts.Single(l => l.Id == product).M5aznProductId.Should().BeNull();
-    }
+    // ---------------------------------------------------------------- stock
 
     [Fact]
     public async Task Stock_follows_M5azn_for_linked_products_only()
     {
-        var linkedId = 9_000_000 + Random.Shared.Next(100_000);
+        var linkedId = NextRemoteId();
         var linked = await NewProductAsync(price: 10m, linked: true, stock: 10, m5aznId: linkedId);
         var other = await NewProductAsync(price: 10m, linked: false, stock: 10);
 
@@ -596,7 +720,16 @@ public class M5aznFulfilmentTests
         }
     }
 
-    private async Task<Guid> NewProductAsync(decimal price, bool linked, int stock = 50, long m5aznId = M5aznProduct)
+    private static long _remoteIds = 5_000_000_000L + Random.Shared.Next(1_000_000) * 1000L;
+    private static readonly ConcurrentDictionary<Guid, long> RemoteIds = new();
+
+    /// <summary>An M5azn product id no other test has used: imported products are unique by it.</summary>
+    private static long NextRemoteId() => Interlocked.Increment(ref _remoteIds);
+
+    private static long RemoteIdOf(Guid productId) => RemoteIds[productId];
+
+    /// <summary>A store product; <paramref name="linked"/>: one imported from M5azn.</summary>
+    private async Task<Guid> NewProductAsync(decimal price, bool linked, int stock = 50, long? m5aznId = null)
     {
         await using var scope = _fixture.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -604,11 +737,31 @@ public class M5aznFulfilmentTests
         product.RequiresShipping = true;
         if (linked)
         {
-            product.M5aznProductId = m5aznId;
+            product.Source = StoreProductSource.M5azn;
+            product.M5aznProductId = m5aznId ?? NextRemoteId();
             product.M5aznSku = M5aznSku;
+            RemoteIds[product.Id] = product.M5aznProductId.Value;
         }
         await db.SaveChangesAsync();
         return product.Id;
+    }
+
+    private static M5aznCatalogProduct Catalog(
+        long id, string? sku, string? name, decimal? price, int? quantity, string[] images, string? category, string? description) =>
+        new(id, sku, name, description, price, quantity, images, category, null);
+
+    private async Task<M5aznImportSummary> ImportAsync(FakeM5azn m5azn)
+    {
+        await using var scope = _fixture.CreateScope(m5azn: m5azn);
+        return await scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>().ImportAsync();
+    }
+
+    private async Task<StoreProduct> ImportedAsync(long m5aznProductId)
+    {
+        await using var scope = _fixture.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().StoreProducts.AsNoTracking()
+            .Include(x => x.Images).Include(x => x.Category)
+            .SingleAsync(x => x.Source == StoreProductSource.M5azn && x.M5aznProductId == m5aznProductId);
     }
 
     private async Task<Guid> CheckoutAsync(Guid buyer, Guid addressId, params (Guid Product, int Quantity)[] lines)
@@ -691,11 +844,20 @@ public class M5aznFulfilmentTests
         public Task<IReadOnlyList<M5aznStockChange>> GetQuantityChangesAsync(int hours, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<M5aznStockChange>>(StockChanges.ToList());
 
-        /// <summary>What M5azn charges for every product.</summary>
-        public decimal Price { get; set; } = 10m;
+        /// <summary>The seller's list, page by page; empty means an empty shop.</summary>
+        public List<M5aznProductPage> Pages { get; } = new();
 
-        public Task<M5aznProductInfo?> GetProductAsync(long productId, CancellationToken ct = default) =>
-            Task.FromResult<M5aznProductInfo?>(new M5aznProductInfo(productId, "Item", "SKU", Price, 5, null));
+        public ConcurrentDictionary<long, M5aznCatalogProduct> Details { get; } = new();
+
+        public void ListPage(params M5aznCatalogProduct[] products) => Pages.Add(new M5aznProductPage(products, false, null));
+
+        public Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default) =>
+            Task.FromResult(page <= Pages.Count
+                ? Pages[page - 1] with { HasMore = page < Pages.Count }
+                : new M5aznProductPage([], false, null));
+
+        public Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default) =>
+            Task.FromResult(Details.TryGetValue(productId, out var d) ? d : null);
 
         public Task<string?> CheckSignInAsync(CancellationToken ct = default) => Task.FromResult<string?>(null);
     }

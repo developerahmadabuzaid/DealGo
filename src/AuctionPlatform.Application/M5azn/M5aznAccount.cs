@@ -22,7 +22,8 @@ public sealed record M5aznAccount(
     bool AutoSubmit,
     decimal ProfitPercentage,
     M5aznSettingsSource Source,
-    bool PasswordUnreadable = false)
+    bool PasswordUnreadable = false,
+    string DeliveryTime = AuctionPlatform.Domain.Entities.M5aznSettings.DefaultDeliveryTime)
 {
     public bool HasCredentials => !string.IsNullOrWhiteSpace(Email) && !string.IsNullOrWhiteSpace(Password);
 
