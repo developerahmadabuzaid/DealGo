@@ -72,9 +72,25 @@ class AuctionApp extends ConsumerWidget {
       ],
       // Arabic lays out right-to-left; Flutter derives the direction from the locale.
       routerConfig: _router(ref),
-      builder: (context, child) => _ReadableWidth(child: child),
+      // The iPhone keyboard has no key that closes it. Scrolling a page, or tapping anywhere that
+      // is not a text field, puts it away, as people expect from other apps.
+      scrollBehavior: const _AppScrollBehavior(),
+      builder: (context, child) => GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: _ReadableWidth(child: child),
+      ),
     );
   }
+}
+
+/// Every scrolling page closes the keyboard when the user drags it.
+class _AppScrollBehavior extends MaterialScrollBehavior {
+  const _AppScrollBehavior();
+
+  @override
+  ScrollViewKeyboardDismissBehavior getKeyboardDismissBehavior(BuildContext context) =>
+      ScrollViewKeyboardDismissBehavior.onDrag;
 }
 
 /// Keeps the app readable on a laptop or a large monitor.
@@ -144,8 +160,7 @@ GoRouter _router(WidgetRef ref) {
         parentNavigatorKey: _rootKey,
         builder: (_, state) => LoginScreen(from: state.uri.queryParameters['from']),
       ),
-      GoRoute(
-          path: '/complete-profile', builder: (_, _) => const CompleteProfileScreen()),
+      GoRoute(path: '/complete-profile', builder: (_, _) => const CompleteProfileScreen()),
       GoRoute(
         path: '/terms',
         parentNavigatorKey: _rootKey,
@@ -156,28 +171,33 @@ GoRouter _router(WidgetRef ref) {
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) => _MainShell(shell: navigationShell),
         branches: [
-          StatefulShellBranch(navigatorKey: _shellKey, routes: [
-            GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
+          StatefulShellBranch(
+            navigatorKey: _shellKey,
+            routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
                 path: '/auctions',
+                builder: (_, state) => AuctionsScreen(initialTab: state.uri.queryParameters['tab']),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/store',
                 builder: (_, state) =>
-                    AuctionsScreen(initialTab: state.uri.queryParameters['tab'])),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/store',
-              builder: (_, state) =>
-                  StoreScreen(categoryId: state.uri.queryParameters['categoryId']),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),
-          ]),
+                    StoreScreen(categoryId: state.uri.queryParameters['categoryId']),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen())],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen())],
+          ),
         ],
       ),
 
@@ -200,15 +220,14 @@ GoRouter _router(WidgetRef ref) {
       GoRoute(
         parentNavigatorKey: _rootKey,
         path: '/store/products',
-        builder: (_, state) =>
-            StoreProductsScreen(
-              categoryId: state.uri.queryParameters['categoryId'],
-              initialSearch: state.uri.queryParameters['q'],
-              offersOnly: state.uri.queryParameters['offers'] == '1',
-              creditOnly: state.uri.queryParameters['credit'] == '1',
-              sortBy: state.uri.queryParameters['sort'],
-              title: state.uri.queryParameters['title'],
-            ),
+        builder: (_, state) => StoreProductsScreen(
+          categoryId: state.uri.queryParameters['categoryId'],
+          initialSearch: state.uri.queryParameters['q'],
+          offersOnly: state.uri.queryParameters['offers'] == '1',
+          creditOnly: state.uri.queryParameters['credit'] == '1',
+          sortBy: state.uri.queryParameters['sort'],
+          title: state.uri.queryParameters['title'],
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
@@ -263,7 +282,12 @@ class _MainShell extends ConsumerWidget {
 
     return Scaffold(
       // One bar for the whole app: it is drawn above the tabs' own pages and never scrolls away.
-      body: Column(children: [const AppHeader(), Expanded(child: shell)]),
+      body: Column(
+        children: [
+          const AppHeader(),
+          Expanded(child: shell),
+        ],
+      ),
       // Support is one tap away on every tab.
       floatingActionButton: const WhatsAppSupportButton(),
       bottomNavigationBar: NavigationBar(
@@ -276,25 +300,30 @@ class _MainShell extends ConsumerWidget {
         },
         destinations: [
           NavigationDestination(
-              icon: const Icon(Icons.home_outlined),
-              selectedIcon: const Icon(Icons.home_rounded),
-              label: t.home),
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home_rounded),
+            label: t.home,
+          ),
           NavigationDestination(
-              icon: const Icon(Icons.gavel_outlined),
-              selectedIcon: const Icon(Icons.gavel_rounded),
-              label: t.auctions),
+            icon: const Icon(Icons.gavel_outlined),
+            selectedIcon: const Icon(Icons.gavel_rounded),
+            label: t.auctions,
+          ),
           NavigationDestination(
-              icon: const Icon(Icons.storefront_outlined),
-              selectedIcon: const Icon(Icons.storefront_rounded),
-              label: t.store),
+            icon: const Icon(Icons.storefront_outlined),
+            selectedIcon: const Icon(Icons.storefront_rounded),
+            label: t.store,
+          ),
           NavigationDestination(
-              icon: const Icon(Icons.account_balance_wallet_outlined),
-              selectedIcon: const Icon(Icons.account_balance_wallet_rounded),
-              label: t.wallet),
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: const Icon(Icons.account_balance_wallet_rounded),
+            label: t.wallet,
+          ),
           NavigationDestination(
-              icon: const Icon(Icons.person_outline_rounded),
-              selectedIcon: const Icon(Icons.person_rounded),
-              label: t.profile),
+            icon: const Icon(Icons.person_outline_rounded),
+            selectedIcon: const Icon(Icons.person_rounded),
+            label: t.profile,
+          ),
         ],
       ),
     );

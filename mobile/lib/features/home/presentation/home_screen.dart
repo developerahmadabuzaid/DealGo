@@ -34,6 +34,39 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  /*
+   * The feed at the bottom never runs out while the store has more: near the end of the page the
+   * next page of products is fetched and added under it, as people expect from a shop.
+   */
+  final _more = <StoreProduct>[];
+  int _nextPage = 1;
+  bool _loadingMore = false;
+  bool _noMore = false;
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || _noMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page =
+          await ref.read(storeRepositoryProvider).products(page: _nextPage, pageSize: 20);
+      if (!mounted) return;
+      setState(() {
+        _more.addAll(page.items);
+        _nextPage++;
+        _noMore = page.items.isEmpty || _nextPage > page.totalPages;
+      });
+    } catch (_) {
+      // The next scroll tries again.
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis == Axis.vertical && n.metrics.extentAfter < 600) _loadMore();
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -84,7 +117,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final page = Scaffold(
         body: RefreshIndicator(
           edgeOffset: MediaQuery.paddingOf(context).top,
-          onRefresh: () async => _refresh(ref),
+          onRefresh: () async => _refresh(ref, startOver: true),
+          child: NotificationListener<ScrollNotification>(
+          onNotification: _onScroll,
           child: CustomScrollView(
             slivers: [
               // A short strip for whatever an administrator is advertising: the picture
@@ -193,8 +228,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SliverToBoxAdapter(child: _StorePromo()),
               ..._feed(context, t, home, storeLoading),
+              if (_loadingMore)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(AppTheme.space4),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ),
               const SliverToBoxAdapter(child: SizedBox(height: AppTheme.space8)),
           ],
+        ),
         ),
       ),
     );
@@ -202,7 +245,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return AutoRefresh(onRefresh: () => _refresh(ref), child: page);
   }
 
-  void _refresh(WidgetRef ref) {
+  /// The timed refresh keeps what has been scrolled into view; pulling down starts the feed over.
+  void _refresh(WidgetRef ref, {bool startOver = false}) {
+    if (startOver && mounted) {
+      setState(() {
+        _more.clear();
+        _nextPage = 1;
+        _noMore = false;
+      });
+    }
     ref.invalidate(storeHomeProvider);
     ref.invalidate(featuredAuctionsProvider);
     ref.invalidate(auctionListProvider('live'));
@@ -260,6 +311,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ...?home?.popular,
       ...?home?.newArrivals,
       ...?home?.creditEligible,
+      ..._more,
     ].where((p) => seen.add(p.id)).toList();
 
     if (!loading && products.isEmpty) return const [];

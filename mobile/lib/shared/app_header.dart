@@ -3,9 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'dart:async';
+
+import '../core/config/app_config.dart';
+import '../core/format/formatters.dart';
 import '../core/localization/app_strings.dart';
 import '../core/providers.dart';
 import '../core/theme/app_theme.dart';
+import '../features/store/data/store_repository.dart' show StoreProduct;
 import 'brand.dart';
 
 /// The bar at the top of every tab: the menu, the mark, the notifications, the basket and the
@@ -55,66 +60,66 @@ class AppHeader extends ConsumerWidget {
        */
       value: _overlay,
       child: DecoratedBox(
-      decoration: decoration,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppTheme.space2,
-            2,
-            AppTheme.space2,
-            AppTheme.space2,
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  _HeaderIcon(
-                    icon: Icons.menu_rounded,
-                    tooltip: t.menu,
-                    count: 0,
-                    size: 24,
-                    onTap: () => openAppMenu(context),
-                  ),
-                  const Expanded(
-                    child: Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          DealGoMark(height: 26, onDark: true),
-                          SizedBox(width: 6),
-                          DealGoWordmark(fontSize: 18, onDark: true),
-                        ],
+        decoration: decoration,
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.space2,
+              2,
+              AppTheme.space2,
+              AppTheme.space2,
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _HeaderIcon(
+                      icon: Icons.menu_rounded,
+                      tooltip: t.menu,
+                      count: 0,
+                      size: 24,
+                      onTap: () => openAppMenu(context),
+                    ),
+                    const Expanded(
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            DealGoMark(height: 26, onDark: true),
+                            SizedBox(width: 6),
+                            DealGoWordmark(fontSize: 18, onDark: true),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  _HeaderIcon(
-                    icon: Icons.notifications_none_rounded,
-                    tooltip: t.notifications,
-                    count: unread,
-                    size: 24,
-                    onTap: () => context.push('/notifications'),
-                  ),
-                  _HeaderIcon(
-                    icon: Icons.shopping_bag_outlined,
-                    tooltip: t.cart,
-                    count: inCart,
-                    size: 24,
-                    showCount: true,
-                    onTap: () => context.push('/store/cart'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              // Held in from the edges, so it reads as a box on the bar rather than a second bar.
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: AppTheme.space2),
-                child: _SearchRow(),
-              ),
-            ],
+                    _HeaderIcon(
+                      icon: Icons.notifications_none_rounded,
+                      tooltip: t.notifications,
+                      count: unread,
+                      size: 24,
+                      onTap: () => context.push('/notifications'),
+                    ),
+                    _HeaderIcon(
+                      icon: Icons.shopping_bag_outlined,
+                      tooltip: t.cart,
+                      count: inCart,
+                      size: 24,
+                      showCount: true,
+                      onTap: () => context.push('/store/cart'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                // Held in from the edges, so it reads as a box on the bar rather than a second bar.
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: AppTheme.space2),
+                  child: _SearchRow(),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -135,8 +140,7 @@ class BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
   final PreferredSizeWidget? bottom;
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
+  Size get preferredSize => Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 
   @override
   Widget build(BuildContext context) {
@@ -145,23 +149,23 @@ class BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
     return DecoratedBox(
       decoration: AppHeader.decoration,
       child: AppBar(
-      title: title,
-      actions: actions,
-      bottom: bottom,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      systemOverlayStyle: _overlay,
-      backgroundColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      shape: const Border(),
-      foregroundColor: Colors.white,
-      iconTheme: const IconThemeData(color: Colors.white),
-      actionsIconTheme: const IconThemeData(color: Colors.white),
-      titleTextStyle: const TextStyle(
-        color: Colors.white,
-        fontSize: 17,
-        fontWeight: FontWeight.w800,
-      ),
+        title: title,
+        actions: actions,
+        bottom: bottom,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        systemOverlayStyle: _overlay,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        shape: const Border(),
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -236,8 +240,7 @@ class HeaderSearchBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     // No colour of its own: the bar's picture shows through, as it does on the main page.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppTheme.space4, 0, AppTheme.space4, AppTheme.space2),
+      padding: const EdgeInsets.fromLTRB(AppTheme.space4, 0, AppTheme.space4, AppTheme.space2),
       child: const _SearchRow(),
     );
   }
@@ -252,6 +255,10 @@ class _SearchRow extends ConsumerStatefulWidget {
 
 class _SearchRowState extends ConsumerState<_SearchRow> {
   final _query = TextEditingController();
+  final _focus = FocusNode();
+
+  /// The text the latest suggestions were asked for. A slower, older answer is dropped.
+  String _asked = '';
 
   /// What is typed and the hint share one line height, so the two sit at the same place.
   static const _textStyle = TextStyle(
@@ -264,7 +271,31 @@ class _SearchRowState extends ConsumerState<_SearchRow> {
   @override
   void dispose() {
     _query.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  /// Products whose name matches what is typed so far, asked for once the typing pauses.
+  Future<Iterable<StoreProduct>> _suggest(TextEditingValue value) async {
+    final q = value.text.trim();
+    _asked = q;
+    if (q.length < 2) return const [];
+
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (_asked != q || !mounted) return const [];
+
+    try {
+      final page = await ref.read(storeRepositoryProvider).products(search: q, pageSize: 6);
+      return _asked == q ? page.items : const [];
+    } catch (_) {
+      // Suggestions are a convenience; the search itself still works without them.
+      return const [];
+    }
+  }
+
+  void _pick(StoreProduct product) {
+    _query.text = product.name;
+    _search();
   }
 
   void _search() {
@@ -298,45 +329,55 @@ class _SearchRowState extends ConsumerState<_SearchRow> {
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _query,
-              textInputAction: TextInputAction.search,
-              textAlignVertical: TextAlignVertical.center,
-              onSubmitted: (_) => _search(),
-              cursorColor: AppTheme.brand,
-              style: _textStyle,
-              /*
+            child: RawAutocomplete<StoreProduct>(
+              textEditingController: _query,
+              focusNode: _focus,
+              optionsBuilder: _suggest,
+              displayStringForOption: (p) => p.name,
+              onSelected: _pick,
+              optionsViewBuilder: (context, onSelected, options) =>
+                  _Suggestions(options: options.toList(), onSelected: onSelected),
+              fieldViewBuilder: (context, controller, focusNode, _) => TextField(
+                controller: controller,
+                focusNode: focusNode,
+                textInputAction: TextInputAction.search,
+                textAlignVertical: TextAlignVertical.center,
+                onSubmitted: (_) => _search(),
+                cursorColor: AppTheme.brand,
+                style: _textStyle,
+                /*
                * One fixed line height, with the spare room shared evenly above and below. The
                * iPhone's Arabic font is much taller than its size, so without this the line it
                * lays out is taller than the pill: the letters ride up to the top while the cursor
                * stays in the middle, and the two no longer line up.
                */
-              strutStyle: const StrutStyle(
-                fontSize: 14,
-                height: 1.4,
-                leadingDistribution: TextLeadingDistribution.even,
-                forceStrutHeight: true,
-              ),
-              cursorHeight: 18,
-              /*
+                strutStyle: const StrutStyle(
+                  fontSize: 14,
+                  height: 1.4,
+                  leadingDistribution: TextLeadingDistribution.even,
+                  forceStrutHeight: true,
+                ),
+                cursorHeight: 18,
+                /*
                * The field fills the pill's height and centres its one line in it. A collapsed
                * field (isCollapsed) measured its line as zero high, so "centre" put the text and
                * the cursor about 10 px above the middle, partly above the pill itself.
                */
-              expands: true,
-              maxLines: null,
-              minLines: null,
-              // Every border is cleared explicitly: the app theme draws outlined fields, and this
-              // one sits inside its own white pill.
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-                filled: false,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                hintText: t.searchProducts,
-                hintStyle: _textStyle.copyWith(color: const Color(0xFF7A808A)),
+                expands: true,
+                maxLines: null,
+                minLines: null,
+                // Every border is cleared explicitly: the app theme draws outlined fields, and this
+                // one sits inside its own white pill.
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  hintText: t.searchProducts,
+                  hintStyle: _textStyle.copyWith(color: const Color(0xFF7A808A)),
+                ),
               ),
             ),
           ),
@@ -354,6 +395,72 @@ class _SearchRowState extends ConsumerState<_SearchRow> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The products suggested under the search box while someone types. Tapping one searches for it.
+class _Suggestions extends StatelessWidget {
+  const _Suggestions({required this.options, required this.onSelected});
+
+  final List<StoreProduct> options;
+  final AutocompleteOnSelected<StoreProduct> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+
+    return Align(
+      alignment: AlignmentDirectional.topStart,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Material(
+          elevation: 6,
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 320, maxWidth: (width - 32).clamp(200, 600)),
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              itemCount: options.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, i) {
+                final p = options[i];
+                final image = AppConfig.mediaUrl(p.imageUrl);
+                return ListTile(
+                  dense: true,
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: image == null
+                          ? const Icon(Icons.search_rounded, color: AppTheme.ink)
+                          : Image.network(
+                              image,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  const Icon(Icons.search_rounded, color: AppTheme.ink),
+                            ),
+                    ),
+                  ),
+                  title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    Fmt.money(
+                      p.price,
+                      p.currency,
+                      locale: Localizations.localeOf(context).languageCode,
+                    ),
+                  ),
+                  onTap: () => onSelected(p),
+                );
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -386,7 +493,10 @@ class _HeaderIcon extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onTap,
       visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: AppTheme.tapTarget, minHeight: AppTheme.tapTarget),
+      constraints: const BoxConstraints(
+        minWidth: AppTheme.tapTarget,
+        minHeight: AppTheme.tapTarget,
+      ),
       icon: showCount
           ? Badge.count(count: count, isLabelVisible: count > 0, child: glyph)
           : Badge(isLabelVisible: count > 0, smallSize: 8, child: glyph),
