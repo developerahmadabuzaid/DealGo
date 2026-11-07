@@ -264,3 +264,74 @@ public sealed class TawkedOptions
     /// <summary>True for a sandbox key, which is worth saying out loud in the log at startup.</summary>
     public bool IsSandbox => ApiKey.StartsWith("tk_test_", StringComparison.Ordinal);
 }
+
+/// <summary>
+/// M5azn (m5azn.com), the Saudi dropshipping supplier: products linked to an M5azn product are
+/// packed and delivered from M5azn's warehouse. Off unless <see cref="Enabled"/> is set and the
+/// seller account is given (docs/M5AZN.md). Credentials come from configuration only.
+/// </summary>
+public sealed class M5aznOptions
+{
+    public const string SectionName = "M5azn";
+
+    /// <summary>The feature flag. Off: nothing is sent, synced or called, and the app works as before.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>KSA: https://m5azn.com, UAE: https://m5azn.ae, Oman: https://m5azn.om.</summary>
+    public string BaseUrl { get; set; } = "https://m5azn.com";
+
+    /// <summary>The M5azn seller account. Never in the repository: environment variables or web.config only.</summary>
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+
+    /// <summary>Send each paid order or prize without waiting for an administrator. Off: they wait for approval.</summary>
+    public bool AutoSubmit { get; set; } = true;
+
+    /// <summary>"card" because the customer has already paid DealGo; "cod" would have M5azn collect on delivery.</summary>
+    public string PaymentMethod { get; set; } = "card";
+
+    /// <summary>The name M5azn shows for where the order came from.</summary>
+    public string PlatformName { get; set; } = "DealGo";
+
+    /// <summary>Only orders and prizes paid this recently are picked up, so switching on never sends old ones.</summary>
+    public int LookbackDays { get; set; } = 3;
+
+    /// <summary>How often the worker looks for new work, in seconds.</summary>
+    public int WorkerIntervalSeconds { get; set; } = 120;
+
+    /// <summary>How often a shipment still on its way is asked about, in minutes.</summary>
+    public int StatusSyncMinutes { get; set; } = 30;
+
+    /// <summary>Copy M5azn's stock onto linked store products.</summary>
+    public bool StockSyncEnabled { get; set; } = true;
+
+    public int StockSyncMinutes { get; set; } = 60;
+
+    /// <summary>Attempts at sending one order before it is marked failed for an administrator.</summary>
+    public int MaxAttempts { get; set; } = 5;
+
+    public int TimeoutSeconds { get; set; } = 30;
+
+    /// <summary>The fixed headers every M5azn call carries.</summary>
+    public string Language { get; set; } = "ar";
+    public string Website { get; set; } = "M5AZN";
+    public string ApiVersion { get; set; } = "1.0";
+    public string AppVersion { get; set; } = "1.0";
+    public string Device { get; set; } = "Web";
+
+    public bool HasCredentials =>
+        !string.IsNullOrWhiteSpace(Email) && !string.IsNullOrWhiteSpace(Password);
+
+    public bool IsActive => Enabled && HasCredentials;
+
+    /// <summary>The settings that are missing while <see cref="Enabled"/> is on, for a clear startup error.</summary>
+    public IReadOnlyList<string> MissingSettings()
+    {
+        if (!Enabled) return Array.Empty<string>();
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(Email)) missing.Add($"{SectionName}:Email");
+        if (string.IsNullOrWhiteSpace(Password)) missing.Add($"{SectionName}:Password");
+        if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out _)) missing.Add($"{SectionName}:BaseUrl");
+        return missing;
+    }
+}

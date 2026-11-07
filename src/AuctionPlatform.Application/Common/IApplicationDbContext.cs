@@ -50,6 +50,8 @@ public interface IApplicationDbContext
 
     DbSet<AppAd> AppAds { get; }
 
+    DbSet<M5aznShipment> M5aznShipments { get; }
+
     DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

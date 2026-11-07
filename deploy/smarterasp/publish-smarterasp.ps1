@@ -253,6 +253,45 @@ $r2Line = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($r2Marker) } 
 $r2Indent = if ($r2Line) { $r2Line.Substring(0, $r2Line.IndexOf($r2Marker)) } else { '' }
 $webConfig = $webConfig.Replace($r2Marker, (@($r2Lines) -join "`n$r2Indent"))
 
+# M5azn: the dropshipping supplier that packs and delivers products and prizes linked to it.
+# Optional: without it nothing is ever sent to M5azn. Set $M5aznEmail and $M5aznPassword (the
+# M5azn seller account) in local-secrets.ps1; docs/M5AZN.md has the rest. The optional values
+# below keep the server's defaults when they are not set.
+$m5aznEmail = if ($M5aznEmail) { "$M5aznEmail".Trim() } else { '' }
+$m5aznPassword = if ($M5aznPassword) { "$M5aznPassword" } else { '' }
+if (($m5aznEmail -and -not $m5aznPassword) -or ($m5aznPassword -and -not $m5aznEmail)) {
+    throw 'M5azn is half set up: M5aznEmail and M5aznPassword are both needed in local-secrets.ps1 (see docs/M5AZN.md).'
+}
+$m5aznComplete = [bool]($m5aznEmail -and $m5aznPassword)
+$m5aznOptional = [ordered]@{
+    BaseUrl       = $M5aznBaseUrl        # https://m5azn.com (KSA, the default), .ae or .om
+    AutoSubmit    = $M5aznAutoSubmit     # 'true' (default) sends paid orders on its own; 'false' waits for approval
+    PaymentMethod = $M5aznPaymentMethod  # 'card' (default: the customer already paid DealGo) or 'cod'
+    StockSyncEnabled = $M5aznStockSync   # 'true' (default) or 'false'
+}
+if ($m5aznComplete -and $m5aznOptional.BaseUrl -and "$($m5aznOptional.BaseUrl)" -notmatch '^https://[^/\s]+') {
+    throw "M5aznBaseUrl must be an https address such as https://m5azn.com (it is '$($m5aznOptional.BaseUrl)')."
+}
+if ($m5aznComplete -and $m5aznOptional.PaymentMethod -and "$($m5aznOptional.PaymentMethod)" -notin @('card', 'cod')) {
+    throw "M5aznPaymentMethod must be 'card' or 'cod' (it is '$($m5aznOptional.PaymentMethod)')."
+}
+$m5aznLines = @()
+if ($m5aznComplete) {
+    $m5aznLines += '<environmentVariable name="M5azn__Enabled" value="true" />'
+    $m5aznLines += "<environmentVariable name=""M5azn__Email"" value=""$([System.Security.SecurityElement]::Escape($m5aznEmail))"" />"
+    $m5aznLines += "<environmentVariable name=""M5azn__Password"" value=""$([System.Security.SecurityElement]::Escape($m5aznPassword))"" />"
+    foreach ($key in $m5aznOptional.Keys) {
+        $value = "$($m5aznOptional[$key])".Trim()
+        if ($value) {
+            $m5aznLines += "<environmentVariable name=""M5azn__$key"" value=""$([System.Security.SecurityElement]::Escape($value))"" />"
+        }
+    }
+}
+$m5aznMarker = '<!-- __M5AZN__ -->'
+$m5aznLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($m5aznMarker) } | Select-Object -First 1
+$m5aznIndent = if ($m5aznLine) { $m5aznLine.Substring(0, $m5aznLine.IndexOf($m5aznMarker)) } else { '' }
+$webConfig = $webConfig.Replace($m5aznMarker, (@($m5aznLines) -join "`n$m5aznIndent"))
+
 $fbMarker = '<!-- __FIREBASE__ -->'
 $fbLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($fbMarker) } | Select-Object -First 1
 $fbIndent = if ($fbLine) { $fbLine.Substring(0, $fbLine.IndexOf($fbMarker)) } else { '' }
@@ -454,6 +493,14 @@ if ($r2Complete) {
 }
 else {
     Write-Warning 'Cloudflare R2 is not set up: uploaded pictures stay in wwwroot/uploads on the host and are lost if the site folder is wiped. Set the R2 values in local-secrets.ps1 (docs/R2-STORAGE.md).'
+}
+
+if ($m5aznComplete) {
+    $m5aznAuto = if ("$M5aznAutoSubmit".Trim() -eq 'false') { 'off: paid orders wait for approval on the M5azn page' } else { 'on' }
+    Write-Host "`nM5azn is on for seller $m5aznEmail (automatic sending $m5aznAuto). Every order it sends is charged by M5azn." -ForegroundColor Yellow
+}
+else {
+    Write-Host "`nM5azn is not set up: nothing is sent to it (docs/M5AZN.md)." -ForegroundColor DarkGray
 }
 
 if (-not $paymobComplete) {

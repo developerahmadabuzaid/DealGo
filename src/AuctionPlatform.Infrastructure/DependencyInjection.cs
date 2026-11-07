@@ -3,6 +3,7 @@ using AuctionPlatform.Application.Auctions;
 using AuctionPlatform.Application.Bidding;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Identity;
+using AuctionPlatform.Application.M5azn;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Prizes;
 using AuctionPlatform.Application.Site;
@@ -35,6 +36,7 @@ public static class DependencyInjection
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
         services.Configure<TawkedOptions>(configuration.GetSection(TawkedOptions.SectionName));
         services.Configure<PaymobOptions>(configuration.GetSection(PaymobOptions.SectionName));
+        services.Configure<M5aznOptions>(configuration.GetSection(M5aznOptions.SectionName));
 
         AddPersistence(services, configuration);
         AddIdentity(services);
@@ -188,5 +190,10 @@ public static class DependencyInjection
         services.AddScoped<IWalletTopUpService, WalletTopUpService>();
         services.AddScoped<IPaymentMonitorService, PaymentMonitorService>();
         services.AddScoped<IMoneyOperationsService, MoneyOperationsService>();
+
+        // M5azn dropshipping (docs/M5AZN.md). Always registered; it does nothing while switched off.
+        services.AddSingleton<M5aznTokenStore>();
+        services.AddHttpClient<IM5aznClient, M5aznClient>();
+        services.AddScoped<IM5aznFulfilmentService, M5aznFulfilmentService>();
     }
 }

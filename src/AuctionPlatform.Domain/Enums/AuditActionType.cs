@@ -49,5 +49,11 @@ public enum AuditActionType
     SupportSettingsChanged = 29,
 
     /// <summary>Staff sent a notification to every user from the dashboard.</summary>
-    NotificationBroadcast = 30
+    NotificationBroadcast = 30,
+
+    /// <summary>Staff linked a store product or a prize to an M5azn product, or removed the link.</summary>
+    M5aznLinkChanged = 31,
+
+    /// <summary>Staff sent an order or prize to M5azn by hand, or sent a failed one again.</summary>
+    M5aznShipmentSubmitted = 32
 }

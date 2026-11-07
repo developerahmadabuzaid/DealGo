@@ -53,6 +53,8 @@ public class ApplicationDbContext
 
     public DbSet<AppAd> AppAds => Set<AppAd>();
 
+    public DbSet<M5aznShipment> M5aznShipments => Set<M5aznShipment>();
+
     DbSet<ApplicationUser> IApplicationDbContext.Users => Set<ApplicationUser>();
 
     /// <summary>

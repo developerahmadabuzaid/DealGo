@@ -8,6 +8,7 @@ import '../features/auctions/data/auction_repository.dart';
 import '../features/home/data/ads_repository.dart';
 import '../features/support/support.dart';
 import '../features/prizes/data/prize_repository.dart';
+import '../features/shipping/data/shipment_repository.dart';
 import '../features/store/data/store_repository.dart';
 import '../features/wallets/data/wallet_repository.dart';
 import 'errors/api_exception.dart';
@@ -256,6 +257,16 @@ final categoryProductsProvider = FutureProvider.autoDispose.family((ref, String 
 
 final myOrdersProvider = FutureProvider.autoDispose(
     (ref) => ref.watch(storeRepositoryProvider).orders());
+
+final shipmentRepositoryProvider =
+    Provider((ref) => ShipmentRepository(ref.watch(apiClientProvider)));
+
+/// M5azn delivery tracking for one order or prize; null when M5azn is not delivering it.
+final storeOrderShipmentProvider = FutureProvider.autoDispose
+    .family((ref, String orderId) => ref.watch(shipmentRepositoryProvider).forStoreOrder(orderId));
+
+final prizeClaimShipmentProvider = FutureProvider.autoDispose
+    .family((ref, String claimId) => ref.watch(shipmentRepositoryProvider).forPrizeClaim(claimId));
 
 final auctionListProvider = FutureProvider.autoDispose
     .family((ref, String group) => ref.watch(auctionRepositoryProvider).list(group: group));

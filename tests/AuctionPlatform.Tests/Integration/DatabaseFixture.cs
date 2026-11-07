@@ -2,6 +2,7 @@ using AuctionPlatform.Application.Auctions;
 using AuctionPlatform.Application.Bidding;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Identity;
+using AuctionPlatform.Application.M5azn;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Prizes;
 using AuctionPlatform.Application.Realtime;
@@ -62,7 +63,11 @@ public sealed class DatabaseFixture : IAsyncLifetime
     /// Each scope gets its own DbContext and its own connection, which is what lets a test issue
     /// genuinely parallel requests the way separate HTTP calls would.
     /// </summary>
-    public AsyncServiceScope CreateScope(Guid? actingUserId = null, bool failWalletCredits = false)
+    public AsyncServiceScope CreateScope(
+        Guid? actingUserId = null,
+        bool failWalletCredits = false,
+        IM5aznClient? m5azn = null,
+        Action<M5aznOptions>? configureM5azn = null)
     {
         var services = new ServiceCollection();
 
@@ -160,6 +165,17 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IAdminWithdrawalService, AdminWithdrawalService>();
         services.AddScoped<ISiteContentService, SiteContentService>();
         services.AddScoped<ISupportService, SupportService>();
+
+        // M5azn is off unless a test hands in its own stand-in for the supplier's API.
+        services.Configure<M5aznOptions>(o =>
+        {
+            o.Enabled = m5azn is not null;
+            o.Email = m5azn is null ? string.Empty : "seller@example.test";
+            o.Password = m5azn is null ? string.Empty : "not-a-real-password";
+            configureM5azn?.Invoke(o);
+        });
+        services.AddSingleton(m5azn ?? new DisabledM5aznClient());
+        services.AddScoped<IM5aznFulfilmentService, M5aznFulfilmentService>();
 
         return services.BuildServiceProvider().CreateAsyncScope();
     }
@@ -259,6 +275,24 @@ public sealed class DatabaseFixture : IAsyncLifetime
         public Task<TawkedCheckOutcome> CheckAsync(string verificationId, string code,
             CancellationToken ct = default) =>
             throw new InvalidOperationException("The provider is disabled and must not be called.");
+    }
+
+    /// <summary>M5azn switched off: any call at all is a bug.</summary>
+    private sealed class DisabledM5aznClient : IM5aznClient
+    {
+        public bool IsEnabled => false;
+
+        public Task<M5aznSubmitResult> CreateOrderAsync(M5aznOrderRequest order, CancellationToken ct = default) =>
+            throw new InvalidOperationException("M5azn is disabled and must not be called.");
+
+        public Task<M5aznRemoteOrder?> GetOrderAsync(string orderId, CancellationToken ct = default) =>
+            throw new InvalidOperationException("M5azn is disabled and must not be called.");
+
+        public Task<IReadOnlyList<M5aznStockChange>> GetQuantityChangesAsync(int hours, CancellationToken ct = default) =>
+            throw new InvalidOperationException("M5azn is disabled and must not be called.");
+
+        public Task<M5aznProductInfo?> GetProductAsync(long productId, CancellationToken ct = default) =>
+            throw new InvalidOperationException("M5azn is disabled and must not be called.");
     }
 
     /// <summary>Delivery is out of scope here; the code comes back on the challenge.</summary>

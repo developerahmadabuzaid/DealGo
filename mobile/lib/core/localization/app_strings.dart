@@ -440,6 +440,26 @@ class AppStrings {
   String get addAddress => _t('إضافة عنوان', 'Add address');
   String get editAddress => _t('تعديل العنوان', 'Edit address');
   String get deliveryAddress => _t('عنوان التوصيل', 'Delivery address');
+
+  // ---- shipment tracking (M5azn)
+  String get shipmentTitle => _t('الشحن والتتبع', 'Shipping and tracking');
+  String get shipmentBySupplier => _t('يُجهَّز ويُشحن من مستودع المورّد', "Packed and shipped from the supplier's warehouse");
+  String shipmentStatus(String status) => switch (status) {
+        'Submitted' => _t('تم إرسال الطلب للمورّد', 'Sent to the supplier'),
+        'Processing' => _t('قيد التجهيز', 'Being prepared'),
+        'Shipped' => _t('تم الشحن', 'Shipped'),
+        'Delivered' => _t('تم التوصيل', 'Delivered'),
+        'Cancelled' => _t('أُلغي الشحن', 'Shipment cancelled'),
+        _ => status,
+      };
+  List<String> get shipmentSteps => isArabic
+      ? const ['أُرسل', 'قيد التجهيز', 'تم الشحن', 'تم التوصيل']
+      : const ['Sent', 'Preparing', 'Shipped', 'Delivered'];
+  String get trackingNumber => _t('رقم التتبع', 'Tracking number');
+  String get carrier => _t('شركة الشحن', 'Courier');
+  String get trackShipment => _t('تتبّع الشحنة', 'Track shipment');
+  String get copied => _t('تم النسخ', 'Copied');
+  String lastUpdated(String when) => _t('آخر تحديث: $when', 'Last updated: $when');
   String get chooseDeliveryAddress => _t('اختر عنوان التوصيل', 'Choose a delivery address');
   String get changeAddress => _t('تغيير', 'Change');
   String get noAddressesYet => _t(

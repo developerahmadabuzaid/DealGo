@@ -34,5 +34,14 @@ public class AuctionPrize : Entity
 
     public string? Description { get; set; }
 
+    /// <summary>
+    /// The M5azn product this prize is, when M5azn delivers it (docs/M5AZN.md). Null for prizes
+    /// DealGo delivers itself. A paid or claimed prize with an address is then sent to M5azn.
+    /// </summary>
+    public long? M5aznProductId { get; set; }
+
+    /// <summary>M5azn's SKU for the prize (the variant), sent with the order.</summary>
+    public string? M5aznSku { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

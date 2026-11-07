@@ -1,0 +1,572 @@
+using System.Collections.Concurrent;
+using AuctionPlatform.Application.Common;
+using AuctionPlatform.Application.M5azn;
+using AuctionPlatform.Application.Prizes;
+using AuctionPlatform.Application.Store;
+using AuctionPlatform.Domain.Common;
+using AuctionPlatform.Domain.Entities;
+using AuctionPlatform.Domain.Enums;
+using AuctionPlatform.Infrastructure.Persistence;
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace AuctionPlatform.Tests.Integration;
+
+/// <summary>
+/// Orders and prizes handed to M5azn, against a real database and a stand-in for M5azn's API.
+///
+/// What matters most: a paid order is sent once and only once — money moves at M5azn on every
+/// send — and what M5azn says afterwards is carried onto the order without ever moving it
+/// backwards, refunding anything, or touching lines DealGo ships itself.
+/// </summary>
+[Collection("database")]
+public class M5aznFulfilmentTests
+{
+    private const long M5aznProduct = 1947201;
+    private const string M5aznSku = "M2-4-3-4-S";
+
+    private readonly DatabaseFixture _fixture;
+
+    public M5aznFulfilmentTests(DatabaseFixture fixture) => _fixture = fixture;
+
+    // ---------------------------------------------------------------- store orders
+
+    [Fact]
+    public async Task A_paid_order_for_an_M5azn_product_is_sent_once_and_moves_to_processing()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 75m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 2));
+
+        await RunAsync(m5azn);
+        await RunAsync(m5azn);
+
+        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        shipment.Status.Should().Be(M5aznShipmentStatus.Submitted);
+        shipment.RemoteOrderId.Should().Be($"M-{shipment.Reference}");
+        shipment.Attempts.Should().Be(1);
+
+        var sent = m5azn.Created.Where(c => c.Id == shipment.Reference).ToList();
+        sent.Should().ContainSingle("a second pass must never send it again");
+
+        var body = sent[0];
+        body.Total.Should().Be(150m);
+        body.PaymentMethod.Should().Be("card", "the customer already paid DealGo");
+        body.CodAmount.Should().Be(0m);
+        body.PlatformName.Should().Be("DealGo");
+        body.ShippingInfo.CountryCode.Should().Be("SA");
+        body.ShippingInfo.Country.Should().Be("Saudi Arabia");
+        body.ShippingInfo.City.Should().Be("الرياض");
+        body.ShippingInfo.Address.Should().Contain("1234 طريق الملك فهد").And.Contain("العليا").And.Contain("RRRD2929");
+        body.CustomerInfo.FirstName.Should().Be("أحمد");
+        body.CustomerInfo.LastName.Should().Be("علي");
+        body.CustomerInfo.Phone.Should().Be("+966551234567");
+        body.CustomerInfo.Email.Should().EndWith("@test.local");
+        body.Items.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new M5aznOrderItem(1, M5aznProduct, M5aznSku, "Test Item", 2));
+
+        (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Processing);
+    }
+
+    [Fact]
+    public async Task Once_sent_the_customer_can_no_longer_cancel_but_sees_the_tracking()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var (stranger, _) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 40m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await RunAsync(m5azn);
+
+        await using (var scope = _fixture.CreateScope(buyer))
+        {
+            var cancel = () => scope.ServiceProvider.GetRequiredService<IStoreOrderService>()
+                .CancelOrderAsync(buyer, orderId, "changed my mind");
+            (await cancel.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.OrderNotCancellable);
+        }
+
+        await using (var scope = _fixture.CreateScope(buyer, m5azn: m5azn))
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
+
+            var mine = await service.GetStoreOrderTrackingAsync(buyer, orderId);
+            mine.Should().NotBeNull();
+            mine!.Provider.Should().Be("M5azn");
+            mine.Status.Should().Be(M5aznShipmentStatus.Submitted);
+
+            (await service.GetStoreOrderTrackingAsync(stranger, orderId)).Should().BeNull("it is not their order");
+        }
+    }
+
+    [Fact]
+    public async Task What_M5azn_says_is_carried_onto_the_order_forwards_only()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 30m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await RunAsync(m5azn);
+        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+
+        m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "shipped", "AWB-555", "https://track.example/AWB-555", "SMSA");
+        await RefreshAsync(m5azn, shipment.Id);
+
+        var order = await OrderAsync(orderId);
+        order.Status.Should().Be(StoreOrderStatus.Shipped);
+        order.TrackingNumber.Should().Be("AWB-555");
+
+        shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        shipment.Status.Should().Be(M5aznShipmentStatus.Shipped);
+        shipment.Carrier.Should().Be("SMSA");
+        shipment.TrackingUrl.Should().Be("https://track.example/AWB-555");
+
+        // A stale answer must not move it back.
+        m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "processing", null, null, null);
+        await RefreshAsync(m5azn, shipment.Id);
+        (await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId)).Status.Should().Be(M5aznShipmentStatus.Shipped);
+
+        m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "تم التوصيل", null, null, null);
+        await RefreshAsync(m5azn, shipment.Id);
+
+        (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Delivered);
+        (await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId)).DeliveredAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task A_mixed_order_sends_only_the_M5azn_lines_and_is_not_marked_shipped_for_the_rest()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var theirs = await NewProductAsync(price: 20m, linked: true);
+        var ours = await NewProductAsync(price: 10m, linked: false);
+        var orderId = await CheckoutAsync(buyer, addressId, (theirs, 1), (ours, 3));
+
+        await RunAsync(m5azn);
+        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+
+        var body = m5azn.Created.Single(c => c.Id == shipment.Reference);
+        body.Items.Should().ContainSingle().Which.ProductId.Should().Be(M5aznProduct);
+        body.Total.Should().Be(20m, "only M5azn's line is M5azn's to deliver");
+
+        m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "delivered", "AWB-1", null, null);
+        await RefreshAsync(m5azn, shipment.Id);
+
+        (await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId)).Status.Should().Be(M5aznShipmentStatus.Delivered);
+        (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Processing,
+            "DealGo still has its own lines to ship");
+    }
+
+    [Fact]
+    public async Task An_unclear_answer_is_checked_by_reference_and_never_blindly_resent()
+    {
+        // First case: the order did reach M5azn even though the answer was lost.
+        var reached = new FakeM5azn
+        {
+            OnCreate = (fake, order) =>
+            {
+                fake.Remote[order.Id.ToString()] = new M5aznRemoteOrder("R-77", "new", null, null, null);
+                return new M5aznSubmitResult(M5aznSubmitOutcome.Unknown, Message: "timeout");
+            }
+        };
+
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 15m, linked: true);
+        var firstOrder = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await RunAsync(reached);
+        var first = await ShipmentForAsync(M5aznSourceType.StoreOrder, firstOrder);
+        first.Status.Should().BeOneOf(M5aznShipmentStatus.Submitted, M5aznShipmentStatus.Processing);
+        first.RemoteOrderId.Should().Be("R-77");
+        reached.Created.Count(c => c.Id == first.Reference).Should().Be(1);
+
+        // Second case: it did not, and M5azn does not know it. It waits before trying again.
+        var lost = new FakeM5azn
+        {
+            OnCreate = (_, _) => new M5aznSubmitResult(M5aznSubmitOutcome.Unknown, Message: "timeout")
+        };
+        var secondOrder = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await RunAsync(lost);
+        await RunAsync(lost);
+
+        var second = await ShipmentForAsync(M5aznSourceType.StoreOrder, secondOrder);
+        second.Status.Should().Be(M5aznShipmentStatus.Queued);
+        second.Attempts.Should().Be(1);
+        second.NextAttemptAt.Should().BeAfter(DateTime.UtcNow);
+        second.LastError.Should().Contain("may have the order");
+        lost.Created.Count(c => c.Id == second.Reference).Should().Be(1, "the retry waits for its turn");
+    }
+
+    [Fact]
+    public async Task A_refused_order_fails_for_a_person_and_can_be_sent_again_by_hand()
+    {
+        var m5azn = new FakeM5azn
+        {
+            OnCreate = (_, _) => new M5aznSubmitResult(M5aznSubmitOutcome.Rejected, Message: "sku not found")
+        };
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 12m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await RunAsync(m5azn);
+
+        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        shipment.Status.Should().Be(M5aznShipmentStatus.Failed);
+        shipment.LastError.Should().Contain("sku not found");
+        (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Paid, "nothing was sent");
+
+        m5azn.OnCreate = null;   // fixed at M5azn
+        await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+        {
+            var dto = await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().SubmitNowAsync(shipment.Id);
+            dto.Status.Should().Be(M5aznShipmentStatus.Submitted);
+            dto.SourceNumber.Should().StartWith("ORD-");
+        }
+
+        (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Processing);
+    }
+
+    [Fact]
+    public async Task With_automatic_sending_off_orders_wait_for_approval()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 25m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await RunAsync(m5azn, o => o.AutoSubmit = false);
+
+        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        shipment.Status.Should().Be(M5aznShipmentStatus.AwaitingApproval);
+        m5azn.Created.Should().NotContain(c => c.Id == shipment.Reference);
+
+        await using (var scope = _fixture.CreateScope(buyer, m5azn: m5azn))
+        {
+            (await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>()
+                .GetStoreOrderTrackingAsync(buyer, orderId)).Should().BeNull("nothing has gone to M5azn yet");
+        }
+
+        await using (var scope = _fixture.CreateScope(m5azn: m5azn, configureM5azn: o => o.AutoSubmit = false))
+        {
+            (await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().SubmitNowAsync(shipment.Id))
+                .Status.Should().Be(M5aznShipmentStatus.Submitted);
+        }
+
+        m5azn.Created.Should().ContainSingle(c => c.Id == shipment.Reference);
+    }
+
+    [Fact]
+    public async Task An_order_cancelled_before_it_was_sent_is_never_sent()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 33m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await RunAsync(m5azn, o => o.AutoSubmit = false);
+
+        await using (var scope = _fixture.CreateScope(buyer))
+        {
+            await scope.ServiceProvider.GetRequiredService<IStoreOrderService>()
+                .CancelOrderAsync(buyer, orderId, "changed my mind");
+        }
+
+        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+        {
+            (await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().SubmitNowAsync(shipment.Id))
+                .Status.Should().Be(M5aznShipmentStatus.Cancelled);
+        }
+
+        m5azn.Created.Should().NotContain(c => c.Id == shipment.Reference);
+    }
+
+    [Fact]
+    public async Task Switching_on_does_not_send_old_orders()
+    {
+        var m5azn = new FakeM5azn();
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 18m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var order = await db.StoreOrders.FirstAsync(o => o.Id == orderId);
+            order.PaidAt = DateTime.UtcNow.AddDays(-10);
+            await db.SaveChangesAsync();
+        }
+
+        await RunAsync(m5azn);
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            (await db.M5aznShipments.AnyAsync(s => s.SourceId == orderId)).Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task Switched_off_it_does_nothing_and_calls_nobody()
+    {
+        var (buyer, addressId) = await NewBuyerAsync();
+        var product = await NewProductAsync(price: 22m, linked: true);
+        var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
+
+        await using var scope = _fixture.CreateScope();   // the disabled client throws if called
+        var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
+
+        service.IsEnabled.Should().BeFalse();
+        (await service.RunAsync()).Should().Be(new M5aznRunSummary(0, 0, 0));
+        (await service.SyncStockAsync()).Should().Be(0);
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        (await db.M5aznShipments.AnyAsync(s => s.SourceId == orderId)).Should().BeFalse();
+    }
+
+    // ---------------------------------------------------------------- prizes
+
+    [Fact]
+    public async Task A_claimed_M5azn_prize_is_sent_and_becomes_fulfilled_when_delivered()
+    {
+        var m5azn = new FakeM5azn();
+        var (winner, addressId) = await NewBuyerAsync();
+        var (claimId, prizeId) = await CreatePaidClaimAsync(winner);
+
+        await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+        {
+            await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>()
+                .LinkPrizeAsync(prizeId, new M5aznLinkRequest(313658, "M2-4-3-6-S"));
+        }
+
+        await using (var scope = _fixture.CreateScope(winner))
+        {
+            await scope.ServiceProvider.GetRequiredService<IPrizeClaimService>().ClaimAsync(winner, claimId, addressId);
+        }
+
+        await RunAsync(m5azn);
+
+        var shipment = await ShipmentForAsync(M5aznSourceType.PrizeClaim, claimId);
+        shipment.Status.Should().Be(M5aznShipmentStatus.Submitted);
+
+        var body = m5azn.Created.Single(c => c.Id == shipment.Reference);
+        body.Items.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new M5aznOrderItem(1, 313658, "M2-4-3-6-S", body.Items[0].Name, 1));
+        body.Total.Should().Be(2480m);
+
+        m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "delivered", "AWB-9", null, null);
+        await RefreshAsync(m5azn, shipment.Id);
+
+        await using (var scope = _fixture.CreateScope(winner, m5azn: m5azn))
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var claim = await db.PrizeClaims.AsNoTracking().FirstAsync(c => c.Id == claimId);
+            claim.Status.Should().Be(PrizeClaimStatus.Fulfilled);
+            claim.FulfilledAt.Should().NotBeNull();
+
+            var tracking = await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>()
+                .GetPrizeClaimTrackingAsync(winner, claimId);
+            tracking!.TrackingNumber.Should().Be("AWB-9");
+        }
+    }
+
+    // ---------------------------------------------------------------- links and stock
+
+    [Fact]
+    public async Task A_link_needs_both_the_product_id_and_the_sku_and_can_be_removed()
+    {
+        var product = await NewProductAsync(price: 10m, linked: false);
+
+        await using var scope = _fixture.CreateScope(m5azn: new FakeM5azn());
+        var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
+
+        var noSku = () => service.LinkStoreProductAsync(product, new M5aznLinkRequest(123, " "));
+        (await noSku.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+
+        var badId = () => service.LinkStoreProductAsync(product, new M5aznLinkRequest(0, "X"));
+        (await badId.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+
+        await service.LinkStoreProductAsync(product, new M5aznLinkRequest(123, " ABC-1 "));
+        var links = await service.GetLinksAsync();
+        links.StoreProducts.Should().Contain(l => l.Id == product && l.M5aznProductId == 123 && l.M5aznSku == "ABC-1");
+
+        await service.LinkStoreProductAsync(product, new M5aznLinkRequest(null, null));
+        (await service.GetLinksAsync()).StoreProducts.Single(l => l.Id == product).M5aznProductId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Stock_follows_M5azn_for_linked_products_only()
+    {
+        var linkedId = 9_000_000 + Random.Shared.Next(100_000);
+        var linked = await NewProductAsync(price: 10m, linked: true, stock: 10, m5aznId: linkedId);
+        var other = await NewProductAsync(price: 10m, linked: false, stock: 10);
+
+        var m5azn = new FakeM5azn();
+        m5azn.StockChanges.Add(new M5aznStockChange(linkedId, M5aznSku, 3));
+        m5azn.StockChanges.Add(new M5aznStockChange(linkedId, "SOME-OTHER-SIZE", 99));
+
+        await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+        {
+            (await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().SyncStockAsync()).Should().Be(1);
+        }
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            (await db.StoreProducts.AsNoTracking().FirstAsync(p => p.Id == linked)).StockQuantity.Should().Be(3, "matched by SKU");
+            (await db.StoreProducts.AsNoTracking().FirstAsync(p => p.Id == other)).StockQuantity.Should().Be(10);
+            (await db.InventoryTransactions.AnyAsync(t => t.ProductId == linked && t.ReferenceType == "M5azn" && t.Quantity == -7))
+                .Should().BeTrue();
+        }
+
+        m5azn.StockChanges.Clear();
+        m5azn.StockChanges.Add(new M5aznStockChange(linkedId, M5aznSku, 0));
+        await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+        {
+            await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().SyncStockAsync();
+        }
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var product = await db.StoreProducts.AsNoTracking().FirstAsync(p => p.Id == linked);
+            product.StockQuantity.Should().Be(0);
+            product.Status.Should().Be(StoreProductStatus.OutOfStock);
+        }
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private async Task RunAsync(FakeM5azn m5azn, Action<M5aznOptions>? configure = null)
+    {
+        await using var scope = _fixture.CreateScope(m5azn: m5azn, configureM5azn: configure);
+        await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().RunAsync();
+    }
+
+    private async Task RefreshAsync(FakeM5azn m5azn, Guid shipmentId)
+    {
+        await using var scope = _fixture.CreateScope(m5azn: m5azn);
+        await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().RefreshAsync(shipmentId);
+    }
+
+    private async Task<(Guid UserId, Guid AddressId)> NewBuyerAsync()
+    {
+        Guid userId;
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            userId = (await TestData.CreateUserAsync(db, "Customer", mainBalance: 10_000m, shoppingBalance: 10_000m)).Id;
+        }
+
+        await using (var scope = _fixture.CreateScope(userId))
+        {
+            var address = await scope.ServiceProvider.GetRequiredService<IShippingAddressService>().CreateAsync(userId,
+                new SaveShippingAddressRequest("أحمد علي", "0551234567", "الرياض", "العليا", "طريق الملك فهد", "1234",
+                    "بجانب المسجد", "RRRD2929", null, null, true));
+            return (userId, address.Id);
+        }
+    }
+
+    private async Task<Guid> NewProductAsync(decimal price, bool linked, int stock = 50, long m5aznId = M5aznProduct)
+    {
+        await using var scope = _fixture.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var product = await TestData.CreateStoreProductAsync(db, price, stock);
+        product.RequiresShipping = true;
+        if (linked)
+        {
+            product.M5aznProductId = m5aznId;
+            product.M5aznSku = M5aznSku;
+        }
+        await db.SaveChangesAsync();
+        return product.Id;
+    }
+
+    private async Task<Guid> CheckoutAsync(Guid buyer, Guid addressId, params (Guid Product, int Quantity)[] lines)
+    {
+        await using var scope = _fixture.CreateScope(buyer);
+        var order = await scope.ServiceProvider.GetRequiredService<IStoreOrderService>().CheckoutAsync(buyer,
+            new CheckoutRequest(lines.Select(l => new CheckoutItemRequest(l.Product, l.Quantity)).ToList(),
+                StorePaymentMethod.ShoppingWallet, addressId, $"m5azn-{Guid.NewGuid():N}"));
+        return order.Id;
+    }
+
+    private async Task<StoreOrder> OrderAsync(Guid orderId)
+    {
+        await using var scope = _fixture.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>()
+            .StoreOrders.AsNoTracking().FirstAsync(o => o.Id == orderId);
+    }
+
+    private async Task<M5aznShipment> ShipmentForAsync(M5aznSourceType type, Guid sourceId)
+    {
+        await using var scope = _fixture.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>()
+            .M5aznShipments.AsNoTracking().SingleAsync(s => s.SourceType == type && s.SourceId == sourceId);
+    }
+
+    private async Task<(Guid ClaimId, Guid PrizeId)> CreatePaidClaimAsync(Guid userId)
+    {
+        await using var scope = _fixture.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var auction = await TestData.CreateLiveAuctionAsync(db);
+        var participant = await TestData.AddParticipantAsync(db, auction.Id, userId);
+        var prize = await db.AuctionPrizes.FirstAsync(p => p.AuctionId == auction.Id && p.Rank == 1);
+
+        var win = new Winner
+        {
+            AuctionId = auction.Id, ParticipantId = participant.Id, UserId = userId,
+            Rank = 1, PrizeId = prize.Id, HighestPrice = 2480m
+        };
+        db.Winners.Add(win);
+        await db.SaveChangesAsync();
+
+        var claim = new PrizeClaim
+        {
+            WinnerId = win.Id, UserId = userId, AuctionId = auction.Id, PrizeId = prize.Id,
+            Status = PrizeClaimStatus.Paid, PaymentAmount = 2480m, Currency = Money.DefaultCurrency,
+            PaidAt = DateTime.UtcNow
+        };
+        db.PrizeClaims.Add(claim);
+        await db.SaveChangesAsync();
+
+        return (claim.Id, prize.Id);
+    }
+
+    /// <summary>M5azn as far as these tests need: it remembers what was sent and answers what it is told to.</summary>
+    private sealed class FakeM5azn : IM5aznClient
+    {
+        public ConcurrentBag<M5aznOrderRequest> Created { get; } = new();
+        public ConcurrentDictionary<string, M5aznRemoteOrder> Remote { get; } = new();
+        public List<M5aznStockChange> StockChanges { get; } = new();
+
+        /// <summary>Null: accept, and remember the order (with no status yet) under M-{reference}.</summary>
+        public Func<FakeM5azn, M5aznOrderRequest, M5aznSubmitResult>? OnCreate { get; set; }
+
+        public bool IsEnabled => true;
+
+        public Task<M5aznSubmitResult> CreateOrderAsync(M5aznOrderRequest order, CancellationToken ct = default)
+        {
+            Created.Add(order);
+            if (OnCreate is { } custom) return Task.FromResult(custom(this, order));
+
+            var remoteId = $"M-{order.Id}";
+            Remote[remoteId] = new M5aznRemoteOrder(remoteId, null, null, null, null);
+            return Task.FromResult(new M5aznSubmitResult(M5aznSubmitOutcome.Accepted, remoteId, null));
+        }
+
+        public Task<M5aznRemoteOrder?> GetOrderAsync(string orderId, CancellationToken ct = default) =>
+            Task.FromResult(Remote.TryGetValue(orderId, out var o) ? o : null);
+
+        public Task<IReadOnlyList<M5aznStockChange>> GetQuantityChangesAsync(int hours, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<M5aznStockChange>>(StockChanges.ToList());
+
+        public Task<M5aznProductInfo?> GetProductAsync(long productId, CancellationToken ct = default) =>
+            Task.FromResult<M5aznProductInfo?>(new M5aznProductInfo(productId, "Item", "SKU", 10m, 5, null));
+    }
+}

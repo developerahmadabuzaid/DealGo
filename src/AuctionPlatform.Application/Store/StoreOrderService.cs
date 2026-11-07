@@ -486,6 +486,20 @@ public sealed class StoreOrderService : IStoreOrderService
                 ErrorCodes.OrderNotCancellable, $"An order in status {order.Status} cannot be cancelled.");
         }
 
+        // Once M5azn has been asked to send it (or may have been), the supplier is already packing
+        // it and charging for it, so it is no longer the customer's to cancel.
+        var sentToM5azn = await _db.M5aznShipments.AnyAsync(s =>
+            s.SourceType == M5aznSourceType.StoreOrder && s.SourceId == orderId
+            && s.Attempts > 0
+            && s.Status != M5aznShipmentStatus.Cancelled
+            && s.Status != M5aznShipmentStatus.Failed, ct);
+
+        if (sentToM5azn)
+        {
+            throw new DomainException(
+                ErrorCodes.OrderNotCancellable, "This order has already been sent to the supplier for delivery.");
+        }
+
         await CancelAndRefundAsync(order, reason ?? "Cancelled by customer", ct);
         await tx.CommitAsync(ct);
 

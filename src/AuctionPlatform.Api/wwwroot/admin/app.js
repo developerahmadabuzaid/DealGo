@@ -332,6 +332,30 @@ const AR = {
   'Stock is returned and the money goes back to the wallet it came from.':
     'تعود الكمية إلى المخزون ويعود المبلغ إلى المحفظة التي خرج منها.',
 
+  // M5azn dropshipping
+  'M5azn': 'مخزن (M5azn)', 'M5azn delivery': 'التوصيل عبر مخزن', 'Shipments': 'الشحنات',
+  'Products and prizes M5azn packs and delivers from its warehouse.':
+    'المنتجات والجوائز التي يجهزها مخزن ويوصلها من مستودعه.',
+  'Send to M5azn': 'إرسال إلى مخزن', 'Send again': 'إرسال مرة أخرى', 'Refresh': 'تحديث',
+  'Check': 'تحقق', 'Reference': 'المرجع', 'For': 'لـ', 'Order': 'طلب', 'Prize': 'جائزة',
+  'Problem': 'المشكلة', 'Last checked': 'آخر تحقق', 'Track shipment': 'تتبّع الشحنة',
+  'Waiting for approval': 'بانتظار الموافقة', 'On the way': 'في الطريق', 'Failed': 'فشل',
+  'Linked products': 'منتجات مرتبطة', 'Linked prizes': 'جوائز مرتبطة',
+  'Prizes of upcoming auctions': 'جوائز المزادات القادمة',
+  'M5azn product id': 'رقم المنتج في مخزن', 'M5azn SKU': 'رمز SKU في مخزن',
+  'Linked to M5azn.': 'تم الربط بمخزن.', 'Link removed.': 'تم إلغاء الربط.',
+  'Enter the M5azn product id first.': 'أدخل رقم المنتج في مخزن أولاً.',
+  'M5azn does not know this product.': 'هذا المنتج غير موجود في مخزن.',
+  'Both the M5azn product id and its SKU are needed. Clear both and save to remove the link.':
+    'يلزم رقم المنتج ورمز SKU معاً. امسحهما واحفظ لإلغاء الربط.',
+  'This places a paid order at M5azn for this delivery. If it failed with an unclear answer, check M5azn for this reference first.':
+    'سيُنشئ هذا طلباً مدفوعاً في مخزن لهذا التوصيل. إن فشل سابقاً بردّ غير واضح فتحقق من هذا المرجع في مخزن أولاً.',
+  'Off: nothing is sent to M5azn. Set M5azn__Enabled and the seller account on the server to switch it on.':
+    'متوقف: لا يُرسل شيء إلى مخزن. فعّل M5azn__Enabled وأضف حساب البائع على الخادم لتشغيله.',
+  'On, but the seller account is missing.': 'مفعّل، لكن حساب البائع غير مضاف.',
+  'Reference, M5azn order, tracking or order number': 'المرجع أو رقم طلب مخزن أو التتبع أو رقم الطلب',
+  'AwaitingApproval': 'بانتظار الموافقة', 'Queued': 'في قائمة الإرسال', 'Submitted': 'أُرسل',
+
   // store settings
   'Store settings': 'إعدادات المتجر', 'Settings saved.': 'تم حفظ الإعدادات.',
   'Shipping fee': 'رسوم الشحن', 'Default shipping fee': 'رسوم الشحن الافتراضية',
@@ -583,7 +607,8 @@ function badgeClass(status) {
   const s = String(status || '').toLowerCase();
   if (['live', 'finalphase', 'active', 'completed', 'paid', 'delivered', 'ok'].includes(s)) return 'badge live';
   if (['ready', 'waitingforstart', 'registrationopen', 'waitingforparticipants', 'processing', 'shipped', 'paymentrequired'].includes(s)) return 'badge info';
-  if (['draft', 'pending', 'hidden', 'outofstock', 'scheduled'].includes(s)) return 'badge warn';
+  if (['submitted', 'queued'].includes(s)) return 'badge info';
+  if (['draft', 'pending', 'hidden', 'outofstock', 'scheduled', 'awaitingapproval'].includes(s)) return 'badge warn';
   if (['cancelled', 'expired', 'refunded', 'archived', 'failed'].includes(s)) return 'badge danger';
   return 'badge';
 }
@@ -979,6 +1004,7 @@ const NAV = [
       { id: 'store-categories', label: 'Categories', icon: 'layers' },
       { id: 'store-inventory', label: 'Inventory', icon: 'tag' },
       { id: 'store-orders', label: 'Orders', icon: 'receipt' },
+      { id: 'store-m5azn', label: 'M5azn', icon: 'box' },
       { id: 'store-settings', label: 'Settings', icon: 'sliders' },
     ],
   },
@@ -1097,6 +1123,7 @@ function routeView(route) {
     'store-categories': viewStoreCategories,
     'store-inventory': viewInventory,
     'store-orders': viewOrders,
+    'store-m5azn': viewM5azn,
     'store-settings': viewStoreSettings,
     'wallets': viewWallets,
     'withdrawals': viewWithdrawals,
@@ -3875,6 +3902,8 @@ async function viewOrders() {
 
 async function openOrder(id) {
   const o = await api(`/admin/store/orders/${id}`);
+  // Only some orders go to M5azn; none (204), or M5azn off, simply shows nothing.
+  const shipment = await api(`/admin/m5azn/shipments/by-source/StoreOrder/${id}`).catch(() => null);
   const back = h('div', { class: 'modal-back' });
 
   const act = async (path, body, message) => {
@@ -3918,6 +3947,8 @@ async function openOrder(id) {
           h('div', { class: 'hint' }, addressLine(o.shippingAddress)),
           addressMapLink(o.shippingAddress))
       : null,
+
+    m5aznShipmentBox(shipment, () => { back.remove(); render(); }),
 
     h('div', { class: 'modal-actions' },
       h('button', { class: 'btn ghost', onclick: () => back.remove() }, 'Close'),
@@ -3974,6 +4005,178 @@ async function openOrder(id) {
         : null)));
 
   document.body.append(back);
+}
+
+// ---------------------------------------------------------------- M5azn dropshipping
+
+/*
+ * M5azn packs and delivers the products and prizes linked to it (docs/M5AZN.md). This page shows
+ * what was sent, what failed and why, and which products are M5azn's. Sending places a paid order
+ * at M5azn, so the button that does it always asks first.
+ */
+const M5AZN_STATUSES = ['AwaitingApproval', 'Queued', 'Submitted', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Failed'];
+
+function m5aznBadge(status) {
+  return h('span', { class: badgeClass(status) }, status);
+}
+
+function m5aznSendButton(s, after) {
+  if (!['AwaitingApproval', 'Failed', 'Queued'].includes(s.status)) return null;
+  const label = s.status === 'Failed' ? 'Send again' : 'Send to M5azn';
+  return h('button', {
+    class: 'btn sm',
+    onclick: () => confirmDialog(label,
+      'This places a paid order at M5azn for this delivery. If it failed with an unclear answer, check M5azn for this reference first.',
+      async () => {
+        try {
+          const r = await api(`/admin/m5azn/shipments/${s.id}/submit`, { method: 'POST' });
+          toast(`M5azn: ${r.status}`, r.status === 'Failed' ? 'err' : 'ok');
+          after();
+        } catch (e) { toast(e.message, 'err'); }
+      }),
+  }, label);
+}
+
+function m5aznRefreshButton(s, after) {
+  if (!['Submitted', 'Processing', 'Shipped'].includes(s.status)) return null;
+  return h('button', {
+    class: 'btn ghost sm',
+    onclick: async () => {
+      try {
+        const r = await api(`/admin/m5azn/shipments/${s.id}/refresh`, { method: 'POST' });
+        toast(`M5azn: ${r.status}`, 'ok');
+        after();
+      } catch (e) { toast(e.message, 'err'); }
+    },
+  }, 'Refresh');
+}
+
+/** The shipment box inside an order's window. Text from M5azn is appended as text nodes. */
+function m5aznShipmentBox(s, after) {
+  if (!s) return null;
+  const text = (v) => document.createTextNode(v);
+  return h('div', { class: 'card', style: 'margin-top:12px;padding:12px' },
+    h('label', {}, 'M5azn delivery'),
+    h('div', {}, m5aznBadge(s.status), ' ',
+      h('span', { class: 'mono' }, text(`#${s.reference}`)),
+      s.remoteOrderId ? h('span', { class: 'hint' }, text(` · M5azn ${s.remoteOrderId}`)) : null,
+      s.remoteStatus ? h('span', { class: 'hint' }, text(` · ${s.remoteStatus}`)) : null),
+    s.trackingNumber
+      ? h('div', {}, 'Tracking number', ': ', h('span', { class: 'mono' }, text(s.trackingNumber)),
+          s.carrier ? text(` · ${s.carrier}`) : null)
+      : null,
+    s.trackingUrl && /^https?:\/\//i.test(s.trackingUrl)
+      ? h('a', { href: s.trackingUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Track shipment') : null,
+    s.lastError ? h('div', { class: 'err-text' }, text(s.lastError)) : null,
+    h('div', { class: 'hint' }, 'Last checked', ': ', when(s.lastSyncedAt)),
+    h('div', { class: 'toolbar', style: 'margin-top:8px' }, m5aznSendButton(s, after), m5aznRefreshButton(s, after)));
+}
+
+async function viewM5azn() {
+  const q = state.cache.m5azn || (state.cache.m5azn = { page: 1, status: '', search: '' });
+  const params = new URLSearchParams({ page: q.page, pageSize: 20 });
+  if (q.status) params.set('status', q.status);
+  if (q.search) params.set('search', q.search);
+
+  const [o, data, links] = await Promise.all([
+    api('/admin/m5azn/overview'),
+    api(`/admin/m5azn/shipments?${params}`),
+    api('/admin/m5azn/links'),
+  ]);
+
+  const text = (v) => document.createTextNode(v ?? '');
+  const c = o.countsByStatus || {};
+  const stateLine = !o.enabled
+    ? 'Off: nothing is sent to M5azn. Set M5azn__Enabled and the seller account on the server to switch it on.'
+    : !o.configured
+      ? 'On, but the seller account is missing.'
+      : `On · ${o.baseUrl} · automatic sending ${o.autoSubmit ? 'on' : 'off'} · stock sync ${o.stockSyncEnabled ? 'on' : 'off'} · payment ${o.paymentMethod}`;
+
+  const search = h('input', { placeholder: 'Reference, M5azn order, tracking or order number', value: q.search });
+  const status = h('select', {}, h('option', { value: '' }, 'Any status'),
+    ...M5AZN_STATUSES.map((s) => h('option', { value: s, selected: s === q.status ? '' : null }, s)));
+
+  const linkRow = (kind, item) => {
+    const id = h('input', { type: 'number', min: '1', placeholder: 'M5azn product id', value: item.m5aznProductId ?? '', style: 'width:140px' });
+    const sku = h('input', { placeholder: 'M5azn SKU', value: item.m5aznSku ?? '', style: 'width:150px' });
+    const save = async () => {
+      const body = id.value || sku.value
+        ? { m5aznProductId: Number(id.value) || null, m5aznSku: sku.value || null }
+        : { m5aznProductId: null, m5aznSku: null };
+      try {
+        await api(`/admin/m5azn/links/${kind}/${item.id}`, { method: 'PUT', body: JSON.stringify(body) });
+        toast(body.m5aznProductId ? 'Linked to M5azn.' : 'Link removed.', 'ok');
+        render();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    // Reads M5azn's catalogue only; nothing is ordered.
+    const check = async () => {
+      if (!id.value) return toast('Enter the M5azn product id first.', 'err');
+      try {
+        const p = await api(`/admin/m5azn/products/${Number(id.value)}`);
+        if (!p) return toast('M5azn does not know this product.', 'err');
+        if (!sku.value && p.sku) sku.value = p.sku;
+        toast([p.name, p.sku, p.price != null ? money(p.price, 'SAR') : null,
+          p.quantity != null ? `stock ${p.quantity}` : null].filter(Boolean).join(' · '), 'ok');
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    return h('tr', {},
+      h('td', {}, text(item.name)),
+      h('td', { class: 'hint' }, text(item.context || item.sku || '')),
+      kind === 'store-products' ? h('td', { class: 'num' }, item.stock ?? '—') : null,
+      h('td', {}, id), h('td', {}, sku),
+      h('td', {}, h('div', { class: 'toolbar' },
+        o.enabled ? h('button', { class: 'btn ghost sm', onclick: check }, 'Check') : null,
+        h('button', { class: 'btn sm', onclick: save }, 'Save'))));
+  };
+
+  const linkTable = (title, kind, rows) => h('div', { class: 'card' },
+    h('h3', {}, title),
+    h('p', { class: 'hint' }, 'Both the M5azn product id and its SKU are needed. Clear both and save to remove the link.'),
+    h('div', { class: 'table-wrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, kind === 'prizes' ? 'Auction' : 'SKU'),
+        kind === 'store-products' ? h('th', { class: 'num' }, 'Stock') : null,
+        h('th', {}, 'M5azn product id'), h('th', {}, 'M5azn SKU'), h('th', {}, ''))),
+      h('tbody', {}, ...rows.map((r) => linkRow(kind, r))))));
+
+  return h('div', {},
+    pageHead('M5azn', 'Products and prizes M5azn packs and delivers from its warehouse.'),
+    h('div', { class: 'card' }, h('div', { class: o.enabled && o.configured ? 'hint' : 'err-text' }, stateLine)),
+    h('div', { class: 'kpi-grid cols-3' },
+      kpi('Waiting for approval', num(c.AwaitingApproval || 0), false, { icon: 'clock' }),
+      kpi('On the way', num((c.Submitted || 0) + (c.Processing || 0) + (c.Shipped || 0)), false, { icon: 'box' }),
+      kpi('Delivered', num(c.Delivered || 0), false, { icon: 'check' }),
+      kpi('Failed', num(c.Failed || 0), false, { icon: 'alert' }),
+      kpi('Linked products', num(o.linkedStoreProducts), false, { icon: 'tag' }),
+      kpi('Linked prizes', num(o.linkedPrizes), false, { icon: 'gift' })),
+    h('div', { class: 'card' },
+      h('h3', {}, 'Shipments'),
+      h('div', { class: 'toolbar' }, search, status,
+        h('button', {
+          class: 'btn ghost sm',
+          onclick: () => { q.search = search.value; q.status = status.value; q.page = 1; render(); },
+        }, 'Apply')),
+      pagedTable({
+        columns: [
+          { label: 'Reference', mono: true, render: (s) => String(s.reference) },
+          { label: 'For', render: (s) => h('span', {}, s.sourceType === 'StoreOrder' ? 'Order' : 'Prize', ' ',
+              h('span', { class: 'mono' }, text(s.sourceNumber || shortId(s.sourceId)))) },
+          { label: 'Customer', render: (s) => text(s.customerName || shortId(s.userId)) },
+          { label: 'Status', render: (s) => h('div', {}, m5aznBadge(s.status),
+              s.remoteStatus ? h('div', { class: 'hint' }, text(s.remoteStatus)) : null) },
+          { label: 'Tracking number', render: (s) => (s.trackingNumber ? h('span', { class: 'mono' }, text(s.trackingNumber)) : '—') },
+          { label: 'Problem', render: (s) => (s.lastError ? h('div', { class: 'err-text', style: 'max-width:320px' }, text(s.lastError)) : '—') },
+          { label: 'Created', render: (s) => when(s.createdAt) },
+          { label: '', render: (s) => h('div', { class: 'toolbar' }, m5aznSendButton(s, render), m5aznRefreshButton(s, render)) },
+        ],
+        rows: data.items,
+        page: data.page,
+        totalPages: data.totalPages,
+        totalCount: data.totalCount,
+        onPage: (p) => { q.page = p; render(); },
+      })),
+    linkTable('Store products', 'store-products', links.storeProducts),
+    linkTable('Prizes of upcoming auctions', 'prizes', links.prizes));
 }
 
 async function viewStoreSettings() {

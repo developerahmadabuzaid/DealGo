@@ -99,6 +99,18 @@ if (string.IsNullOrWhiteSpace(tawkedKey) && builder.Environment.IsProduction())
         "(tk_live_… for production, tk_test_… for the sandbox).");
 }
 
+/*
+ * M5azn, the dropshipping supplier (docs/M5AZN.md). Off by default. Switched on with part of the
+ * seller account missing, every send would fail quietly in the worker, so say so now instead.
+ */
+var m5azn = builder.Configuration.GetSection(M5aznOptions.SectionName).Get<M5aznOptions>() ?? new M5aznOptions();
+if (m5azn.MissingSettings() is { Count: > 0 } missingM5azn)
+{
+    throw new InvalidOperationException(
+        "M5azn:Enabled is on but these settings are missing: " + string.Join(", ", missingM5azn) +
+        ". Set them (for example M5azn__Email and M5azn__Password) or turn M5azn:Enabled off.");
+}
+
 // ---------------------------------------------------------------- services
 
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -306,6 +318,7 @@ builder.Services.AddHostedService<AuctionExpiryService>();
 builder.Services.AddHostedService<AuctionCompletionWorker>();
 builder.Services.AddHostedService<ShoppingCreditExpiryWorker>();
 builder.Services.AddHostedService<PaymobReconciliationWorker>();
+builder.Services.AddHostedService<M5aznWorker>();
 builder.Services.AddSingleton<NotificationBroadcastQueue>();
 builder.Services.AddSingleton<INotificationBroadcaster>(sp => sp.GetRequiredService<NotificationBroadcastQueue>());
 builder.Services.AddHostedService<NotificationBroadcastWorker>();

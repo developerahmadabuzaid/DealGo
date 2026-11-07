@@ -10,6 +10,7 @@ import '../../../shared/auto_refresh.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
 import '../../addresses/presentation/addresses_screen.dart';
+import '../../shipping/presentation/shipment_tracking_card.dart';
 import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/prize_repository.dart';
 
@@ -45,6 +46,7 @@ class PrizesScreen extends ConsumerWidget {
             onRefresh: () async {
               ref.invalidate(myClaimsProvider);
               ref.invalidate(myWinsProvider);
+              ref.invalidate(prizeClaimShipmentProvider);
             },
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -158,6 +160,7 @@ class _ClaimCard extends StatelessWidget {
                   const SizedBox(height: AppTheme.space3),
                   _PrizeDelivery(claim: claim),
                 ],
+                if (claim.isPaid) PrizeClaimShipment(claimId: claim.id),
               ],
             ),
           ),
@@ -301,7 +304,10 @@ class OrdersScreen extends ConsumerWidget {
         data: (paged) => paged.items.isEmpty
             ? const EmptyState(icon: Icons.receipt_long_outlined)
             : RefreshIndicator(
-                onRefresh: () async => ref.invalidate(myOrdersProvider),
+                onRefresh: () async {
+                  ref.invalidate(myOrdersProvider);
+                  ref.invalidate(storeOrderShipmentProvider);
+                },
                 child: ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                   itemCount: paged.items.length,
@@ -351,6 +357,9 @@ class OrdersScreen extends ConsumerWidget {
                                     style: const TextStyle(fontWeight: FontWeight.bold)),
                               ],
                             ),
+                            // Only an order that has moved on can be with M5azn; this saves a call per card.
+                            if (const {'Processing', 'Shipped', 'Delivered', 'Completed'}.contains(o.status))
+                              StoreOrderShipment(orderId: o.id),
                             if (o.isCancellable) ...[
                               const SizedBox(height: 10),
                               OutlinedButton(

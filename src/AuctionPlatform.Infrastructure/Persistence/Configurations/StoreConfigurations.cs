@@ -42,8 +42,10 @@ public sealed class StoreProductConfiguration : IEntityTypeConfiguration<StorePr
         b.Property(p => p.Sku).HasMaxLength(64).IsRequired();
         b.Property(p => p.Currency).HasMaxLength(3).IsRequired();
         b.Property(p => p.Version).IsRowVersion();
+        b.Property(p => p.M5aznSku).HasMaxLength(128);
 
         b.HasIndex(p => p.Sku).IsUnique();
+        b.HasIndex(p => p.M5aznProductId).HasFilter("\"M5aznProductId\" IS NOT NULL");
         b.HasIndex(p => p.Slug);
         b.HasIndex(p => p.Status);
         b.HasIndex(p => p.CategoryId);

@@ -65,6 +65,16 @@ public class StoreProduct : AuditableEntity
 
     public int ViewCount { get; set; }
 
+    /// <summary>
+    /// The M5azn product this item is, when M5azn packs and delivers it (docs/M5AZN.md). Null for
+    /// everything DealGo ships itself. Paid lines of a linked product are sent to M5azn, and its
+    /// stock follows M5azn's when stock sync is on.
+    /// </summary>
+    public long? M5aznProductId { get; set; }
+
+    /// <summary>M5azn's SKU for the item (the variant, such as size or colour), sent with each order.</summary>
+    public string? M5aznSku { get; set; }
+
     /// <summary>Optimistic concurrency token mapped to the PostgreSQL xmin system column.</summary>
     public uint Version { get; set; }
 

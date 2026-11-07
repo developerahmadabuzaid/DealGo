@@ -565,6 +565,13 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<long?>("M5aznProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("M5aznSku")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<decimal>("OriginalPrice")
                         .HasColumnType("numeric(18,2)");
 
@@ -584,6 +591,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("M5aznProductId")
+                        .HasFilter("\"M5aznProductId\" IS NOT NULL");
 
                     b.HasIndex("ProductId");
 
@@ -751,6 +761,106 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProductId", "CreatedAt");
 
                     b.ToTable("InventoryTransactions", (string)null);
+                });
+
+            modelBuilder.Entity("AuctionPlatform.Domain.Entities.M5aznShipment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Carrier")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Reference")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Reference"));
+                    NpgsqlPropertyBuilderExtensions.HasIdentityOptions(b.Property<long>("Reference"), 100001L, null, null, null, null, null);
+
+                    b.Property<string>("RemoteOrderId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RemoteStatus")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RequestJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ShippedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TrackingNumber")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TrackingUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("SourceType", "SourceId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("M5aznShipments", (string)null);
                 });
 
             modelBuilder.Entity("AuctionPlatform.Domain.Entities.Notification", b =>
@@ -1889,6 +1999,13 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<int>("LowStockThreshold")
                         .HasColumnType("integer");
 
+                    b.Property<long?>("M5aznProductId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("M5aznSku")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -1945,6 +2062,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("M5aznProductId")
+                        .HasFilter("\"M5aznProductId\" IS NOT NULL");
 
                     b.HasIndex("Sku")
                         .IsUnique();
