@@ -341,6 +341,27 @@ const AR = {
   'Problem': 'المشكلة', 'Last checked': 'آخر تحقق', 'Track shipment': 'تتبّع الشحنة',
   'Waiting for approval': 'بانتظار الموافقة', 'On the way': 'في الطريق', 'Failed': 'فشل',
   'Linked products': 'منتجات مرتبطة',
+  'M5azn account and pricing': 'حساب مخزن والتسعير', 'Seller email': 'بريد حساب البائع',
+  'Seller password': 'كلمة مرور حساب البائع', 'M5azn address': 'عنوان مخزن',
+  'Automatic sending': 'الإرسال التلقائي', 'Profit %': 'نسبة الربح %',
+  'Leave empty to keep the saved password': 'اتركها فارغة للإبقاء على كلمة المرور المحفوظة',
+  'Check sign-in': 'اختبار تسجيل الدخول', 'Signed in to M5azn.': 'تم تسجيل الدخول إلى مخزن بنجاح.',
+  'Off: nothing is sent to M5azn. Switch it on and enter the seller account below.':
+    'موقوف: لا يُرسل شيء إلى مخزن. فعّله وأدخل حساب البائع أدناه.',
+  'On, but the seller account is missing.': 'مفعّل، لكن حساب البائع غير مُدخل.',
+  'M5azn is switched off, so its price was not read. The price was left as it is.':
+    'مخزن موقوف، لذلك لم يُقرأ سعره وبقي السعر كما هو.',
+  'M5azn does not know this product. The price was left as it is.':
+    'مخزن لا يعرف هذا المنتج، وبقي السعر كما هو.',
+  'M5azn could not be asked right now. The price was left as it is.':
+    'تعذّر الاتصال بمخزن الآن، وبقي السعر كما هو.',
+  'M5azn gave no price for this product. The price was left as it is.':
+    'لم يُعطِ مخزن سعرًا لهذا المنتج، وبقي السعر كما هو.',
+  'Update prices from M5azn': 'تحديث الأسعار من مخزن', 'M5azn price': 'سعر مخزن',
+  'Account from the server settings': 'الحساب من إعدادات الخادم',
+  'The saved password cannot be read any more. Enter it again.': 'لا يمكن قراءة كلمة المرور المحفوظة. أدخلها مرة أخرى.',
+  'The DealGo price is the M5azn price plus this profit. Changing it re-prices the linked products.':
+    'سعر DealGo هو سعر مخزن مضافًا إليه هذه النسبة. تغييرها يعيد تسعير المنتجات المرتبطة.',
   'M5azn product id': 'رقم المنتج في مخزن', 'M5azn SKU': 'رمز SKU في مخزن',
   'Linked to M5azn.': 'تم الربط بمخزن.', 'Link removed.': 'تم إلغاء الربط.',
   'Enter the M5azn product id first.': 'أدخل رقم المنتج في مخزن أولاً.',
@@ -4078,19 +4099,21 @@ async function viewM5azn() {
   if (q.status) params.set('status', q.status);
   if (q.search) params.set('search', q.search);
 
-  const [o, data, links] = await Promise.all([
+  const [o, data, links, settings] = await Promise.all([
     api('/admin/m5azn/overview'),
     api(`/admin/m5azn/shipments?${params}`),
     api('/admin/m5azn/links'),
+    // Only staff who may change store settings see the account; for the others this is null.
+    api('/admin/m5azn/settings').catch(() => null),
   ]);
 
   const text = (v) => document.createTextNode(v ?? '');
   const c = o.countsByStatus || {};
   const stateLine = !o.enabled
-    ? 'Off: nothing is sent to M5azn. Set M5azn__Enabled and the seller account on the server to switch it on.'
+    ? 'Off: nothing is sent to M5azn. Switch it on and enter the seller account below.'
     : !o.configured
       ? 'On, but the seller account is missing.'
-      : `On · ${o.baseUrl} · automatic sending ${o.autoSubmit ? 'on' : 'off'} · stock sync ${o.stockSyncEnabled ? 'on' : 'off'} · payment ${o.paymentMethod}`;
+      : `On · ${o.baseUrl} · automatic sending ${o.autoSubmit ? 'on' : 'off'} · stock sync ${o.stockSyncEnabled ? 'on' : 'off'} · payment ${o.paymentMethod} · profit ${o.profitPercentage}%`;
 
   const search = h('input', { placeholder: 'Reference, M5azn order, tracking or order number', value: q.search });
   const status = h('select', {}, h('option', { value: '' }, 'Any status'),
@@ -4104,8 +4127,10 @@ async function viewM5azn() {
         ? { m5aznProductId: Number(id.value) || null, m5aznSku: sku.value || null }
         : { m5aznProductId: null, m5aznSku: null };
       try {
-        await api(`/admin/m5azn/links/store-products/${item.id}`, { method: 'PUT', body: JSON.stringify(body) });
-        toast(body.m5aznProductId ? 'Linked to M5azn.' : 'Link removed.', 'ok');
+        const r = await api(`/admin/m5azn/links/store-products/${item.id}`, { method: 'PUT', body: JSON.stringify(body) });
+        const priced = r && r.priced ? ` ${money(r.m5aznPrice, 'SAR')} → ${money(r.price, 'SAR')}` : '';
+        toast((body.m5aznProductId ? tr('Linked to M5azn.') : tr('Link removed.')) + priced + (r && r.note ? ` ${tr(r.note)}` : ''),
+          r && r.note ? 'err' : 'ok');
         render();
       } catch (e) { toast(e.message, 'err'); }
     };
@@ -4124,24 +4149,97 @@ async function viewM5azn() {
       h('td', {}, text(item.name)),
       h('td', { class: 'hint' }, text(item.sku || '')),
       h('td', { class: 'num' }, item.stock ?? '—'),
+      h('td', { class: 'num' }, money(item.price, 'SAR')),
+      h('td', { class: 'num' }, item.m5aznCostPrice != null ? money(item.m5aznCostPrice, 'SAR') : '—'),
       h('td', {}, id), h('td', {}, sku),
       h('td', {}, h('div', { class: 'toolbar' },
         o.enabled ? h('button', { class: 'btn ghost sm', onclick: check }, 'Check') : null,
         h('button', { class: 'btn sm', onclick: save }, 'Save'))));
   };
 
+  const refreshPrices = () => confirmDialog('Update prices from M5azn',
+    `Reads each linked product's price from M5azn (nothing is ordered) and sets the DealGo price to it plus ${o.profitPercentage}%.`,
+    async () => {
+      try {
+        const r = await api('/admin/m5azn/prices/refresh', { method: 'POST' });
+        toast(`${r.updated} / ${r.checked}` + (r.failed ? ` · ${r.failed} ✕` : ''), r.failed ? 'err' : 'ok');
+        render();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+
   const linkTable = (rows) => h('div', { class: 'card' },
-    h('h3', {}, 'Store products'),
+    h('div', { class: 'toolbar', style: 'justify-content:space-between' },
+      h('h3', {}, 'Store products'),
+      o.enabled && o.configured ? h('button', { class: 'btn ghost sm', onclick: refreshPrices }, 'Update prices from M5azn') : null),
     h('p', { class: 'hint' }, 'Both the M5azn product id and its SKU are needed. Clear both and save to remove the link.'),
     h('div', { class: 'table-wrap' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'SKU'),
         h('th', { class: 'num' }, 'Stock'),
+        h('th', { class: 'num' }, 'Price'), h('th', { class: 'num' }, 'M5azn price'),
         h('th', {}, 'M5azn product id'), h('th', {}, 'M5azn SKU'), h('th', {}, ''))),
       h('tbody', {}, ...rows.map((r) => linkRow(r))))));
+
+  const settingsCard = () => {
+    if (!settings) return null;
+    const onOff = (value) => h('select', {},
+      h('option', { value: 'true', selected: value ? '' : null }, 'Enabled'),
+      h('option', { value: 'false', selected: value ? null : '' }, 'Disabled'));
+    const f = {
+      enabled: onOff(settings.enabled),
+      email: h('input', { type: 'email', autocomplete: 'off', value: settings.source === 'Dashboard' ? settings.email : '',
+        placeholder: settings.source === 'Server' && settings.email ? settings.email : 'seller@example.com' }),
+      password: h('input', { type: 'password', autocomplete: 'new-password',
+        placeholder: settings.hasPassword ? tr('Leave empty to keep the saved password') : '' }),
+      baseUrl: h('select', {}, ...['https://m5azn.com', 'https://m5azn.ae', 'https://m5azn.om'].map((u) =>
+        h('option', { value: u, selected: u === settings.baseUrl ? '' : null }, u))),
+      autoSubmit: onOff(settings.autoSubmit),
+      profit: h('input', { type: 'number', min: '0', max: '1000', step: '0.01', value: settings.profitPercentage }),
+    };
+    const field = (label, input, hint) => h('div', {}, h('label', {}, label), input, hint ? h('div', { class: 'hint' }, hint) : null);
+    const save = async () => {
+      try {
+        const r = await api('/admin/m5azn/settings', {
+          method: 'PUT',
+          body: JSON.stringify({
+            enabled: f.enabled.value === 'true',
+            email: f.email.value.trim() || null,
+            password: f.password.value || null,
+            baseUrl: f.baseUrl.value,
+            autoSubmit: f.autoSubmit.value === 'true',
+            profitPercentage: Number(f.profit.value),
+          }),
+        });
+        toast(tr('Settings saved.') + (r.repriced ? ` · ${r.repriced} ${tr('Price')}` : ''), 'ok');
+        render();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    // Signs in only; nothing is ordered.
+    const check = async () => {
+      try {
+        const r = await api('/admin/m5azn/settings/check', { method: 'POST' });
+        toast(tr(r.message), r.ok ? 'ok' : 'err');
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    return h('div', { class: 'card' },
+      h('h3', {}, 'M5azn account and pricing'),
+      settings.passwordUnreadable
+        ? h('div', { class: 'err-text' }, 'The saved password cannot be read any more. Enter it again.') : null,
+      h('div', { class: 'grid-2' },
+        field('M5azn', f.enabled),
+        field('Automatic sending', f.autoSubmit),
+        field('Seller email', f.email, settings.source === 'Server' && settings.email ? tr('Account from the server settings') : null),
+        field('Seller password', f.password),
+        field('M5azn address', f.baseUrl),
+        field('Profit %', f.profit, 'The DealGo price is the M5azn price plus this profit. Changing it re-prices the linked products.')),
+      h('div', { class: 'toolbar', style: 'margin-top:12px' },
+        h('button', { class: 'btn', onclick: save }, 'Save'),
+        settings.hasPassword ? h('button', { class: 'btn ghost', onclick: check }, 'Check sign-in') : null));
+  };
 
   return h('div', {},
     pageHead('M5azn', 'Store products M5azn packs and delivers from its warehouse.'),
     h('div', { class: 'card' }, h('div', { class: o.enabled && o.configured ? 'hint' : 'err-text' }, stateLine)),
+    settingsCard(),
     h('div', { class: 'kpi-grid cols-5' },
       kpi('Waiting for approval', num(c.AwaitingApproval || 0), false, { icon: 'clock' }),
       kpi('On the way', num((c.Submitted || 0) + (c.Processing || 0) + (c.Shipped || 0)), false, { icon: 'box' }),

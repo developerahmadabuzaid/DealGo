@@ -75,6 +75,12 @@ public class StoreProduct : AuditableEntity
     /// <summary>M5azn's SKU for the item (the variant, such as size or colour), sent with each order.</summary>
     public string? M5aznSku { get; set; }
 
+    /// <summary>
+    /// What M5azn charges for the item, as last read from M5azn. The DealGo price is this plus the
+    /// profit percentage set on the M5azn page. Null until M5azn has been asked.
+    /// </summary>
+    public decimal? M5aznCostPrice { get; set; }
+
     /// <summary>Optimistic concurrency token mapped to the PostgreSQL xmin system column.</summary>
     public uint Version { get; set; }
 

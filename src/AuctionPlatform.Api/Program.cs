@@ -107,8 +107,8 @@ var m5azn = builder.Configuration.GetSection(M5aznOptions.SectionName).Get<M5azn
 if (m5azn.MissingSettings() is { Count: > 0 } missingM5azn)
 {
     throw new InvalidOperationException(
-        "M5azn:Enabled is on but these settings are missing: " + string.Join(", ", missingM5azn) +
-        ". Set them (for example M5azn__Email and M5azn__Password) or turn M5azn:Enabled off.");
+        "M5azn is half set up in the server configuration: " + string.Join(", ", missingM5azn) +
+        " is missing. Set both M5azn__Email and M5azn__Password, or neither and enter the account on the dashboard's M5azn page.");
 }
 
 // ---------------------------------------------------------------- services

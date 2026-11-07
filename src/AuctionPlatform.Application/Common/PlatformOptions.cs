@@ -267,8 +267,11 @@ public sealed class TawkedOptions
 
 /// <summary>
 /// M5azn (m5azn.com), the Saudi dropshipping supplier: products linked to an M5azn product are
-/// packed and delivered from M5azn's warehouse. Off unless <see cref="Enabled"/> is set and the
-/// seller account is given (docs/M5AZN.md). Credentials come from configuration only.
+/// packed and delivered from M5azn's warehouse (docs/M5AZN.md). Store orders only.
+///
+/// The on/off switch, the seller account, the address and automatic sending can also be changed
+/// from the dashboard (the M5aznSettings row); once saved there, the dashboard's values win over
+/// these. Everything else here is server-only.
 /// </summary>
 public sealed class M5aznOptions
 {
@@ -280,7 +283,7 @@ public sealed class M5aznOptions
     /// <summary>KSA: https://m5azn.com, UAE: https://m5azn.ae, Oman: https://m5azn.om.</summary>
     public string BaseUrl { get; set; } = "https://m5azn.com";
 
-    /// <summary>The M5azn seller account. Never in the repository: environment variables or web.config only.</summary>
+    /// <summary>The M5azn seller account, when it is not set from the dashboard. Never in the repository.</summary>
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
 
@@ -312,6 +315,12 @@ public sealed class M5aznOptions
 
     public int TimeoutSeconds { get; set; } = 30;
 
+    /// <summary>
+    /// Optional key for the seller password saved from the dashboard. Without it, the key is
+    /// derived from Jwt:Secret, so changing that secret means typing the M5azn password again.
+    /// </summary>
+    public string EncryptionKey { get; set; } = string.Empty;
+
     /// <summary>The fixed headers every M5azn call carries.</summary>
     public string Language { get; set; } = "ar";
     public string Website { get; set; } = "M5AZN";
@@ -324,14 +333,18 @@ public sealed class M5aznOptions
 
     public bool IsActive => Enabled && HasCredentials;
 
-    /// <summary>The settings that are missing while <see cref="Enabled"/> is on, for a clear startup error.</summary>
+    /// <summary>
+    /// Settings that are wrong in the server configuration, for a clear startup error. A missing
+    /// account is fine (it can be entered from the dashboard); half of one is a mistake.
+    /// </summary>
     public IReadOnlyList<string> MissingSettings()
     {
-        if (!Enabled) return Array.Empty<string>();
         var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(Email)) missing.Add($"{SectionName}:Email");
-        if (string.IsNullOrWhiteSpace(Password)) missing.Add($"{SectionName}:Password");
-        if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out _)) missing.Add($"{SectionName}:BaseUrl");
+        var hasEmail = !string.IsNullOrWhiteSpace(Email);
+        var hasPassword = !string.IsNullOrWhiteSpace(Password);
+        if (hasEmail && !hasPassword) missing.Add($"{SectionName}:Password");
+        if (hasPassword && !hasEmail) missing.Add($"{SectionName}:Email");
+        if (Enabled && !Uri.TryCreate(BaseUrl, UriKind.Absolute, out _)) missing.Add($"{SectionName}:BaseUrl");
         return missing;
     }
 }

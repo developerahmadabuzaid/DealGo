@@ -33,3 +33,15 @@ public sealed class M5aznShipmentConfiguration : IEntityTypeConfiguration<M5aznS
         b.HasIndex(s => s.UserId);
     }
 }
+
+public sealed class M5aznSettingsConfiguration : IEntityTypeConfiguration<M5aznSettings>
+{
+    public void Configure(EntityTypeBuilder<M5aznSettings> b)
+    {
+        b.ToTable("M5aznSettings");
+        b.HasKey(s => s.Id);
+        b.Property(s => s.Email).HasMaxLength(256);
+        b.Property(s => s.PasswordProtected).HasMaxLength(2048);
+        b.Property(s => s.BaseUrl).HasMaxLength(256);
+    }
+}

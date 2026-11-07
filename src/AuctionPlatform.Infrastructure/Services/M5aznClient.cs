@@ -20,16 +20,20 @@ public sealed class M5aznTokenStore
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _token;
+    private string? _sessionKey;
     private DateTime _expiresAt;
 
     internal SemaphoreSlim Gate => _gate;
 
-    internal string? Current(DateTime now) => _token is not null && now < _expiresAt ? _token : null;
+    /// <summary>The token, while it is fresh and was issued for the account in use now.</summary>
+    internal string? Current(DateTime now, string sessionKey) =>
+        _token is not null && now < _expiresAt && _sessionKey == sessionKey ? _token : null;
 
-    internal void Set(string token, DateTime expiresAt)
+    internal void Set(string token, DateTime expiresAt, string sessionKey)
     {
         _token = token;
         _expiresAt = expiresAt;
+        _sessionKey = sessionKey;
     }
 
     internal void Clear(string? token)
@@ -59,6 +63,7 @@ public sealed class M5aznClient : IM5aznClient
 
     private readonly HttpClient _http;
     private readonly M5aznOptions _options;
+    private readonly IM5aznAccountProvider _account;
     private readonly M5aznTokenStore _tokens;
     private readonly IDateTimeProvider _clock;
     private readonly ILogger<M5aznClient> _logger;
@@ -66,24 +71,45 @@ public sealed class M5aznClient : IM5aznClient
     public M5aznClient(
         HttpClient http,
         IOptions<M5aznOptions> options,
+        IM5aznAccountProvider account,
         M5aznTokenStore tokens,
         IDateTimeProvider clock,
         ILogger<M5aznClient> logger)
     {
         _http = http;
         _options = options.Value;
+        _account = account;
         _tokens = tokens;
         _clock = clock;
         _logger = logger;
 
-        if (Uri.TryCreate(_options.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+        // One client per scope, so the address in use when it was made is the one it keeps.
+        if (Uri.TryCreate(account.Current.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
         {
             _http.BaseAddress ??= baseUri;
         }
         _http.Timeout = TimeSpan.FromSeconds(Math.Clamp(_options.TimeoutSeconds, 5, 120));
     }
 
-    public bool IsEnabled => _options.IsActive && _http.BaseAddress is not null;
+    public bool IsEnabled => _account.Current.IsActive && _http.BaseAddress is not null;
+
+    public async Task<string?> CheckSignInAsync(CancellationToken ct = default)
+    {
+        var account = _account.Current;
+        if (!account.HasCredentials) return "The seller email and password are not set.";
+        if (_http.BaseAddress is null) return "The M5azn address is not a valid URL.";
+
+        _tokens.Clear(null);
+        try
+        {
+            await GetTokenAsync(ct);
+            return null;
+        }
+        catch (M5aznSignInException ex)
+        {
+            return ex.Message;
+        }
+    }
 
     // ---------------------------------------------------------------- orders
 
@@ -172,7 +198,7 @@ public sealed class M5aznClient : IM5aznClient
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
                 return new M5aznSubmitResult(M5aznSubmitOutcome.NotSent,
-                    Message: $"M5azn refused the seller account ({status}). Check M5azn:Email and M5azn:Password.");
+                    Message: $"M5azn refused the seller account ({status}). Check the seller account on the M5azn page.");
             }
 
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -260,7 +286,8 @@ public sealed class M5aznClient : IM5aznClient
         if (data is JsonObject { Count: 1 } wrapper && wrapper["product"] is JsonObject inner) data = inner;
         if (data is not JsonObject product) return null;
 
-        decimal? price = decimal.TryParse(Find(product, ["sale_price", "price", "seller_price", "wholesale_price"], false),
+        // What the seller pays M5azn comes first; the plain price is the fallback (docs/M5AZN.md).
+        decimal? price = decimal.TryParse(Find(product, ["seller_price", "wholesale_price", "cost_price", "price", "sale_price"], false),
             NumberStyles.Number, CultureInfo.InvariantCulture, out var p) ? p : null;
         int? quantity = TryQuantity(product, out var q) ? q : null;
 
@@ -305,20 +332,21 @@ public sealed class M5aznClient : IM5aznClient
 
     private async Task<string> GetTokenAsync(CancellationToken ct)
     {
+        var account = _account.Current;
         var now = _clock.UtcNow;
-        if (_tokens.Current(now) is { } cached) return cached;
+        if (_tokens.Current(now, account.SessionKey) is { } cached) return cached;
 
         await _tokens.Gate.WaitAsync(ct);
         try
         {
-            if (_tokens.Current(_clock.UtcNow) is { } fresh) return fresh;
+            if (_tokens.Current(_clock.UtcNow, account.SessionKey) is { } fresh) return fresh;
 
             HttpResponseMessage response;
             try
             {
                 response = await _http.SendAsync(Prepare(new HttpRequestMessage(HttpMethod.Post, "api/v1/auth/login")
                 {
-                    Content = JsonContent.Create(new { email = _options.Email, password = _options.Password })
+                    Content = JsonContent.Create(new { email = account.Email, password = account.Password })
                 }, token: null), ct);
             }
             catch (HttpRequestException ex)
@@ -338,12 +366,12 @@ public sealed class M5aznClient : IM5aznClient
                 if (!response.IsSuccessStatusCode || IsFalse(root?["success"]) || string.IsNullOrWhiteSpace(token))
                 {
                     _logger.LogCritical(
-                        "M5azn sign-in failed ({Status}): {Message}. Check M5azn:Email and M5azn:Password.",
+                        "M5azn sign-in failed ({Status}): {Message}. Check the seller account on the M5azn page.",
                         (int)response.StatusCode, Text(root?["message"]) ?? "no message");
                     throw new M5aznSignInException($"M5azn sign-in failed ({(int)response.StatusCode}).");
                 }
 
-                _tokens.Set(token, ExpiryOf(token, _clock.UtcNow));
+                _tokens.Set(token, ExpiryOf(token, _clock.UtcNow), account.SessionKey);
                 return token;
             }
         }

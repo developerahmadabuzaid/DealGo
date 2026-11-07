@@ -359,6 +359,146 @@ public class M5aznFulfilmentTests
         m5azn.Created.Should().NotContain(c => c.Total == 2480m);
     }
 
+    // ---------------------------------------------------------------- settings and pricing
+
+    [Fact]
+    public async Task Dashboard_settings_win_and_the_password_is_kept_encrypted_and_never_returned()
+    {
+        try
+        {
+            await using (var scope = _fixture.CreateScope(m5azn: new FakeM5azn()))
+            {
+                var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
+
+                var before = await service.GetSettingsAsync();
+                before.Source.Should().Be(M5aznSettingsSource.Server);
+                before.ProfitPercentage.Should().Be(70m, "70% is the default profit");
+
+                var saved = await service.UpdateSettingsAsync(new M5aznSettingsRequest(
+                    true, " owner@dealgo.test ", "dash-pass", "https://m5azn.ae", false, 70m));
+                saved.Settings.Should().BeEquivalentTo(new
+                {
+                    Enabled = true, Email = "owner@dealgo.test", HasPassword = true, PasswordUnreadable = false,
+                    BaseUrl = "https://m5azn.ae", AutoSubmit = false, Source = M5aznSettingsSource.Dashboard, Active = true
+                });
+
+                var account = scope.ServiceProvider.GetRequiredService<IM5aznAccountProvider>().Current;
+                account.Password.Should().Be("dash-pass");
+                account.ToString().Should().NotContain("dash-pass");
+
+                // An empty password keeps the saved one.
+                await service.UpdateSettingsAsync(new M5aznSettingsRequest(true, "owner@dealgo.test", "", "https://m5azn.ae", true, 70m));
+                scope.ServiceProvider.GetRequiredService<IM5aznAccountProvider>().Current.Password.Should().Be("dash-pass");
+
+                // A different account needs its own password.
+                var noPassword = () => service.UpdateSettingsAsync(
+                    new M5aznSettingsRequest(true, "other@dealgo.test", null, null, true, 70m));
+                (await noPassword.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+
+                var badProfit = () => service.UpdateSettingsAsync(
+                    new M5aznSettingsRequest(true, "owner@dealgo.test", null, null, true, -1m));
+                (await badProfit.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+
+                var plainHttp = () => service.UpdateSettingsAsync(
+                    new M5aznSettingsRequest(true, "owner@dealgo.test", null, "http://m5azn.com", true, 70m));
+                (await plainHttp.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+
+                (await service.CheckSignInAsync()).Ok.Should().BeTrue();
+            }
+
+            await using (var scope = _fixture.CreateScope())
+            {
+                var row = await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>()
+                    .M5aznSettings.AsNoTracking().SingleAsync();
+                row.PasswordProtected.Should().StartWith("v1:").And.NotContain("dash-pass");
+
+                // The dashboard's switch and account win over the server's (which is off and empty here).
+                var account = await scope.ServiceProvider.GetRequiredService<IM5aznAccountProvider>().RefreshAsync(force: true);
+                account.Source.Should().Be(M5aznSettingsSource.Dashboard);
+                account.IsActive.Should().BeTrue();
+            }
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Linking_prices_the_product_at_M5azn_price_plus_the_profit()
+    {
+        var product = await NewProductAsync(price: 99m, linked: false);
+        var m5azn = new FakeM5azn { Price = 100m };
+
+        await using var scope = _fixture.CreateScope(m5azn: m5azn);
+        var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
+
+        var result = await service.LinkStoreProductAsync(product, new M5aznLinkRequest(4242, "SKU-1"));
+        result.Should().Be(new M5aznLinkResult(true, 100m, 170m, null));
+
+        var row = (await service.GetLinksAsync()).StoreProducts.Single(l => l.Id == product);
+        row.Price.Should().Be(170m);
+        row.M5aznCostPrice.Should().Be(100m);
+    }
+
+    [Fact]
+    public async Task Changing_the_profit_reprices_linked_products_and_prices_can_be_read_again()
+    {
+        var product = await NewProductAsync(price: 99m, linked: false);
+        var m5azn = new FakeM5azn { Price = 40m };
+
+        try
+        {
+            await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+            {
+                var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();
+                await service.LinkStoreProductAsync(product, new M5aznLinkRequest(4343, "SKU-2"));
+                (await PriceOfAsync(product)).Should().Be(68m);   // 40 + 70%
+
+                // A new profit re-prices from the M5azn price already known; M5azn is not asked.
+                m5azn.Price = 1000m;
+                var saved = await service.UpdateSettingsAsync(new M5aznSettingsRequest(true, null, null, null, true, 25m));
+                saved.Repriced.Should().BeGreaterThanOrEqualTo(1);
+                (await PriceOfAsync(product)).Should().Be(50m);   // 40 + 25%
+            }
+
+            await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+            {
+                // Reading prices again takes M5azn's new price.
+                m5azn.Price = 44.44m;
+                var summary = await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().RefreshPricesAsync();
+                summary.Updated.Should().BeGreaterThanOrEqualTo(1);
+                (await PriceOfAsync(product)).Should().Be(55.55m);   // 44.44 + 25%, rounded
+            }
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData(100, 70, 170)]
+    [InlineData(19.99, 70, 33.98)]
+    [InlineData(50, 0, 50)]
+    [InlineData(10, 12.5, 11.25)]
+    public void The_price_is_the_M5azn_price_plus_the_profit(decimal m5azn, decimal profit, decimal expected) =>
+        M5aznPricing.PriceFor(m5azn, profit).Should().Be(expected);
+
+    private async Task<decimal> PriceOfAsync(Guid productId)
+    {
+        await using var scope = _fixture.CreateScope();
+        return (await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>()
+            .StoreProducts.AsNoTracking().FirstAsync(p => p.Id == productId)).Price;
+    }
+
+    /// <summary>The settings row would change every later test's M5azn, so each test that saves one removes it.</summary>
+    private async Task ClearSettingsAsync()
+    {
+        await using var scope = _fixture.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().M5aznSettings.ExecuteDeleteAsync();
+    }
+
     // ---------------------------------------------------------------- links and stock
 
     [Fact]
@@ -551,7 +691,12 @@ public class M5aznFulfilmentTests
         public Task<IReadOnlyList<M5aznStockChange>> GetQuantityChangesAsync(int hours, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<M5aznStockChange>>(StockChanges.ToList());
 
+        /// <summary>What M5azn charges for every product.</summary>
+        public decimal Price { get; set; } = 10m;
+
         public Task<M5aznProductInfo?> GetProductAsync(long productId, CancellationToken ct = default) =>
-            Task.FromResult<M5aznProductInfo?>(new M5aznProductInfo(productId, "Item", "SKU", 10m, 5, null));
+            Task.FromResult<M5aznProductInfo?>(new M5aznProductInfo(productId, "Item", "SKU", Price, 5, null));
+
+        public Task<string?> CheckSignInAsync(CancellationToken ct = default) => Task.FromResult<string?>(null);
     }
 }

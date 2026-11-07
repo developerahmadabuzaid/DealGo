@@ -7,39 +7,55 @@ namespace AuctionPlatform.Api.BackgroundServices;
 /// <summary>
 /// Sends paid store orders with M5azn products, follows them, and copies M5azn's stock (docs/M5AZN.md).
 /// M5azn documents no webhooks, so following an order means asking about it now and then.
-/// With M5azn switched off it wakes, sees that, and does nothing.
+/// It keeps running while M5azn is switched off, so switching it on from the dashboard takes
+/// effect within one interval; while off, each pass only reads the settings.
 /// </summary>
 public sealed class M5aznWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly M5aznOptions _options;
     private readonly ILogger<M5aznWorker> _logger;
+    private readonly IM5aznAccountProvider _account;
     private DateTime _nextStockSync = DateTime.MinValue;
+    private bool? _wasActive;
 
-    public M5aznWorker(IServiceScopeFactory scopeFactory, IOptions<M5aznOptions> options, ILogger<M5aznWorker> logger)
+    public M5aznWorker(
+        IServiceScopeFactory scopeFactory,
+        IOptions<M5aznOptions> options,
+        IM5aznAccountProvider account,
+        ILogger<M5aznWorker> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
+        _account = account;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_options.IsActive)
-        {
-            _logger.LogInformation("M5azn is switched off (M5azn:Enabled). Nothing will be sent to it.");
-            return;
-        }
-
-        _logger.LogInformation("M5azn is on: {BaseUrl}, automatic sending {Auto}, stock sync {Stock}.",
-            _options.BaseUrl, _options.AutoSubmit ? "on" : "off", _options.StockSyncEnabled ? "on" : "off");
-
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Clamp(_options.WorkerIntervalSeconds, 30, 3600)));
 
         while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
         {
             try
             {
+                var account = await _account.RefreshAsync(ct: stoppingToken);
+                if (account.IsActive != _wasActive)
+                {
+                    _wasActive = account.IsActive;
+                    if (account.IsActive)
+                    {
+                        _logger.LogInformation("M5azn is on: {BaseUrl}, automatic sending {Auto}, stock sync {Stock}, settings from {Source}.",
+                            account.BaseUrl, account.AutoSubmit ? "on" : "off", _options.StockSyncEnabled ? "on" : "off", account.Source);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("M5azn is switched off or has no seller account. Nothing is sent to it.");
+                    }
+                }
+
+                if (!account.IsActive) continue;
+
                 using var scope = _scopeFactory.CreateScope();
                 var locks = scope.ServiceProvider.GetRequiredService<IDistributedLockService>();
 

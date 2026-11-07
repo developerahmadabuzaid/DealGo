@@ -21,19 +21,46 @@ exactly as it did.
 | Store orders | A paid order with at least one linked product, and a delivery address, is sent to M5azn. Only the linked lines are sent; the rest stay DealGo's to ship. |
 | Tracking | Every 30 minutes the server asks M5azn about each order on its way and copies its status, tracking number, tracking link and courier. |
 | Order status | Sent → the DealGo order becomes **Processing** (the customer can no longer cancel it). When M5azn delivers *everything* on the order: **Shipped** (with the tracking number) and **Delivered**, with the usual notifications. A mixed order stays Processing for you to finish. |
+| Prices | The DealGo price of a linked product is **M5azn's price plus a profit percentage**, 70% unless you change it: a product M5azn sells you for 100 SAR is priced 170 SAR. It is set when you link the product, again for every linked product when you change the percentage, and on demand with *Update prices from M5azn*. |
 | Stock | Every hour the server reads M5azn's recent stock changes and sets the stock of linked store products to M5azn's quantity (an inventory entry "Stock synced from M5azn" is written). A product at 0 shows as out of stock. |
 | App | "My orders" shows a *Shipping and tracking* box once the order has gone to M5azn: progress, courier, tracking number (copyable) and a *Track shipment* link. |
-| Admin | **Store → M5azn**: shipments and their status, the reason for any failure, *Send to M5azn* / *Send again* / *Refresh*, and the store product links. The order window also shows its M5azn delivery. |
+| Admin | **Store → M5azn**: the on/off switch, the seller account and the profit percentage; shipments and their status, the reason for any failure, *Send to M5azn* / *Send again* / *Refresh*, and the store product links. The order window also shows its M5azn delivery. |
 
 What it never does on its own: cancel or refund a DealGo order. If M5azn cancels or returns an
 order, the shipment shows *Cancelled* with a note, and the decision is yours.
 
 ## 1. Switch it on
 
-The M5azn seller account (the email and password you sign in to m5azn.com with) is the only
-secret. It goes in configuration, never in the repository or the app.
+### From the dashboard (the easy way)
 
-### On SmarterASP
+**Store → M5azn → M5azn account and pricing**:
+
+1. *M5azn*: **Enabled**.
+2. *Seller email* and *Seller password*: the account you sign in to m5azn.com with.
+3. *M5azn address*: m5azn.com (KSA), m5azn.ae (UAE) or m5azn.om (Oman).
+4. *Automatic sending*: start with **Disabled** (see *Start carefully* below).
+5. *Profit %*: 70 by default.
+6. **Save**, then **Check sign-in**. It only signs in; nothing is ordered.
+
+Only staff allowed to change the store settings see this card. The password is stored encrypted
+and is never shown again or sent back to the browser: leave the box empty to keep it, type a new
+one to change it. Changing the email needs the password of that account. Emptying the email goes
+back to the account in the server settings, if any.
+
+The password is encrypted with a key derived from the server's `Jwt:Secret`, or from
+`M5azn:EncryptionKey` when that is set. If that secret changes, the page says the password can no
+longer be read, M5azn stops, and you type the password again. Nothing else is lost.
+
+Once saved on the dashboard, the dashboard's switch, account, address and automatic sending win
+over the server settings below. Every server picks a change up within half a minute; the worker
+acts on it within two minutes.
+
+### From the server settings
+
+The account can also be set without the dashboard. It is a secret: it goes in configuration,
+never in the repository or the app.
+
+#### On SmarterASP
 
 Add to `deploy/smarterasp/local-secrets.ps1` (git-ignored; never commit it):
 
@@ -46,6 +73,7 @@ $M5aznPassword = '<your M5azn seller password>'
 # $M5aznAutoSubmit    = 'true'                # 'false': paid orders wait for approval on the M5azn page
 # $M5aznPaymentMethod = 'card'                # the customer already paid DealGo; 'cod' asks M5azn to collect
 # $M5aznStockSync     = 'true'
+# $M5aznEncryptionKey = '<long random text>'  # encrypts the password saved on the dashboard
 ```
 
 Then rebuild the package:
@@ -56,16 +84,18 @@ pwsh deploy/smarterasp/publish-smarterasp.ps1 -Zip
 
 The script writes `M5azn__Enabled=true`, `M5azn__Email`, `M5azn__Password` (and any optional value
 you set) into `web.config`. It refuses to build with only one of the two account values, and says
-at the end whether M5azn is on. Without them it adds nothing, and M5azn stays off.
+at the end whether M5azn is on. Without them it adds nothing: M5azn stays off until it is switched
+on from the dashboard.
 
-### Anywhere else
+#### Anywhere else
 
 Environment variables (or user secrets in development):
 
 | Setting | Default | |
 |---|---|---|
 | `M5azn__Enabled` | `false` | The feature flag. |
-| `M5azn__Email`, `M5azn__Password` | — | The seller account. Required when enabled; the API refuses to start without them. |
+| `M5azn__Email`, `M5azn__Password` | — | The seller account, unless it is entered on the dashboard. Set both or neither: the API refuses to start with only one. |
+| `M5azn__EncryptionKey` | — | Optional key for the password saved on the dashboard. Without it, one is derived from `Jwt__Secret`. |
 | `M5azn__BaseUrl` | `https://m5azn.com` | KSA. `https://m5azn.ae` (UAE), `https://m5azn.om` (Oman). |
 | `M5azn__AutoSubmit` | `true` | Send paid store orders without waiting. `false`: they wait as *Awaiting approval*. |
 | `M5azn__PaymentMethod` | `card` | `card` (already paid) or `cod` (M5azn collects the total on delivery). |
@@ -84,8 +114,22 @@ In the admin console, **Store → M5azn**:
    variant (size, colour). Both are needed: M5azn's order line carries the two.
 2. Type them into the product's row and press **Check**: this only reads M5azn's catalogue (no
    order is placed) and fills in the SKU if it was empty. Then **Save**.
-3. Set the DealGo price and stock as usual. With stock sync on, the stock follows M5azn's within
-   the hour after M5azn's stock next changes.
+3. **Save** reads M5azn's price and sets the DealGo price to it plus the profit percentage; the
+   message shows both (for example *100.00 SAR → 170.00 SAR*). If M5azn is off or gives no price,
+   the link is saved and the price is left as it was.
+4. With stock sync on, the stock follows M5azn's within the hour after M5azn's stock next changes.
+
+### Prices and profit
+
+- **The rule**: DealGo price = M5azn price × (1 + profit % ÷ 100), rounded to the halala.
+- **Changing the percentage** re-prices every linked product at once from the M5azn price last
+  read. M5azn is not asked.
+- **Update prices from M5azn** (above the product table) reads each linked product's price from
+  M5azn again (read-only, nothing is ordered) and re-prices it. Use it when M5azn changes prices;
+  it does not run on its own.
+- The table shows each product's DealGo price and M5azn price.
+- A price set this way overwrites one typed on the product page. Offers (*compare at* prices) are
+  not touched.
 
 To unlink, clear both boxes and save. Linking and unlinking are recorded in the audit log.
 
@@ -93,7 +137,8 @@ To unlink, clear both boxes and save. Linking and unlinking are recorded in the 
 
 Every order sent costs money at M5azn. For the first days:
 
-1. Set `$M5aznAutoSubmit = 'false'`, so each paid order waits on the M5azn page.
+1. Set *Automatic sending* to **Disabled** on the M5azn page (or `$M5aznAutoSubmit = 'false'`),
+   so each paid order waits there.
 2. Link **one** cheap product, buy it yourself with a real address, and press **Send to M5azn**.
 3. Check that the order appears in your M5azn dashboard with the right address, then watch its
    status and tracking arrive in the admin page and the app (press **Refresh** to ask at once).
@@ -118,7 +163,8 @@ Every order sent costs money at M5azn. For the first days:
   It is shown on the M5azn page; search M5azn's dashboard for it.
 - **No cancelling after sending.** Once a send has been attempted, the customer's *Cancel order*
   is refused ("already sent to the supplier"). An order cancelled before that is never sent.
-- **The account is never logged.** Neither the password nor the session token appears in logs.
+- **The account is never logged.** Neither the password nor the session token appears in logs
+  or in the audit log (which records only that the password was changed).
   The order body sent is kept on the shipment for support (it holds the delivery address).
 
 ## Webhooks
@@ -160,6 +206,9 @@ Apart from sign-in, M5azn documents no answers. The client reads them loosely, a
 - Order details can be fetched by M5azn's id, or by our reference when M5azn gave none. Whether
   M5azn finds an order by the `id` we sent is unknown; it is what makes an unclear answer safe.
 - Whether M5azn rejects a second order with the same `id` is unknown, so the code never relies on it.
+- The price used for pricing is the first of `seller_price`, `wholesale_price`, `cost_price`,
+  `price`, `sale_price` in the product's details: what the seller pays M5azn is assumed to be one
+  of the first three. Check it against your M5azn dashboard on the first product you link.
 - Stock changes are a list of `{product_id | id, sku, qty | quantity | stock}`, or with a
   `variants` list per product.
 
@@ -171,11 +220,13 @@ When the real answers are known, `M5aznClient` (`src/AuctionPlatform.Infrastruct
 | | |
 |---|---|
 | `Domain/Entities/M5aznShipment.cs`, `Domain/Enums/M5aznEnums.cs` | The shipment and its statuses. `StoreProduct` gains `M5aznProductId` and `M5aznSku`. Migration `M5aznDropshipping`. |
-| `Application/M5azn/` | `IM5aznClient`, `M5aznFulfilmentService` (pick up, send, follow, stock, admin and customer reads), `M5aznStatusMap`. |
+| `Domain/Entities/M5aznSettings.cs` | The dashboard's settings row. `StoreProduct.M5aznCostPrice` keeps M5azn's price. Migration `M5aznSettingsAndProfit`. |
+| `Application/M5azn/` | `IM5aznClient`, `M5aznFulfilmentService` (pick up, send, follow, stock, prices, settings, admin and customer reads), `M5aznStatusMap`, `M5aznAccount` (the settings in effect and the pricing rule). |
+| `Infrastructure/Services/M5aznAccountProvider.cs`, `AesSecretProtector.cs` | Which settings are in effect, and the password's encryption. |
 | `Infrastructure/Services/M5aznClient.cs` | The typed `HttpClient`. |
 | `Api/BackgroundServices/M5aznWorker.cs` | The schedule. |
 | `Api/Controllers/Admin/AdminM5aznController.cs` | `/api/v1/admin/m5azn/...` |
 | `Api/Controllers/ShipmentTrackingController.cs` | `GET /api/v1/store/orders/{id}/shipment` (204 when not with M5azn). |
 | `mobile/lib/features/shipping/` | The app's tracking box. |
 | `wwwroot/admin/app.js` (`viewM5azn`) | The admin page. |
-| Tests | `Unit/M5aznClientTests.cs` (against a stand-in HTTP server), `Integration/M5aznFulfilmentTests.cs` (real PostgreSQL, stand-in M5azn), `mobile/test/shipment_tracking_test.dart`. None of them reaches m5azn.com. |
+| Tests | `Unit/M5aznClientTests.cs` (against a stand-in HTTP server), `Unit/SecretProtectorTests.cs`, `Integration/M5aznFulfilmentTests.cs` (real PostgreSQL, stand-in M5azn), `mobile/test/shipment_tracking_test.dart`. None of them reaches m5azn.com. |

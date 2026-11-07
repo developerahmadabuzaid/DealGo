@@ -47,13 +47,34 @@ public sealed class AdminM5aznController : ApiControllerBase
     public async Task<ActionResult<M5aznLinksDto>> Links(CancellationToken ct) =>
         Ok(await _m5azn.GetLinksAsync(ct));
 
+    /// <summary>Links a product. When M5azn can be asked, its price plus the profit percentage becomes the product's price.</summary>
     [HttpPut("links/store-products/{id:guid}")]
     [Authorize(Policy = Permissions.StoreUpdateProduct)]
-    public async Task<IActionResult> LinkStoreProduct(Guid id, M5aznLinkRequest request, CancellationToken ct)
-    {
-        await _m5azn.LinkStoreProductAsync(id, request, ct);
-        return NoContent();
-    }
+    public async Task<ActionResult<M5aznLinkResult>> LinkStoreProduct(Guid id, M5aznLinkRequest request, CancellationToken ct) =>
+        Ok(await _m5azn.LinkStoreProductAsync(id, request, ct));
+
+    /// <summary>Reads every linked product's price from M5azn (read-only) and re-prices it with the profit percentage.</summary>
+    [HttpPost("prices/refresh")]
+    [Authorize(Policy = Permissions.StoreUpdateProduct)]
+    public async Task<ActionResult<M5aznRepriceSummary>> RefreshPrices(CancellationToken ct) =>
+        Ok(await _m5azn.RefreshPricesAsync(ct));
+
+    /// <summary>The on/off switch, the seller account (never its password), the address and the profit percentage.</summary>
+    [HttpGet("settings")]
+    [Authorize(Policy = Permissions.StoreManageSettings)]
+    public async Task<ActionResult<M5aznSettingsDto>> Settings(CancellationToken ct) =>
+        Ok(await _m5azn.GetSettingsAsync(ct));
+
+    [HttpPut("settings")]
+    [Authorize(Policy = Permissions.StoreManageSettings)]
+    public async Task<ActionResult<M5aznSettingsSaved>> UpdateSettings(M5aznSettingsRequest request, CancellationToken ct) =>
+        Ok(await _m5azn.UpdateSettingsAsync(request, ct));
+
+    /// <summary>Signs in to M5azn with the saved account, to check it. Places nothing.</summary>
+    [HttpPost("settings/check")]
+    [Authorize(Policy = Permissions.StoreManageSettings)]
+    public async Task<ActionResult<M5aznSignInCheck>> CheckSignIn(CancellationToken ct) =>
+        Ok(await _m5azn.CheckSignInAsync(ct));
 
     /// <summary>Reads a product from M5azn's catalogue, to check an id before linking it. Read-only.</summary>
     [HttpGet("products/{m5aznProductId:long}")]

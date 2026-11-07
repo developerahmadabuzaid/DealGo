@@ -51,7 +51,10 @@ public sealed record M5aznRemoteOrder(
 /// <summary>One line of <c>GET /api/v1/products/qty-changed</c>.</summary>
 public sealed record M5aznStockChange(long ProductId, string? Sku, int Quantity);
 
-/// <summary>The few fields of <c>GET /api/v1/product/details/{id}</c> an administrator needs to link a product.</summary>
+/// <summary>
+/// The few fields of <c>GET /api/v1/product/details/{id}</c> an administrator needs to link a product.
+/// <c>Price</c> is what M5azn charges the seller (its seller or wholesale price where it gives one).
+/// </summary>
 public sealed record M5aznProductInfo(long ProductId, string? Name, string? Sku, decimal? Price, int? Quantity, string? ImageUrl);
 
 /// <summary>
@@ -62,6 +65,12 @@ public interface IM5aznClient
 {
     /// <summary>The feature flag is on and the seller account is configured.</summary>
     bool IsEnabled { get; }
+
+    /// <summary>
+    /// Signs in afresh with the account in use, to check it. Null when it worked, else why not.
+    /// Places nothing: sign-in is free. Works while switched off, so an account can be checked first.
+    /// </summary>
+    Task<string?> CheckSignInAsync(CancellationToken ct = default);
 
     Task<M5aznSubmitResult> CreateOrderAsync(M5aznOrderRequest order, CancellationToken ct = default);
 

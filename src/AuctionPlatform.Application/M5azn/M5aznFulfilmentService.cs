@@ -56,6 +56,7 @@ public sealed record M5aznOverviewDto(
     bool StockSyncEnabled,
     string BaseUrl,
     string PaymentMethod,
+    decimal ProfitPercentage,
     IReadOnlyDictionary<string, int> CountsByStatus,
     int LinkedStoreProducts);
 
@@ -73,11 +74,46 @@ public sealed record M5aznLinkedItemDto(
     string? Sku,
     long? M5aznProductId,
     string? M5aznSku,
-    int? Stock);
+    int? Stock,
+    decimal Price,
+    decimal? M5aznCostPrice);
 
 public sealed record M5aznLinksDto(IReadOnlyList<M5aznLinkedItemDto> StoreProducts);
 
 public sealed record M5aznRunSummary(int Found, int Sent, int Refreshed);
+
+/// <summary>The M5azn settings as the dashboard shows them. The password itself is never sent back.</summary>
+public sealed record M5aznSettingsDto(
+    bool Enabled,
+    string Email,
+    bool HasPassword,
+    bool PasswordUnreadable,
+    string BaseUrl,
+    bool AutoSubmit,
+    decimal ProfitPercentage,
+    M5aznSettingsSource Source,
+    bool Active);
+
+/// <summary>
+/// What an administrator saves. An empty <see cref="Password"/> keeps the saved one; an empty
+/// <see cref="Email"/> goes back to the server's configured account.
+/// </summary>
+public sealed record M5aznSettingsRequest(
+    bool Enabled,
+    string? Email,
+    string? Password,
+    string? BaseUrl,
+    bool AutoSubmit,
+    decimal ProfitPercentage);
+
+public sealed record M5aznSettingsSaved(M5aznSettingsDto Settings, int Repriced);
+
+public sealed record M5aznSignInCheck(bool Ok, string Message);
+
+/// <summary>What linking did to the product's price.</summary>
+public sealed record M5aznLinkResult(bool Priced, decimal? M5aznPrice, decimal? Price, string? Note);
+
+public sealed record M5aznRepriceSummary(int Checked, int Updated, int Failed);
 
 // ---------------------------------------------------------------- service
 
@@ -100,7 +136,19 @@ public interface IM5aznFulfilmentService
     Task<M5aznShipmentDto> RefreshAsync(Guid shipmentId, CancellationToken ct = default);
 
     Task<M5aznLinksDto> GetLinksAsync(CancellationToken ct = default);
-    Task LinkStoreProductAsync(Guid productId, M5aznLinkRequest request, CancellationToken ct = default);
+    /// <summary>Links (or unlinks) a product. When M5azn can be asked, its price plus the profit percentage becomes the product's price.</summary>
+    Task<M5aznLinkResult> LinkStoreProductAsync(Guid productId, M5aznLinkRequest request, CancellationToken ct = default);
+
+    /// <summary>Reads every linked product's price from M5azn (read-only) and sets the DealGo price from it.</summary>
+    Task<M5aznRepriceSummary> RefreshPricesAsync(CancellationToken ct = default);
+
+    Task<M5aznSettingsDto> GetSettingsAsync(CancellationToken ct = default);
+
+    /// <summary>Saves the dashboard settings. A new profit percentage re-prices the linked products at once.</summary>
+    Task<M5aznSettingsSaved> UpdateSettingsAsync(M5aznSettingsRequest request, CancellationToken ct = default);
+
+    /// <summary>Signs in to M5azn with the saved account, to check it. Places nothing.</summary>
+    Task<M5aznSignInCheck> CheckSignInAsync(CancellationToken ct = default);
     Task<M5aznProductInfo?> LookupProductAsync(long m5aznProductId, CancellationToken ct = default);
 
     Task<ShipmentTrackingDto?> GetStoreOrderTrackingAsync(Guid userId, Guid orderId, CancellationToken ct = default);
@@ -128,6 +176,8 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
     private readonly IApplicationDbContext _db;
     private readonly IM5aznClient _client;
+    private readonly IM5aznAccountProvider _account;
+    private readonly ISecretProtector _protector;
     private readonly IStoreAdminService _storeAdmin;
     private readonly IAuditService _audit;
     private readonly IDateTimeProvider _clock;
@@ -137,6 +187,8 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
     public M5aznFulfilmentService(
         IApplicationDbContext db,
         IM5aznClient client,
+        IM5aznAccountProvider account,
+        ISecretProtector protector,
         IStoreAdminService storeAdmin,
         IAuditService audit,
         IDateTimeProvider clock,
@@ -145,6 +197,8 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
     {
         _db = db;
         _client = client;
+        _account = account;
+        _protector = protector;
         _storeAdmin = storeAdmin;
         _audit = audit;
         _clock = clock;
@@ -152,12 +206,13 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
         _logger = logger;
     }
 
-    public bool IsEnabled => _options.IsActive && _client.IsEnabled;
+    public bool IsEnabled => _account.Current.IsActive && _client.IsEnabled;
 
     // ================================================================ worker
 
     public async Task<M5aznRunSummary> RunAsync(CancellationToken ct = default)
     {
+        await _account.RefreshAsync(ct: ct);
         if (!IsEnabled) return new M5aznRunSummary(0, 0, 0);
 
         var found = await DiscoverAsync(ct);
@@ -172,7 +227,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
     {
         var now = _clock.UtcNow;
         var since = now.AddDays(-Math.Max(1, _options.LookbackDays));
-        var initial = _options.AutoSubmit ? M5aznShipmentStatus.Queued : M5aznShipmentStatus.AwaitingApproval;
+        var initial = _account.Current.AutoSubmit ? M5aznShipmentStatus.Queued : M5aznShipmentStatus.AwaitingApproval;
 
         var orders = await _db.StoreOrders.AsNoTracking()
             .Where(o => (o.Status == StoreOrderStatus.Paid || o.Status == StoreOrderStatus.Processing)
@@ -656,6 +711,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
     public async Task<int> SyncStockAsync(CancellationToken ct = default)
     {
+        await _account.RefreshAsync(ct: ct);
         if (!IsEnabled || !_options.StockSyncEnabled) return 0;
 
         // Ask for a little more than the gap between runs, so a late run misses nothing.
@@ -732,13 +788,16 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
         var linkedProducts = await _db.StoreProducts.CountAsync(p => p.M5aznProductId != null, ct);
 
+        var account = await _account.RefreshAsync(ct: ct);
+
         return new M5aznOverviewDto(
-            _options.Enabled,
-            _options.HasCredentials,
-            _options.AutoSubmit,
+            account.Enabled,
+            account.HasCredentials,
+            account.AutoSubmit,
             _options.StockSyncEnabled,
-            _options.BaseUrl,
+            account.BaseUrl,
             _options.PaymentMethod,
+            account.ProfitPercentage,
             Enum.GetValues<M5aznShipmentStatus>().ToDictionary(
                 s => s.ToString(), s => counts.FirstOrDefault(c => c.Key == s)?.Count ?? 0),
             linkedProducts);
@@ -773,6 +832,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
     public async Task<M5aznShipmentDto> SubmitNowAsync(Guid shipmentId, CancellationToken ct = default)
     {
+        await _account.RefreshAsync(ct: ct);
         EnsureEnabled();
 
         var shipment = await _db.M5aznShipments.FirstOrDefaultAsync(s => s.Id == shipmentId, ct)
@@ -800,6 +860,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
     public async Task<M5aznShipmentDto> RefreshAsync(Guid shipmentId, CancellationToken ct = default)
     {
+        await _account.RefreshAsync(ct: ct);
         EnsureEnabled();
 
         var shipment = await _db.M5aznShipments.FirstOrDefaultAsync(s => s.Id == shipmentId, ct)
@@ -819,27 +880,254 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
             .Where(p => p.Status != StoreProductStatus.Archived || p.M5aznProductId != null)
             .OrderByDescending(p => p.M5aznProductId != null).ThenBy(p => p.Name)
             .Take(500)
-            .Select(p => new M5aznLinkedItemDto(p.Id, p.Name, p.Sku, p.M5aznProductId, p.M5aznSku, p.StockQuantity))
+            .Select(p => new M5aznLinkedItemDto(p.Id, p.Name, p.Sku, p.M5aznProductId, p.M5aznSku, p.StockQuantity,
+                p.Price, p.M5aznCostPrice))
             .ToListAsync(ct);
 
         return new M5aznLinksDto(products);
     }
 
-    public async Task LinkStoreProductAsync(Guid productId, M5aznLinkRequest request, CancellationToken ct = default)
+    public async Task<M5aznLinkResult> LinkStoreProductAsync(Guid productId, M5aznLinkRequest request, CancellationToken ct = default)
     {
         var (id, sku) = ValidateLink(request);
+        var account = await _account.RefreshAsync(ct: ct);
 
         var product = await _db.StoreProducts.FirstOrDefaultAsync(p => p.Id == productId, ct)
             ?? throw new DomainException(ErrorCodes.ProductNotFound, "Product not found.");
 
-        var before = new { product.M5aznProductId, product.M5aznSku };
+        var before = new { product.M5aznProductId, product.M5aznSku, product.M5aznCostPrice, product.Price };
+
+        // Read M5azn's price before saving anything, so a slow M5azn holds no row.
+        M5aznLinkResult result;
+        decimal? cost = null;
+        if (id is null)
+        {
+            result = new M5aznLinkResult(false, null, null, null);
+        }
+        else if (!IsEnabled)
+        {
+            result = new M5aznLinkResult(false, null, null, "M5azn is switched off, so its price was not read. The price was left as it is.");
+        }
+        else
+        {
+            var (info, problem) = await TryGetProductAsync(id.Value, ct);
+            cost = info?.Price is > 0 ? info.Price : null;
+            result = cost is null
+                ? new M5aznLinkResult(false, null, null,
+                    (problem ?? "M5azn gave no price for this product") + ". The price was left as it is.")
+                : new M5aznLinkResult(true, cost, M5aznPricing.PriceFor(cost.Value, account.ProfitPercentage), null);
+        }
+
         product.M5aznProductId = id;
         product.M5aznSku = sku;
+        if (id is null || product.M5aznProductId != before.M5aznProductId) product.M5aznCostPrice = null;
+        if (cost is not null)
+        {
+            product.M5aznCostPrice = cost;
+            product.Price = result.Price!.Value;
+        }
         product.UpdatedAt = _clock.UtcNow;
         await _db.SaveChangesAsync(ct);
 
         await _audit.LogAsync(AuditActionType.M5aznLinkChanged, nameof(StoreProduct), productId,
-            before, new { M5aznProductId = id, M5aznSku = sku }, ct: ct);
+            before, new { M5aznProductId = id, M5aznSku = sku, product.M5aznCostPrice, product.Price }, ct: ct);
+
+        return result;
+    }
+
+    public async Task<M5aznRepriceSummary> RefreshPricesAsync(CancellationToken ct = default)
+    {
+        var account = await _account.RefreshAsync(ct: ct);
+        EnsureEnabled();
+
+        var linked = await _db.StoreProducts.AsNoTracking()
+            .Where(p => p.M5aznProductId != null && p.Status != StoreProductStatus.Archived)
+            .OrderBy(p => p.Name)
+            .Select(p => new { p.Id, M5aznProductId = p.M5aznProductId!.Value })
+            .Take(500)
+            .ToListAsync(ct);
+
+        int updated = 0, failed = 0;
+        foreach (var item in linked)
+        {
+            var (info, _) = await TryGetProductAsync(item.M5aznProductId, ct);
+            if (info?.Price is not > 0)
+            {
+                failed++;
+                continue;
+            }
+
+            if (await SetM5aznPriceAsync(item.Id, info.Price.Value, account.ProfitPercentage, ct)) updated++;
+        }
+
+        await _audit.LogAsync(AuditActionType.M5aznPricesUpdated, nameof(StoreProduct), null, null,
+            new { Checked = linked.Count, Updated = updated, Failed = failed, account.ProfitPercentage }, ct: ct);
+
+        _logger.LogInformation("M5azn: prices read for {Checked} product(s), {Updated} changed, {Failed} without a price.",
+            linked.Count, updated, failed);
+        return new M5aznRepriceSummary(linked.Count, updated, failed);
+    }
+
+    /// <summary>Applies a profit percentage to every linked product whose M5azn price is known. No call to M5azn.</summary>
+    private async Task<int> ApplyProfitAsync(decimal profitPercentage, CancellationToken ct)
+    {
+        var known = await _db.StoreProducts.AsNoTracking()
+            .Where(p => p.M5aznProductId != null && p.M5aznCostPrice != null)
+            .Select(p => new { p.Id, Cost = p.M5aznCostPrice!.Value })
+            .ToListAsync(ct);
+
+        var updated = 0;
+        foreach (var item in known)
+        {
+            if (await SetM5aznPriceAsync(item.Id, item.Cost, profitPercentage, ct)) updated++;
+        }
+
+        return updated;
+    }
+
+    /// <summary>Records M5azn's price on one product and sets its price from it. False when nothing changed.</summary>
+    private async Task<bool> SetM5aznPriceAsync(Guid productId, decimal cost, decimal profitPercentage, CancellationToken ct)
+    {
+        var product = await _db.StoreProducts.FirstOrDefaultAsync(p => p.Id == productId && p.M5aznProductId != null, ct);
+        if (product is null) return false;
+
+        var price = M5aznPricing.PriceFor(cost, profitPercentage);
+        if (product.M5aznCostPrice == cost && product.Price == price) return false;
+
+        product.M5aznCostPrice = cost;
+        product.Price = price;
+        product.UpdatedAt = _clock.UtcNow;
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Edited meanwhile by someone else; the next re-price picks it up.
+            if (_db is DbContext context) context.Entry(product).State = EntityState.Detached;
+            return false;
+        }
+    }
+
+    private async Task<(M5aznProductInfo? Info, string? Problem)> TryGetProductAsync(long m5aznProductId, CancellationToken ct)
+    {
+        try
+        {
+            var info = await _client.GetProductAsync(m5aznProductId, ct);
+            return (info, info is null ? "M5azn does not know this product" : null);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "M5azn: product {Id} could not be read.", m5aznProductId);
+            return (null, "M5azn could not be asked right now");
+        }
+    }
+
+    // ================================================================ settings
+
+    public async Task<M5aznSettingsDto> GetSettingsAsync(CancellationToken ct = default) =>
+        ToDto(await _account.RefreshAsync(force: true, ct: ct));
+
+    private M5aznSettingsDto ToDto(M5aznAccount a) => new(
+        a.Enabled,
+        a.Email,
+        !string.IsNullOrEmpty(a.Password) || a.PasswordUnreadable,
+        a.PasswordUnreadable,
+        a.BaseUrl,
+        a.AutoSubmit,
+        a.ProfitPercentage,
+        a.Source,
+        a.IsActive);
+
+    public async Task<M5aznSettingsSaved> UpdateSettingsAsync(M5aznSettingsRequest request, CancellationToken ct = default)
+    {
+        var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+        var password = string.IsNullOrEmpty(request.Password) ? null : request.Password;
+        var baseUrl = string.IsNullOrWhiteSpace(request.BaseUrl) ? null : request.BaseUrl.Trim().TrimEnd('/');
+
+        if (email is not null && (email.Length > 256 || !email.Contains('@')))
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "Enter the M5azn seller email.");
+        }
+
+        if (password is { Length: > 256 }) throw new DomainException(ErrorCodes.ValidationFailed, "The password is too long.");
+
+        if (baseUrl is not null && (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps
+                                    || baseUrl.Length > 256))
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "The M5azn address must be an https address, such as https://m5azn.com.");
+        }
+
+        if (request.ProfitPercentage is < 0 or > M5aznPricing.MaxProfitPercentage)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed,
+                $"The profit percentage must be between 0 and {M5aznPricing.MaxProfitPercentage:0}.");
+        }
+
+        var profit = Math.Round(request.ProfitPercentage, 2);
+        var now = _clock.UtcNow;
+        var row = await _db.M5aznSettings.OrderBy(s => s.CreatedAt).FirstOrDefaultAsync(ct);
+        var created = row is null;
+        if (row is null)
+        {
+            row = new M5aznSettings { CreatedAt = now };
+            _db.M5aznSettings.Add(row);
+        }
+
+        var before = new
+        {
+            row.Enabled, row.Email, PasswordSet = row.PasswordProtected is not null, row.BaseUrl, row.AutoSubmit,
+            ProfitPercentage = created ? M5aznSettings.DefaultProfitPercentage : row.ProfitPercentage
+        };
+
+        var emailChanged = !string.Equals(row.Email, email, StringComparison.OrdinalIgnoreCase);
+        if (email is not null && password is null && (emailChanged || row.PasswordProtected is null))
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "Enter the password for this M5azn account.");
+        }
+
+        if (email is null)
+        {
+            row.PasswordProtected = null;   // back to the server's account
+        }
+        else if (password is not null)
+        {
+            row.PasswordProtected = _protector.Protect(password);
+        }
+
+        row.Email = email;
+        row.Enabled = request.Enabled;
+        row.BaseUrl = baseUrl;
+        row.AutoSubmit = request.AutoSubmit;
+        row.ProfitPercentage = profit;
+        row.UpdatedAt = now;
+        await _db.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(AuditActionType.M5aznSettingsChanged, nameof(M5aznSettings), row.Id, before, new
+        {
+            row.Enabled, row.Email, PasswordSet = row.PasswordProtected is not null, PasswordChanged = password is not null,
+            row.BaseUrl, row.AutoSubmit, row.ProfitPercentage
+        }, ct: ct);
+
+        var account = await _account.RefreshAsync(force: true, ct: ct);
+        var repriced = profit != before.ProfitPercentage ? await ApplyProfitAsync(profit, ct) : 0;
+
+        return new M5aznSettingsSaved(ToDto(account), repriced);
+    }
+
+    public async Task<M5aznSignInCheck> CheckSignInAsync(CancellationToken ct = default)
+    {
+        await _account.RefreshAsync(force: true, ct: ct);
+        var problem = await _client.CheckSignInAsync(ct);
+        return problem is null
+            ? new M5aznSignInCheck(true, "Signed in to M5azn.")
+            : new M5aznSignInCheck(false, problem);
     }
 
     private static (long? Id, string? Sku) ValidateLink(M5aznLinkRequest request)
@@ -865,6 +1153,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
     public async Task<M5aznProductInfo?> LookupProductAsync(long m5aznProductId, CancellationToken ct = default)
     {
+        await _account.RefreshAsync(ct: ct);
         EnsureEnabled();
         if (m5aznProductId <= 0) throw new DomainException(ErrorCodes.ValidationFailed, "Invalid M5azn product id.");
 
@@ -915,7 +1204,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
         if (!IsEnabled)
         {
             throw new DomainException(ErrorCodes.ServiceUnavailable,
-                "M5azn is switched off. Set M5azn:Enabled and the seller account to use it.");
+                "M5azn is switched off, or its seller account is missing. Set both on the M5azn page.");
         }
     }
 

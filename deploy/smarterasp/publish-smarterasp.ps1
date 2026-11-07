@@ -254,9 +254,12 @@ $r2Indent = if ($r2Line) { $r2Line.Substring(0, $r2Line.IndexOf($r2Marker)) } el
 $webConfig = $webConfig.Replace($r2Marker, (@($r2Lines) -join "`n$r2Indent"))
 
 # M5azn: the dropshipping supplier that packs and delivers store products linked to it (store only, never auction prizes).
-# Optional: without it nothing is ever sent to M5azn. Set $M5aznEmail and $M5aznPassword (the
-# M5azn seller account) in local-secrets.ps1; docs/M5AZN.md has the rest. The optional values
-# below keep the server's defaults when they are not set.
+# Optional: the account, the on/off switch and the profit percentage can all be set from the
+# dashboard's M5azn page instead, which then wins over these. Set $M5aznEmail and $M5aznPassword
+# (the M5azn seller account) here only to switch it on from the server; docs/M5AZN.md has the
+# rest. The optional values below keep the server's defaults when they are not set.
+# $M5aznEncryptionKey (optional, any long random text) encrypts the password saved from the
+# dashboard; without it Jwt:Secret is used, so changing that secret means typing it again.
 $m5aznEmail = if ($M5aznEmail) { "$M5aznEmail".Trim() } else { '' }
 $m5aznPassword = if ($M5aznPassword) { "$M5aznPassword" } else { '' }
 if (($m5aznEmail -and -not $m5aznPassword) -or ($m5aznPassword -and -not $m5aznEmail)) {
@@ -286,6 +289,9 @@ if ($m5aznComplete) {
             $m5aznLines += "<environmentVariable name=""M5azn__$key"" value=""$([System.Security.SecurityElement]::Escape($value))"" />"
         }
     }
+}
+if ("$M5aznEncryptionKey".Trim()) {
+    $m5aznLines += "<environmentVariable name=""M5azn__EncryptionKey"" value=""$([System.Security.SecurityElement]::Escape("$M5aznEncryptionKey".Trim()))"" />"
 }
 $m5aznMarker = '<!-- __M5AZN__ -->'
 $m5aznLine = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($m5aznMarker) } | Select-Object -First 1
@@ -500,7 +506,7 @@ if ($m5aznComplete) {
     Write-Host "`nM5azn is on for seller $m5aznEmail (automatic sending $m5aznAuto). Every order it sends is charged by M5azn." -ForegroundColor Yellow
 }
 else {
-    Write-Host "`nM5azn is not set up: nothing is sent to it (docs/M5AZN.md)." -ForegroundColor DarkGray
+    Write-Host "`nM5azn has no account in the server settings: it can be switched on and given one on the dashboard's M5azn page (docs/M5AZN.md)." -ForegroundColor DarkGray
 }
 
 if (-not $paymobComplete) {

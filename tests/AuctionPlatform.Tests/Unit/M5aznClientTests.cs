@@ -257,8 +257,17 @@ public class M5aznClientTests
             Password = password
         };
 
-        return new M5aznClient(http, Options.Create(options), new M5aznTokenStore(),
+        var account = new FixedAccount(new M5aznAccount(enabled, options.BaseUrl, options.Email, options.Password,
+            true, 70m, M5aznSettingsSource.Server));
+
+        return new M5aznClient(http, Options.Create(options), account, new M5aznTokenStore(),
             new SystemDateTimeProvider(), NullLogger<M5aznClient>.Instance);
+    }
+
+    private sealed class FixedAccount(M5aznAccount account) : IM5aznAccountProvider
+    {
+        public M5aznAccount Current => account;
+        public Task<M5aznAccount> RefreshAsync(bool force = false, CancellationToken ct = default) => Task.FromResult(account);
     }
 
     private static string FakeJwt(long exp)

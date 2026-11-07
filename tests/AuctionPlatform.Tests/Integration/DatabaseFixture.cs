@@ -175,6 +175,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
             configureM5azn?.Invoke(o);
         });
         services.AddSingleton(m5azn ?? new DisabledM5aznClient());
+        services.AddSingleton<ISecretProtector, AesSecretProtector>();
+        services.AddSingleton<IM5aznAccountProvider, M5aznAccountProvider>();
         services.AddScoped<IM5aznFulfilmentService, M5aznFulfilmentService>();
 
         return services.BuildServiceProvider().CreateAsyncScope();
@@ -283,6 +285,9 @@ public sealed class DatabaseFixture : IAsyncLifetime
         public bool IsEnabled => false;
 
         public Task<M5aznSubmitResult> CreateOrderAsync(M5aznOrderRequest order, CancellationToken ct = default) =>
+            throw new InvalidOperationException("M5azn is disabled and must not be called.");
+
+        public Task<string?> CheckSignInAsync(CancellationToken ct = default) =>
             throw new InvalidOperationException("M5azn is disabled and must not be called.");
 
         public Task<M5aznRemoteOrder?> GetOrderAsync(string orderId, CancellationToken ct = default) =>

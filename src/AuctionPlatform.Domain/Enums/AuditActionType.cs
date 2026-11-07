@@ -51,9 +51,15 @@ public enum AuditActionType
     /// <summary>Staff sent a notification to every user from the dashboard.</summary>
     NotificationBroadcast = 30,
 
-    /// <summary>Staff linked a store product or a prize to an M5azn product, or removed the link.</summary>
+    /// <summary>Staff linked a store product to an M5azn product, or removed the link.</summary>
     M5aznLinkChanged = 31,
 
-    /// <summary>Staff sent an order or prize to M5azn by hand, or sent a failed one again.</summary>
-    M5aznShipmentSubmitted = 32
+    /// <summary>Staff sent a store order to M5azn by hand, or sent a failed one again.</summary>
+    M5aznShipmentSubmitted = 32,
+
+    /// <summary>Staff changed the M5azn settings: the on/off switch, the seller account or the profit percentage.</summary>
+    M5aznSettingsChanged = 33,
+
+    /// <summary>Staff re-priced the M5azn products from M5azn's prices and the profit percentage.</summary>
+    M5aznPricesUpdated = 34
 }

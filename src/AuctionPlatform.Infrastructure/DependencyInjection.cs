@@ -193,6 +193,8 @@ public static class DependencyInjection
 
         // M5azn dropshipping (docs/M5AZN.md). Always registered; it does nothing while switched off.
         services.AddSingleton<M5aznTokenStore>();
+        services.AddSingleton<ISecretProtector, AesSecretProtector>();
+        services.AddSingleton<IM5aznAccountProvider, M5aznAccountProvider>();
         services.AddHttpClient<IM5aznClient, M5aznClient>();
         services.AddScoped<IM5aznFulfilmentService, M5aznFulfilmentService>();
     }

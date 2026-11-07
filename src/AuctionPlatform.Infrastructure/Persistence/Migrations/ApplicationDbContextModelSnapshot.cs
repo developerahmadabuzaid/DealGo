@@ -753,6 +753,44 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.ToTable("InventoryTransactions", (string)null);
                 });
 
+            modelBuilder.Entity("AuctionPlatform.Domain.Entities.M5aznSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoSubmit")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("BaseUrl")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PasswordProtected")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<decimal>("ProfitPercentage")
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("M5aznSettings", (string)null);
+                });
+
             modelBuilder.Entity("AuctionPlatform.Domain.Entities.M5aznShipment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1988,6 +2026,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("LowStockThreshold")
                         .HasColumnType("integer");
+
+                    b.Property<decimal?>("M5aznCostPrice")
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<long?>("M5aznProductId")
                         .HasColumnType("bigint");
