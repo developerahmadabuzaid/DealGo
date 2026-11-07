@@ -306,6 +306,64 @@ public class M5aznClientTests
         router.Calls.Should().Contain(c => c.Method == "GET" && c.Path == "/api/v1/seller/myproductlist");
     }
 
+    /// <summary>The shape M5azn's real seller list came in on the first import (2026-11-07).</summary>
+    [Fact]
+    public async Task The_seller_list_inside_records_is_read_with_its_paging()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/seller/myproductlist", _ => Json(HttpStatusCode.OK, new
+        {
+            status = 200,
+            success = true,
+            data = new
+            {
+                records = new
+                {
+                    current_page = 1,
+                    last_page = 3,
+                    data = new object[]
+                    {
+                        new
+                        {
+                            id = 140008, name_en = "Dummy Product 1", name_ar = "منتج تجريبي 1", sku = "Dummy Sku 1",
+                            barcode = "dummycode01", qty = 0, price = 30, suggest_price = 100, sale_price = 51,
+                            price_protect = false, image = "https://d1gpzof0viq1mp.cloudfront.net/p/1.jpg"
+                        }
+                    }
+                }
+            }
+        }));
+
+        var page = await Build(router).GetMyProductsAsync(1);
+
+        page.Unreadable.Should().BeFalse();
+        page.HasMore.Should().BeTrue("records.last_page is 3");
+        page.Products.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            ProductId = 140008L,
+            Name = "منتج تجريبي 1",
+            Sku = "Dummy Sku 1",
+            Price = 30m,
+            Quantity = 0,
+            Images = new[] { "https://d1gpzof0viq1mp.cloudfront.net/p/1.jpg" }
+        });
+    }
+
+    [Fact]
+    public async Task An_empty_records_list_is_an_empty_shop()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/seller/myproductlist", _ => Json(HttpStatusCode.OK, new
+        {
+            success = true, data = new { records = new { current_page = 1, last_page = 1, data = Array.Empty<object>() } }
+        }));
+
+        var page = await Build(router).GetMyProductsAsync(1);
+
+        page.Unreadable.Should().BeFalse();
+        page.Products.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task An_unknown_answer_is_said_to_be_unreadable_not_empty()
     {

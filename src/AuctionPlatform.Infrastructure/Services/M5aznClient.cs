@@ -303,14 +303,15 @@ public sealed class M5aznClient : IM5aznClient
             return new M5aznProductPage([], false, $"M5azn refused the product list: {Text(o["message"]) ?? Snippet(root)}", Unreadable: true);
         }
 
-        var list = FindProductList(root);
-        if (list is null)
+        var found = FindProductList(root) ?? EmptyProductList(root);
+        if (found is null)
         {
             _logger.LogWarning("M5azn: the product list came in an unknown shape: {Shape}", Snippet(root));
             return new M5aznProductPage([], false,
-                $"M5azn's product list came in a shape DealGo does not know yet: {Snippet(root)}", Unreadable: true);
+                $"M5azn's product list came in a shape DealGo does not know yet: {Snippet(root, 1500)}", Unreadable: true);
         }
 
+        var (list, holder) = found.Value;
         var products = new List<M5aznCatalogProduct>();
         JsonNode? firstUnreadable = null;
         foreach (var node in list)
@@ -326,7 +327,7 @@ public sealed class M5aznClient : IM5aznClient
             _logger.LogWarning("M5azn: {Problem}", problem);
         }
 
-        return new M5aznProductPage(products, HasMorePages(root, page, list.Count), problem);
+        return new M5aznProductPage(products, HasMorePages(root, holder, page, list.Count), problem);
     }
 
     // ---------------------------------------------------------------- transport
@@ -532,7 +533,7 @@ public sealed class M5aznClient : IM5aznClient
     private static readonly string[] SkuKeys = ["sku", "product_sku", "barcode"];
     private static readonly string[] NameKeys = ["name", "title", "product_name", "name_ar", "name_en"];
     private static readonly string[] DescriptionKeys =
-        ["description", "long_description", "details", "desc", "description_ar", "short_description"];
+        ["description", "long_description", "details", "desc", "description_ar", "description_en", "short_description"];
 
     // What the seller pays M5azn comes first; the plain price is the fallback (docs/M5AZN.md).
     private static readonly string[] PriceKeys = ["seller_price", "wholesale_price", "cost_price", "price", "sale_price"];
@@ -650,24 +651,40 @@ public sealed class M5aznClient : IM5aznClient
         return text.Length == 0 ? null : text;
     }
 
-    /// <summary>The first list of objects that look like products, searched a few levels down.</summary>
-    internal static JsonArray? FindProductList(JsonNode? root)
+    /// <summary>
+    /// The first list of objects that look like products, searched a few levels down, and the object
+    /// holding it (where a paginator keeps <c>last_page</c> and the like). M5azn's seller list is
+    /// <c>{ data: { records: { current_page, data: [ ... ] } } }</c>; other wrappers are found the same way.
+    /// </summary>
+    internal static (JsonArray List, JsonObject? Holder)? FindProductList(JsonNode? root)
     {
-        var level = new List<JsonNode?> { root };
-        for (var depth = 0; depth < 4 && level.Count > 0; depth++)
-        {
-            foreach (var node in level)
-            {
-                if (node is JsonArray a && (a.Count == 0 || a.Any(e => e is JsonObject eo && LooksLikeProduct(eo)))) return a;
-            }
+        if (root is JsonArray top && IsProductList(top)) return (top, null);
 
-            var next = new List<JsonNode?>();
-            foreach (var node in level.OfType<JsonObject>())
+        // Lists named like products first, so a "categories" or "brands" list is never taken for them.
+        string[] preferred = ["data", "records", "products", "items", "product_list", "list", "result", "rows"];
+        string[] never = ["categories", "brands", "links", "meta", "filters"];
+
+        var level = new List<JsonObject>();
+        if (root is JsonObject r) level.Add(r);
+
+        for (var depth = 0; depth < 6 && level.Count > 0; depth++)
+        {
+            var next = new List<JsonObject>();
+            foreach (var holder in level)
             {
-                // Lists named like products first, so a "categories" list is never taken for them.
-                foreach (var key in new[] { "data", "products", "items", "product_list", "list", "result" })
+                var keys = preferred.Where(holder.ContainsKey)
+                    .Concat(holder.Select(kv => kv.Key).Where(k => !preferred.Contains(k) && !never.Contains(k)));
+
+                foreach (var key in keys)
                 {
-                    if (node[key] is { } child) next.Add(child);
+                    switch (holder[key])
+                    {
+                        case JsonArray a when IsProductList(a):
+                            return (a, holder);
+                        case JsonObject o:
+                            next.Add(o);
+                            break;
+                    }
                 }
             }
 
@@ -677,16 +694,42 @@ public sealed class M5aznClient : IM5aznClient
         return null;
     }
 
+    private static bool IsProductList(JsonArray a) => a.Count == 0
+        ? false
+        : a.Any(e => e is JsonObject eo && LooksLikeProduct(eo));
+
     private static bool LooksLikeProduct(JsonObject o) =>
         Find(o, IdKeys, false) is not null && (Find(o, NameKeys, false) is not null || o["product"] is JsonObject
                                                || Find(o, SkuKeys, false) is not null);
 
+    /// <summary>
+    /// An empty list where the products would be (<c>data: []</c>, <c>data.records.data: []</c>, ...):
+    /// a shop with nothing in it, which is not the same as an answer that cannot be read.
+    /// </summary>
+    private static (JsonArray List, JsonObject? Holder)? EmptyProductList(JsonNode? root)
+    {
+        if (root is JsonArray { Count: 0 } top) return (top, null);
+
+        JsonObject? node = root as JsonObject;
+        for (var depth = 0; depth < 4 && node is not null; depth++)
+        {
+            foreach (var key in new[] { "data", "records", "products", "items" })
+            {
+                if (node[key] is JsonArray { Count: 0 } empty) return (empty, node);
+            }
+
+            node = node["data"] as JsonObject ?? node["records"] as JsonObject;
+        }
+
+        return null;
+    }
+
     /// <summary>Whether a later page exists, from the usual paging fields. None of them: one page only.</summary>
-    private static bool HasMorePages(JsonNode? root, int page, int count)
+    private static bool HasMorePages(JsonNode? root, JsonObject? listHolder, int page, int count)
     {
         if (count == 0) return false;
 
-        foreach (var holder in new[] { root, root?["data"], root?["meta"], root?["data"]?["meta"], root?["pagination"], root?["data"]?["pagination"] })
+        foreach (var holder in new[] { listHolder, root, root?["data"], root?["data"]?["records"], root?["meta"], root?["data"]?["meta"], root?["pagination"], root?["data"]?["pagination"] })
         {
             if (holder is not JsonObject h) continue;
 
@@ -705,10 +748,10 @@ public sealed class M5aznClient : IM5aznClient
     private static bool IsTrue(JsonNode? node) =>
         node is JsonValue v && ((v.TryGetValue<bool>(out var b) && b) || (v.TryGetValue<string>(out var s) && s == "true"));
 
-    private static string Snippet(JsonNode? root)
+    private static string Snippet(JsonNode? root, int max = 300)
     {
         var text = root?.ToJsonString() ?? "no body";
-        return text.Length <= 300 ? text : text[..300] + "…";
+        return text.Length <= max ? text : text[..max] + "…";
     }
 
     /// <summary>M5azn's example time has no zone; a Saudi supplier reads it as Saudi time.</summary>
