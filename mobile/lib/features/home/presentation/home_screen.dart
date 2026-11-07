@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -116,6 +117,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: _CategoryTiles(categories: categories, loading: storeLoading),
               ),
 
+              // Just arrived: the store's newest products, in a row under the departments.
+              if (home == null || home.newArrivals.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _OffersSection(
+                    key: const ValueKey('home-new-arrivals'),
+                    title: t.newArrivals,
+                    icon: Icons.fiber_new_rounded,
+                    iconColor: AppTheme.accent,
+                    products: home?.newArrivals,
+                    seeAll: '/store/products',
+                  ),
+                ),
+
               // One still picture under the departments: the same strip, but it does not move.
               if (belowAds.isNotEmpty)
                 SliverToBoxAdapter(
@@ -140,7 +154,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // The latest auctions to close, with what each went for and who took it.
               if (ended.isNotEmpty)
-                SliverToBoxAdapter(child: _EndedAuctions(auctions: ended.take(3).toList())),
+                SliverToBoxAdapter(child: HomeEndedAuctions(auctions: ended.take(3).toList())),
               SliverToBoxAdapter(
                 child: _QuickTiles(
                   tiles: [
@@ -742,9 +756,18 @@ class _QuickTile extends StatelessWidget {
 
 /// Discounted items in a row, each showing what it now costs against what it cost before.
 class _OffersSection extends StatelessWidget {
-  const _OffersSection({required this.title, required this.products, required this.seeAll});
+  const _OffersSection({
+    super.key,
+    required this.title,
+    required this.products,
+    required this.seeAll,
+    this.icon = Icons.local_offer_rounded,
+    this.iconColor = AppTheme.danger,
+  });
 
   final String title;
+  final IconData icon;
+  final Color iconColor;
 
   /// Null while they are still being fetched.
   final List<StoreProduct>? products;
@@ -767,7 +790,7 @@ class _OffersSection extends StatelessWidget {
             padding: const EdgeInsetsDirectional.fromSTEB(AppTheme.space3, 6, 0, 0),
             child: Row(
               children: [
-                const Icon(Icons.local_offer_rounded, size: 18, color: AppTheme.danger),
+                Icon(icon, size: 18, color: iconColor),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -1976,8 +1999,8 @@ class _StorePromo extends StatelessWidget {
 }
 
 /// The last few auctions to close, the rest of them one tap away.
-class _EndedAuctions extends StatelessWidget {
-  const _EndedAuctions({required this.auctions});
+class HomeEndedAuctions extends StatelessWidget {
+  const HomeEndedAuctions({super.key, required this.auctions});
 
   final List<AuctionSummary> auctions;
 
@@ -1998,15 +2021,36 @@ class _EndedAuctions extends StatelessWidget {
             action: t.seeAll,
             onTap: () => context.go('/auctions?tab=completed'),
           ),
-          for (final a in auctions)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  AppTheme.space3, AppTheme.space1, AppTheme.space3, AppTheme.space2),
-              child: EndedAuctionCard(auction: a),
+          // Side by side, each nearly the width of the screen so the next one shows at the edge
+          // and invites a swipe. Not stretched to one height: a card is as tall as what it holds.
+          SingleChildScrollView(
+            key: const ValueKey('home-ended-auctions'),
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: AppTheme.space3, vertical: AppTheme.space1),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < auctions.length; i++) ...[
+                  if (i > 0) const SizedBox(width: AppTheme.space2),
+                  SizedBox(
+                    width: _cardWidth(context, auctions.length),
+                    child: EndedAuctionCard(auction: auctions[i]),
+                  ),
+                ],
+              ],
             ),
+          ),
         ],
       ),
     );
+  }
+
+  /// One card fills most of a phone's width (the next peeks in); a tablet shows them side by side.
+  static double _cardWidth(BuildContext context, int count) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (count <= 1) return width - 2 * AppTheme.space3;
+    final peek = width * 0.86;
+    return width >= 700 ? math.min(peek, 420) : peek;
   }
 }
 

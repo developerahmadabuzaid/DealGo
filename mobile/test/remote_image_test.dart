@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/config/app_config.dart';
@@ -19,15 +20,19 @@ void main() {
 
     final provider = images.first.image;
 
+    // The cached provider (kept on the phone), or a plain network one for the fallback.
+    String urlOf(ImageProvider p) => switch (p) {
+          CachedNetworkImageProvider c => c.url,
+          NetworkImage n => n.url,
+          _ => throw StateError('unexpected provider ${p.runtimeType}'),
+        };
+
     // Asking for a decode size wraps the provider; the address lives on the one inside.
     if (provider is ResizeImage) {
-      return (
-        url: (provider.imageProvider as NetworkImage).url,
-        decodeWidth: provider.width,
-      );
+      return (url: urlOf(provider.imageProvider), decodeWidth: provider.width);
     }
 
-    return (url: (provider as NetworkImage).url, decodeWidth: null);
+    return (url: urlOf(provider), decodeWidth: null);
   }
 
   /// Draws the widget in a slot of a known size, on a screen of a known pixel density.
@@ -57,10 +62,13 @@ void main() {
   }
 
   group('the address', () {
-    testWidgets('an uploaded picture is asked for from the API host', (tester) async {
+    testWidgets('an uploaded picture is asked for from the picture host, kept on the phone', (tester) async {
       await pump(tester, '/uploads/89b41f97.png');
 
-      expect(requested(tester)?.url, '${AppConfig.apiBaseUrl}/uploads/89b41f97.png');
+      expect(requested(tester)?.url, '${AppConfig.mediaBaseUrl}/uploads/89b41f97.png');
+      expect(find.byType(Image).evaluate().first.widget, isA<Image>()
+          .having((i) => i.image is ResizeImage ? (i.image as ResizeImage).imageProvider : i.image,
+              'provider', isA<CachedNetworkImageProvider>()));
     });
 
     testWidgets('a picture that names its own host is asked for unchanged', (tester) async {

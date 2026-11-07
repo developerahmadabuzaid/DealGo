@@ -187,13 +187,27 @@ void main() {
   });
 
   group('AppConfig.mediaUrl', () {
-    test('gives an uploaded picture the API host it is actually served from', () {
+    test('sends an uploaded picture straight to the picture host', () {
       // What the server stores for anything an administrator uploads. On its own this is not a
-      // URL the app can open, which is why these pictures showed as the empty placeholder.
+      // URL the app can open; asked for at the API host it is only redirected to the picture host
+      // (Cloudflare R2), a round trip through the slower web server for every picture.
+      expect(AppConfig.mediaBaseUrl, 'https://images.dealgosa.com');
       expect(
         AppConfig.mediaUrl('/uploads/89b41f97.png'),
-        '${AppConfig.apiBaseUrl}/uploads/89b41f97.png',
+        'https://images.dealgosa.com/uploads/89b41f97.png',
       );
+      expect(AppConfig.mediaUrl('/catalog/w-x27.webp'), 'https://images.dealgosa.com/catalog/w-x27.webp');
+    });
+
+    test('keeps the API host as the fallback for a picture the picture host lacks', () {
+      expect(AppConfig.mediaFallbackUrl('/uploads/89b41f97.png'), '${AppConfig.apiBaseUrl}/uploads/89b41f97.png');
+      expect(AppConfig.mediaFallbackUrl('https://picsum.photos/seed/a/8/8'), isNull, reason: 'its own host');
+      expect(AppConfig.mediaFallbackUrl(null), isNull);
+    });
+
+    test('asks the API host for any other path', () {
+      expect(AppConfig.mediaUrl('/brand/logo.png'), '${AppConfig.apiBaseUrl}/brand/logo.png');
+      expect(AppConfig.mediaFallbackUrl('/brand/logo.png'), isNull, reason: 'already the API host');
     });
 
     test('leaves an address that already names its own host alone', () {
@@ -202,10 +216,8 @@ void main() {
     });
 
     test('still joins a path that was stored without its leading slash', () {
-      expect(
-        AppConfig.mediaUrl('uploads/a.jpg'),
-        '${AppConfig.apiBaseUrl}/uploads/a.jpg',
-      );
+      expect(AppConfig.mediaUrl('uploads/a.jpg'), 'https://images.dealgosa.com/uploads/a.jpg');
+      expect(AppConfig.mediaUrl('brand/x.png'), '${AppConfig.apiBaseUrl}/brand/x.png');
     });
 
     test('reports nothing to show rather than an address pointing at the host root', () {

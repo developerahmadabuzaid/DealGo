@@ -94,9 +94,13 @@ public sealed class AuctionService : IAuctionService
          * list that is not simply newest first. Everything never dragged sits at zero and falls
          * back to newest first, which is what an auction featured a moment ago expects.
          */
+        // Finished auctions go by when they finished, so "the latest" are the latest to close.
+        var completed = string.Equals(query.Group, "completed", StringComparison.OrdinalIgnoreCase);
         var ordered = query.Featured == true
             ? q.OrderBy(a => a.FeaturedOrder).ThenByDescending(a => a.CreatedAt)
-            : q.OrderByDescending(a => a.CreatedAt);
+            : completed
+                ? q.OrderByDescending(a => a.FinishedAt ?? a.CreatedAt).ThenByDescending(a => a.CreatedAt)
+                : q.OrderByDescending(a => a.CreatedAt);
 
         var rows = await ordered
             .Skip(query.Skip)

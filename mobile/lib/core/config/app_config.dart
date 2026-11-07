@@ -50,7 +50,37 @@ class AppConfig {
     final parsed = Uri.tryParse(value);
     if (parsed != null && parsed.hasScheme) return value;
 
-    return '$apiBaseUrl${value.startsWith('/') ? '' : '/'}$value';
+    final rooted = value.startsWith('/') ? value : '/$value';
+
+    // Uploaded and catalog pictures live on the picture host (Cloudflare R2). Asked for at the
+    // API host they are only redirected there, which costs a round trip through the slower web
+    // server for every picture, so they are asked for at the picture host straight away.
+    final media = mediaBaseUrl;
+    if (media != null && (rooted.startsWith('/uploads/') || rooted.startsWith('/catalog/'))) {
+      return '$media$rooted';
+    }
+
+    return '$apiBaseUrl$rooted';
+  }
+
+  /// The same picture at the API host, for when the picture host does not have it; null when
+  /// [mediaUrl] already is that address.
+  static String? mediaFallbackUrl(String? path) {
+    final value = path?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (Uri.tryParse(value)?.hasScheme ?? false) return null;
+
+    final direct = '$apiBaseUrl${value.startsWith('/') ? '' : '/'}$value';
+    return direct == mediaUrl(path) ? null : direct;
+  }
+
+  static const String _configuredMediaBaseUrl = String.fromEnvironment('MEDIA_BASE_URL');
+
+  /// Where the live site keeps its pictures. Override with --dart-define=MEDIA_BASE_URL=...;
+  /// against any other API (a local one, say) pictures are asked for at that API.
+  static String? get mediaBaseUrl {
+    if (_configuredMediaBaseUrl.isNotEmpty) return _configuredMediaBaseUrl;
+    return apiBaseUrl == _defaultApiBaseUrl ? 'https://images.dealgosa.com' : null;
   }
 
   /// Arabic is the platform default; English is fully supported.

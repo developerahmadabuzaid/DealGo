@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../core/config/app_config.dart';
@@ -710,12 +711,41 @@ class RemoteImage extends StatelessWidget {
       return ClipRRect(borderRadius: BorderRadius.circular(radius), child: placeholder);
     }
 
+    final fallback = AppConfig.mediaFallbackUrl(url);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       // The size this is drawn at is what decides how much of the picture is worth decoding, and
       // that is only known once the parent has said how much room there is.
       child: LayoutBuilder(
-        builder: (context, constraints) => Image.network(
+        builder: (context, constraints) {
+          final decodeWidth = _decodeWidth(context, constraints);
+
+          /*
+           * Kept on the phone once downloaded (a disk cache), so a picture seen before shows at
+           * once, also after the app was closed, instead of being fetched again every time. It
+           * fades in rather than popping. Should the picture host not have it, the API host is
+           * asked, as before.
+           */
+          return CachedNetworkImage(
+            imageUrl: src,
+            height: height,
+            width: width,
+            fit: fit,
+            memCacheWidth: decodeWidth,
+            fadeInDuration: const Duration(milliseconds: 180),
+            fadeOutDuration: Duration.zero,
+            placeholder: (_, _) => placeholder,
+            errorWidget: (_, _, _) => fallback == null
+                ? placeholder
+                : _network(fallback, decodeWidth, placeholder),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _network(String src, int? decodeWidth, Widget placeholder) => Image.network(
           src,
           height: height,
           width: width,
@@ -728,14 +758,11 @@ class RemoteImage extends StatelessWidget {
            * grid of twenty products asks for most of a gigabyte. Cheap Android phones are killed
            * by it. Decoding to the drawn size costs a fraction of that and looks identical.
            */
-          cacheWidth: _decodeWidth(context, constraints),
+          cacheWidth: decodeWidth,
           errorBuilder: (_, _, _) => placeholder,
           loadingBuilder: (context, child, progress) =>
               progress == null ? child : placeholder,
-        ),
-      ),
-    );
-  }
+        );
 
   /// How wide to decode, in real device pixels, or null to leave the picture alone.
   int? _decodeWidth(BuildContext context, BoxConstraints constraints) {
