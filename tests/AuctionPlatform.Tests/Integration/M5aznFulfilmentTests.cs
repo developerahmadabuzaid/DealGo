@@ -815,6 +815,67 @@ public class M5aznFulfilmentTests
     }
 
     [Fact]
+    public async Task Every_product_type_is_imported_not_only_the_local_ones()
+    {
+        var local = NextRemoteId();
+        var global = NextRemoteId();
+        var global2 = NextRemoteId();
+        var ali = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(local, $"L-{local}", "Local", 10m, 5, ["https://cdn.m5azn.test/l.jpg"], null, "x"));
+        m5azn.TypePages["global"] =
+        [
+            new M5aznProductPage([Catalog(global, $"G-{global}", "Global", 20m, 5, ["https://cdn.m5azn.test/g.jpg"], null, "x")], false, null),
+            new M5aznProductPage([Catalog(global2, $"G-{global2}", "Global 2", 20m, 5, ["https://cdn.m5azn.test/g2.jpg"], null, "x")], false, null),
+        ];
+        m5azn.TypePages["ali_express"] =
+            [new M5aznProductPage([Catalog(ali, $"A-{ali}", "Ali", 30m, 5, ["https://cdn.m5azn.test/a.jpg"], null, "x")], false, null)];
+
+        try
+        {
+            var summary = await ImportAsync(m5azn);
+
+            summary.Found.Should().BeGreaterThanOrEqualTo(4, "the seller's list is every type together, over every page");
+            foreach (var id in new[] { local, global, global2, ali })
+            {
+                (await ImportedAsync(id)).Status.Should().Be(StoreProductStatus.Active);
+            }
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_product_type_that_cannot_be_read_is_reported_and_hides_nothing()
+    {
+        var local = NextRemoteId();
+        var global = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(local, $"L-{local}", "Local", 10m, 5, ["https://cdn.m5azn.test/l.jpg"], null, "x"));
+        m5azn.TypePages["global"] =
+            [new M5aznProductPage([Catalog(global, $"G-{global}", "Global", 20m, 5, ["https://cdn.m5azn.test/g.jpg"], null, "x")], false, null)];
+
+        try
+        {
+            await ImportAsync(m5azn);
+
+            m5azn.FailingTypes.Add("global");
+            var summary = await ImportAsync(m5azn);
+
+            summary.Problems.Should().Contain(x => x.Contains("global"));
+            summary.Hidden.Should().Be(0);
+            (await ImportedAsync(global)).Status.Should().Be(StoreProductStatus.Active,
+                "a list that could not be read says nothing about whether its products are gone");
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
     public async Task A_product_without_a_sku_or_a_price_is_skipped_and_said_so()
     {
         var noSku = NextRemoteId();
@@ -1198,11 +1259,23 @@ public class M5aznFulfilmentTests
         public int CategoryFilterCalls;
         public int DetailCalls;
 
-        public Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default)
+        /// <summary>The list M5azn gives for a named product type (global, ali_express, ...); none: empty.</summary>
+        public Dictionary<string, List<M5aznProductPage>> TypePages { get; } = new();
+
+        /// <summary>Product types whose list cannot be read.</summary>
+        public HashSet<string> FailingTypes { get; } = new();
+
+        public Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default, string? productType = null)
         {
+            if (productType is not null && FailingTypes.Contains(productType))
+            {
+                throw new HttpRequestException($"M5azn answered 500 for {productType}.");
+            }
+
+            var pages = productType is null ? Pages : TypePages.GetValueOrDefault(productType) ?? [];
             if (categoryId is not null) Interlocked.Increment(ref CategoryFilterCalls);
-            var all = page <= Pages.Count
-                ? Pages[page - 1] with { HasMore = page < Pages.Count }
+            var all = page <= pages.Count
+                ? pages[page - 1] with { HasMore = page < pages.Count }
                 : new M5aznProductPage([], false, null);
             if (categoryId is null || IgnoresCategoryFilter) return Task.FromResult(all);
 

@@ -305,12 +305,14 @@ public sealed class M5aznClient : IM5aznClient
         return text.Length <= 900 ? text : text[..900] + "…";
     }
 
-    public async Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default)
+    public async Task<M5aznProductPage> GetMyProductsAsync(
+        int page, long? categoryId = null, CancellationToken ct = default, string? productType = null)
     {
         page = Math.Max(1, page);
-        var path = categoryId is { } c
-            ? $"api/v1/seller/myproductlist?page={page}&category_id={c}"
-            : $"api/v1/seller/myproductlist?page={page}";
+        var path = $"api/v1/seller/myproductlist?page={page}";
+        if (categoryId is { } c) path += $"&category_id={c}";
+        // M5azn lists only its "local" products unless another type is asked for by name.
+        if (!string.IsNullOrWhiteSpace(productType)) path += $"&product_type={Uri.EscapeDataString(productType)}";
         using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, path), ct);
         response.EnsureSuccessStatusCode();
 

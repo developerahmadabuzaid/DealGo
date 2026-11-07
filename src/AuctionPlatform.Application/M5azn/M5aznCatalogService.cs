@@ -82,6 +82,9 @@ public interface IM5aznCatalogService
 public sealed class M5aznCatalogService : IM5aznCatalogService
 {
     private const int MaxPages = 50;
+
+    /// <summary>M5azn's product types, from its documentation; "local" is what it lists when none is named.</summary>
+    private static readonly string[] ProductTypes = ["local", "global", "ali_express", "digital"];
     private const int MaxDetailCalls = 300;
     private const int MaxProblems = 12;
     private const int MaxCategoryCalls = 150;
@@ -148,37 +151,71 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         }
 
         // ---- read the whole list first, so a failure half-way changes nothing
+        //
+        // M5azn's list answers with its "local" products only, unless another product type is
+        // named: a seller with 320 products saw 9 come in. Every type is asked for in turn. The
+        // local list must be readable; the other types are extra, so one that fails is noted and
+        // the import goes on with the rest.
         var found = new Dictionary<long, M5aznCatalogProduct>();
-        for (var page = 1; page <= MaxPages; page++)
+        var perType = new List<string>();
+        var listComplete = true;
+        foreach (var type in ProductTypes)
         {
-            M5aznProductPage result;
-            try
+            var required = type == "local";
+            var before = found.Count;
+            var listed = 0;
+
+            for (var page = 1; page <= MaxPages; page++)
             {
-                result = await _client.GetMyProductsAsync(page, ct: ct);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "M5azn: the product list could not be read (page {Page}).", page);
-                throw new DomainException(ErrorCodes.ServiceUnavailable,
-                    $"M5azn's product list could not be read: {ex.Message}. Nothing was changed.");
+                M5aznProductPage result;
+                try
+                {
+                    result = await _client.GetMyProductsAsync(page, ct: ct, productType: required ? null : type);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "M5azn: the {Type} product list could not be read (page {Page}).", type, page);
+                    if (!required)
+                    {
+                        Problem($"M5azn's {type} products could not be read: {ex.Message}");
+                        listComplete = false;
+                        break;
+                    }
+
+                    throw new DomainException(ErrorCodes.ServiceUnavailable,
+                        $"M5azn's product list could not be read: {ex.Message}. Nothing was changed.");
+                }
+
+                if (result.Unreadable)
+                {
+                    if (!required)
+                    {
+                        Problem($"M5azn's {type} products could not be read: {result.Problem}");
+                        listComplete = false;
+                        break;
+                    }
+
+                    var stopped = new M5aznImportSummary(_clock.UtcNow, 0, 0, 0, 0, 0, 0,
+                        [result.Problem ?? "M5azn's product list could not be read.", "Nothing was changed."]);
+                    await RecordAsync(stopped, account, ct);
+                    return stopped;
+                }
+
+                if (result.Problem is not null) Problem(result.Problem);
+                listed += result.Products.Count;
+                foreach (var product in result.Products) found.TryAdd(product.ProductId, product);
+                if (!result.HasMore || result.Products.Count == 0) break;
             }
 
-            if (result.Unreadable)
-            {
-                var stopped = new M5aznImportSummary(_clock.UtcNow, 0, 0, 0, 0, 0, 0,
-                    [result.Problem ?? "M5azn's product list could not be read.", "Nothing was changed."]);
-                await RecordAsync(stopped, account, ct);
-                return stopped;
-            }
-
-            if (result.Problem is not null) Problem(result.Problem);
-            foreach (var product in result.Products) found.TryAdd(product.ProductId, product);
-            if (!result.HasMore || result.Products.Count == 0) break;
+            perType.Add($"{type} {found.Count - before}");
+            _logger.LogInformation("M5azn: {Type} list gave {Listed} item(s), {New} new.", type, listed, found.Count - before);
         }
+
+        _logger.LogInformation("M5azn: product list read, {Total} product(s): {PerType}.", found.Count, string.Join(", ", perType));
 
         // ---- fill in what the list leaves out from the product's details: only for products the
         // store does not have complete yet, so an hourly sync of known products asks nothing more.
@@ -236,7 +273,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         (int Created, int Updated, int Unchanged, int Hidden, int Skipped) counts;
         try
         {
-            counts = await ApplyAllAsync(found, detailed, account, Problem, now, ct);
+            counts = await ApplyAllAsync(found, detailed, account, Problem, now, listComplete, ct);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -246,7 +283,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
 
             try
             {
-                counts = await ApplyAllAsync(found, detailed, account, Problem, now, ct);
+                counts = await ApplyAllAsync(found, detailed, account, Problem, now, listComplete, ct);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -273,6 +310,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         M5aznAccount account,
         Action<string> Problem,
         DateTime now,
+        bool listComplete,
         CancellationToken ct)
     {
         var existing = await _db.StoreProducts
@@ -330,9 +368,11 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             else unchanged++;
         }
 
-        // ---- products M5azn no longer lists are hidden, never deleted (orders may point at them)
+        // ---- products M5azn no longer lists are hidden, never deleted (orders may point at them).
+        // Only when the whole list was read: a product type that could not be read says nothing
+        // about whether its products are still there.
         var hidden = 0;
-        foreach (var product in existing.Where(p => p.M5aznProductId is { } id && !found.ContainsKey(id) && p.M5aznRemovedAt is null))
+        foreach (var product in existing.Where(p => listComplete && p.M5aznProductId is { } id && !found.ContainsKey(id) && p.M5aznRemovedAt is null))
         {
             product.M5aznRemovedAt = now;
             if (product.Status is StoreProductStatus.Active or StoreProductStatus.OutOfStock)

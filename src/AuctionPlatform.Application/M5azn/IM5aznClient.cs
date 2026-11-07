@@ -118,7 +118,7 @@ public interface IM5aznClient
     /// One page (from 1) of the products the seller has added to their M5azn shop, or only those of
     /// one category. Read-only.
     /// </summary>
-    Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default);
+    Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default, string? productType = null);
 
     /// <summary>M5azn's catalogue categories, sub-categories included. Read-only.</summary>
     Task<M5aznCategoryList> GetCategoriesAsync(CancellationToken ct = default);
