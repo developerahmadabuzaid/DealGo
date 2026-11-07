@@ -55,6 +55,15 @@ public sealed class AdminM5aznController : ApiControllerBase
         Ok(await _catalog.GetImportedProductsAsync(query, ct));
 
     /// <summary>
+    /// Gives one imported product its own profit percentage, or (null) returns it to the general
+    /// one. The product is re-priced at once.
+    /// </summary>
+    [HttpPut("products/{id:guid}/profit")]
+    [Authorize(Policy = Permissions.StoreUpdateProduct)]
+    public async Task<ActionResult<M5aznImportedProductDto>> SetProfit(Guid id, M5aznProductProfitRequest request, CancellationToken ct) =>
+        Ok(await _catalog.SetProductProfitAsync(id, request.ProfitPercentage, ct));
+
+    /// <summary>
     /// Reads the seller's M5azn product list (read-only; nothing is ordered) and creates, updates or
     /// hides the imported products. It also runs on its own every hour while M5azn is on.
     /// </summary>

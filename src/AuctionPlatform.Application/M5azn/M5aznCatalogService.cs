@@ -20,6 +20,9 @@ public sealed record M5aznImportedProductDto(
     int ImageCount,
     decimal Price,
     decimal? M5aznCostPrice,
+
+    /// <summary>This product's own profit percentage; null when the general one applies.</summary>
+    decimal? ProfitPercentage,
     int Stock,
     StoreProductStatus Status,
     DateTime? M5aznSyncedAt,
@@ -46,6 +49,9 @@ public sealed record M5aznImportSummary(
 
 public sealed class M5aznProductQuery : PagedQuery;
 
+/// <summary>Null: the product goes back to the general profit percentage.</summary>
+public sealed record M5aznProductProfitRequest(decimal? ProfitPercentage);
+
 /// <summary>
 /// The products of the seller's M5azn shop, imported as store products of their own
 /// (<see cref="StoreProductSource.M5azn"/>) and kept in step with M5azn: name, description, every
@@ -59,8 +65,17 @@ public interface IM5aznCatalogService
 
     Task<PagedResult<M5aznImportedProductDto>> GetImportedProductsAsync(M5aznProductQuery query, CancellationToken ct = default);
 
-    /// <summary>Re-prices imported products from the M5azn price already known. No call to M5azn.</summary>
+    /// <summary>
+    /// Re-prices imported products that use the general profit percentage, from the M5azn price
+    /// already known. Products with their own percentage keep theirs. No call to M5azn.
+    /// </summary>
     Task<int> ApplyProfitAsync(decimal profitPercentage, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gives one imported product its own profit percentage, or (null) returns it to the general
+    /// one, and re-prices it at once. No call to M5azn.
+    /// </summary>
+    Task<M5aznImportedProductDto> SetProductProfitAsync(Guid productId, decimal? profitPercentage, CancellationToken ct = default);
 }
 
 public sealed class M5aznCatalogService : IM5aznCatalogService
@@ -306,7 +321,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         // Price: M5azn's plus the profit percentage.
         var cost = item.Price!.Value;
         Set(product.M5aznCostPrice, cost, v => product.M5aznCostPrice = v);
-        Set(product.Price, M5aznPricing.PriceFor(cost, account.ProfitPercentage), v => product.Price = v);
+        Set(product.Price, M5aznPricing.PriceFor(cost, product.M5aznProfitPercentage ?? account.ProfitPercentage),
+            v => product.Price = v);
 
         // Stock, with an inventory record for every change.
         var quantity = Math.Max(0, item.Quantity ?? 0);
@@ -458,24 +474,66 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         }
 
         var total = await q.LongCountAsync(ct);
-        var rows = await q
+        var rows = await Rows(q
             .OrderBy(p => p.M5aznRemovedAt != null).ThenBy(p => p.Name)
-            .Skip(query.Skip).Take(query.PageSize)
-            .Select(p => new M5aznImportedProductDto(
-                p.Id, p.Name, p.Sku, p.M5aznSku, p.M5aznProductId!.Value,
-                p.Category != null ? p.Category.Name : null,
-                p.Images.OrderBy(i => i.DisplayOrder).Select(i => i.Url).FirstOrDefault(),
-                p.Images.Count,
-                p.Price, p.M5aznCostPrice, p.StockQuantity, p.Status, p.M5aznSyncedAt, p.M5aznRemovedAt))
+            .Skip(query.Skip).Take(query.PageSize))
             .ToListAsync(ct);
 
         return PagedResult<M5aznImportedProductDto>.Create(rows, query.Page, query.PageSize, total);
     }
 
+    private static IQueryable<M5aznImportedProductDto> Rows(IQueryable<StoreProduct> q) =>
+        q.Select(p => new M5aznImportedProductDto(
+            p.Id, p.Name, p.Sku, p.M5aznSku, p.M5aznProductId!.Value,
+            p.Category != null ? p.Category.Name : null,
+            p.Images.OrderBy(i => i.DisplayOrder).Select(i => i.Url).FirstOrDefault(),
+            p.Images.Count,
+            p.Price, p.M5aznCostPrice, p.M5aznProfitPercentage, p.StockQuantity, p.Status, p.M5aznSyncedAt, p.M5aznRemovedAt));
+
+    public async Task<M5aznImportedProductDto> SetProductProfitAsync(
+        Guid productId, decimal? profitPercentage, CancellationToken ct = default)
+    {
+        if (profitPercentage is < 0 or > M5aznPricing.MaxProfitPercentage)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed,
+                $"The profit percentage must be between 0 and {M5aznPricing.MaxProfitPercentage:0}.");
+        }
+
+        var product = await _db.StoreProducts
+            .FirstOrDefaultAsync(p => p.Id == productId && p.Source == StoreProductSource.M5azn, ct)
+            ?? throw new DomainException(ErrorCodes.ProductNotFound, "Imported M5azn product not found.");
+
+        var account = await _account.RefreshAsync(ct: ct);
+        var own = profitPercentage is { } v ? Math.Round(v, 2) : (decimal?)null;
+        var before = new { product.M5aznProfitPercentage, product.Price };
+
+        product.M5aznProfitPercentage = own;
+        if (product.M5aznCostPrice is { } cost)
+        {
+            product.Price = M5aznPricing.PriceFor(cost, own ?? account.ProfitPercentage);
+        }
+        product.UpdatedAt = _clock.UtcNow;
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new DomainException(ErrorCodes.Conflict, "The product was changed meanwhile. Try again.");
+        }
+
+        await _audit.LogAsync(AuditActionType.M5aznPricesUpdated, nameof(StoreProduct), productId, before,
+            new { product.M5aznProfitPercentage, product.Price, GeneralProfitPercentage = account.ProfitPercentage }, ct: ct);
+        await _cache.RemoveByPrefixAsync("store:", ct);
+
+        return await Rows(_db.StoreProducts.AsNoTracking().Where(p => p.Id == productId)).FirstAsync(ct);
+    }
+
     public async Task<int> ApplyProfitAsync(decimal profitPercentage, CancellationToken ct = default)
     {
         var products = await _db.StoreProducts
-            .Where(p => p.Source == StoreProductSource.M5azn && p.M5aznCostPrice != null)
+            .Where(p => p.Source == StoreProductSource.M5azn && p.M5aznCostPrice != null && p.M5aznProfitPercentage == null)
             .ToListAsync(ct);
 
         var now = _clock.UtcNow;

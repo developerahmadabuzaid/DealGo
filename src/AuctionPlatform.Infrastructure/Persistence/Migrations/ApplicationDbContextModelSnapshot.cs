@@ -2049,6 +2049,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<long?>("M5aznProductId")
                         .HasColumnType("bigint");
 
+                    b.Property<decimal?>("M5aznProfitPercentage")
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<DateTime?>("M5aznRemovedAt")
                         .HasColumnType("timestamp with time zone");
 

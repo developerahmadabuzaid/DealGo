@@ -89,6 +89,12 @@ public class StoreProduct : AuditableEntity
     /// </summary>
     public decimal? M5aznCostPrice { get; set; }
 
+    /// <summary>
+    /// A profit percentage for this product alone, set by staff on the M5azn page. Null: the general
+    /// profit percentage of the M5azn settings applies.
+    /// </summary>
+    public decimal? M5aznProfitPercentage { get; set; }
+
     /// <summary>When the last import found the product in the M5azn seller list.</summary>
     public DateTime? M5aznSyncedAt { get; set; }
 

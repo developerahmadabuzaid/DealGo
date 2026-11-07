@@ -129,9 +129,13 @@ read, nothing at all is changed: an unreadable answer is never taken for an empt
 
 ### Prices and profit
 
-- **The rule**: DealGo price = M5azn price × (1 + profit % ÷ 100), rounded to the halala.
-- **Changing the percentage** re-prices every imported product at once from the M5azn price last
-  read. M5azn is not asked.
+- **The rule**: DealGo price = M5azn price × (1 + profit % ÷ 100), rounded to the halala, where the
+  profit % is the product's own rate when it has one, else the general one.
+- **A product's own rate**: in the products table, *Own profit %* gives one product a rate of its
+  own, which replaces the general one for that product only. Leave it empty (the box shows the
+  general rate in grey) to use the general rate again. Saving re-prices the product at once.
+- **Changing the general percentage** re-prices at once every imported product that has no rate of
+  its own, from the M5azn price last read. M5azn is not asked. Products with their own rate keep it.
 - **Every import** reads M5azn's price again, so a price change at M5azn reaches DealGo within the
   hour.
 - A price typed on the product page for an imported product is overwritten by the next import.

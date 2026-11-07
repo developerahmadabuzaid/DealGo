@@ -623,6 +623,67 @@ public class M5aznFulfilmentTests
         }
     }
 
+    [Fact]
+    public async Task A_product_with_its_own_profit_rate_keeps_it_and_the_rest_follow_the_general_one()
+    {
+        var own = NextRemoteId();
+        var general = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(
+            Catalog(own, $"OWN-{own}", "Own rate", 40m, 5, ["https://cdn.m5azn.test/o1.jpg", "https://cdn.m5azn.test/o2.jpg"], null, "x"),
+            Catalog(general, $"GEN-{general}", "General rate", 40m, 5, ["https://cdn.m5azn.test/g1.jpg", "https://cdn.m5azn.test/g2.jpg"], null, "x"));
+
+        try
+        {
+            await ImportAsync(m5azn);
+            var ownId = (await ImportedAsync(own)).Id;
+
+            await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+            {
+                var catalog = scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>();
+
+                var row = await catalog.SetProductProfitAsync(ownId, 20m);
+                row.ProfitPercentage.Should().Be(20m);
+                row.Price.Should().Be(48m, "40 + its own 20%");
+
+                var negative = () => catalog.SetProductProfitAsync(ownId, -5m);
+                (await negative.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+
+                var adminProduct = await NewProductAsync(price: 10m, linked: false);
+                var notImported = () => catalog.SetProductProfitAsync(adminProduct, 10m);
+                (await notImported.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ProductNotFound);
+
+                // The general rate changes: only the product without its own rate follows.
+                await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>()
+                    .UpdateSettingsAsync(new M5aznSettingsRequest(true, null, null, null, true, 25m));
+            }
+
+            (await ImportedAsync(own)).Price.Should().Be(48m);
+            (await ImportedAsync(general)).Price.Should().Be(50m, "40 + the general 25%");
+
+            // M5azn's price changes: each keeps its own rule.
+            m5azn.Pages.Clear();
+            m5azn.ListPage(
+                Catalog(own, $"OWN-{own}", "Own rate", 50m, 5, ["https://cdn.m5azn.test/o1.jpg", "https://cdn.m5azn.test/o2.jpg"], null, "x"),
+                Catalog(general, $"GEN-{general}", "General rate", 50m, 5, ["https://cdn.m5azn.test/g1.jpg", "https://cdn.m5azn.test/g2.jpg"], null, "x"));
+            await ImportAsync(m5azn);
+            (await ImportedAsync(own)).Price.Should().Be(60m);
+            (await ImportedAsync(general)).Price.Should().Be(62.5m);
+
+            // Cleared: back to the general rate.
+            await using (var scope = _fixture.CreateScope(m5azn: m5azn))
+            {
+                var row = await scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>().SetProductProfitAsync(ownId, null);
+                row.ProfitPercentage.Should().BeNull();
+                row.Price.Should().Be(62.5m);
+            }
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
     [Theory]
     [InlineData(100, 70, 170)]
     [InlineData(19.99, 70, 33.98)]

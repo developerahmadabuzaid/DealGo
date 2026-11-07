@@ -346,7 +346,9 @@ const AR = {
   'Automatic sending': 'الإرسال التلقائي', 'Profit %': 'نسبة الربح %',
   'Leave empty to keep the saved password': 'اتركها فارغة للإبقاء على كلمة المرور المحفوظة',
   'Check sign-in': 'اختبار تسجيل الدخول',
-  'Products from M5azn': 'منتجات مخزن', 'Import from M5azn': 'استيراد من مخزن',
+  'Products from M5azn': 'منتجات مخزن', 'Own profit %': 'نسبة ربح خاصة %',
+  'General rate': 'النسبة العامة', 'Profit rate saved.': 'تم حفظ نسبة الربح.',
+  'Leave empty to use the general rate.': 'اتركها فارغة لاستخدام النسبة العامة.', 'Import from M5azn': 'استيراد من مخزن',
   'Imported products': 'منتجات مستوردة', 'Delivery time': 'مدة التوصيل', 'Pictures': 'الصور',
   'Last import': 'آخر استيراد', 'Never imported yet.': 'لم يتم الاستيراد بعد.',
   'Removed at M5azn': 'أُزيل من مخزن', 'Last synced': 'آخر مزامنة',
@@ -4128,6 +4130,32 @@ async function viewM5azn() {
     }
   };
 
+  // Empty: the general rate. A number: this product's own rate. Saving re-prices it at once.
+  const profitCell = (p) => {
+    const input = h('input', {
+      type: 'number', min: '0', max: '1000', step: '0.01', style: 'width:84px',
+      value: p.profitPercentage ?? '',
+      placeholder: `${o.profitPercentage}`,
+      title: tr('Leave empty to use the general rate.'),
+    });
+    const save = async () => {
+      const raw = input.value.trim();
+      try {
+        const r = await api(`/admin/m5azn/products/${p.id}/profit`, {
+          method: 'PUT',
+          body: JSON.stringify({ profitPercentage: raw === '' ? null : Number(raw) }),
+        });
+        toast(`${tr('Profit rate saved.')} ${money(r.price, 'SAR')}`, 'ok');
+        render();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    return h('div', {},
+      h('div', { class: 'toolbar', style: 'flex-wrap:nowrap' }, input,
+        h('button', { class: 'btn ghost sm', onclick: save }, 'Save')),
+      p.profitPercentage == null ? h('div', { class: 'hint' }, 'General rate', ` ${o.profitPercentage}%`) : null);
+  };
+
   const productSearch = h('input', { placeholder: 'Name, SKU or M5azn product id', value: pq.search });
   const productsCard = () => h('div', { class: 'card' },
     h('div', { class: 'toolbar', style: 'justify-content:space-between' },
@@ -4154,6 +4182,7 @@ async function viewM5azn() {
         { label: 'SKU', render: (p) => h('div', {}, h('span', { class: 'mono' }, text(p.m5aznSku || p.sku)),
             h('div', { class: 'hint mono' }, text(`#${p.m5aznProductId}`))) },
         { label: 'M5azn price', render: (p) => (p.m5aznCostPrice != null ? money(p.m5aznCostPrice, 'SAR') : '—') },
+        { label: 'Own profit %', render: profitCell },
         { label: 'Price', render: (p) => money(p.price, 'SAR') },
         { label: 'Stock', render: (p) => num(p.stock) },
         { label: 'Status', render: (p) => h('div', {}, h('span', { class: badgeClass(p.status) }, p.status),
