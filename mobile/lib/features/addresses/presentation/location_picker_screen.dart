@@ -59,6 +59,11 @@ class DeviceLocation {
 
 final deviceLocationProvider = Provider<DeviceLocation>((ref) => const DeviceLocation());
 
+/// Opens the map and returns the point picked; behind a provider so tests can pick without a map.
+typedef PickLocation = Future<LatLng?> Function(BuildContext context, {LatLng? initial, bool locate});
+
+final locationPickerProvider = Provider<PickLocation>((ref) => LocationPickerScreen.open);
+
 /// A map with a fixed pin in the middle: the customer moves the map under it, which is easier
 /// on a phone than dragging a small marker. Pops with the point under the pin.
 class LocationPickerScreen extends ConsumerStatefulWidget {

@@ -495,6 +495,11 @@ class AppStrings {
   String get changeLocation => _t('تعديل الموقع', 'Change location');
   String get locationPicked => _t('تم تحديد الموقع', 'Location set');
   String get useMyLocation => _t('موقعي الحالي', 'My current location');
+  String get findingAddress => _t('جارٍ معرفة العنوان…', 'Finding the address…');
+  String get addressFilledFromMap =>
+      _t('عبّأنا العنوان من الموقع، راجعه قبل الحفظ', 'Filled in from the location. Check it before saving');
+  String get addressNotFoundFromMap =>
+      _t('لم نتمكن من معرفة العنوان من الموقع، أدخله يدويًا', 'Could not tell the address from the location. Please type it');
   String get confirmLocation => _t('تأكيد الموقع', 'Confirm location');
   String get moveMapToPin => _t(
       'حرّك الخريطة حتى يكون الدبوس على باب المنزل', 'Move the map until the pin is on the door');

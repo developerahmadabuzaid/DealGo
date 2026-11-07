@@ -9,6 +9,7 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/app_header.dart';
+import '../data/address_lookup.dart';
 import '../data/address_repository.dart';
 import 'location_picker_screen.dart';
 
@@ -126,6 +127,13 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
 
   LatLng? _location;
   late bool _isDefault;
+
+  /// Looking up the address of a picked point.
+  bool _finding = false;
+
+  /// What each field was last filled with from the map. A field still holding that (or empty) is
+  /// the map's to change again; one the customer typed into is never overwritten.
+  final _filledFromMap = <TextEditingController, String>{};
   bool _saving = false;
   String? _error;
 
@@ -156,8 +164,42 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
   }
 
   Future<void> _pickLocation({bool locate = false}) async {
-    final picked = await LocationPickerScreen.open(context, initial: _location, locate: locate);
-    if (picked != null && mounted) setState(() => _location = picked);
+    final picked = await ref.read(locationPickerProvider)(context, initial: _location, locate: locate);
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _location = picked;
+      _finding = true;
+    });
+
+    // City, district, street and building from the point, so the customer only checks them.
+    final found = await ref.read(addressLookupProvider).at(picked);
+    if (!mounted) return;
+    setState(() => _finding = false);
+
+    final t = AppStrings.of(context);
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    if (found == null) {
+      messenger.showSnackBar(SnackBar(content: Text(t.addressNotFoundFromMap)));
+      return;
+    }
+
+    setState(() {
+      _fill(_city, found.city);
+      _fill(_district, found.district);
+      _fill(_street, found.street);
+      _fill(_building, found.buildingNumber);
+    });
+    _form.currentState?.validate();
+    messenger.showSnackBar(SnackBar(content: Text(t.addressFilledFromMap)));
+  }
+
+  void _fill(TextEditingController field, String? value) {
+    if (value == null) return;
+    final current = field.text.trim();
+    if (current.isNotEmpty && current != _filledFromMap[field]) return;
+    field.text = value;
+    _filledFromMap[field] = value;
   }
 
   static String? _orNull(String text) => text.trim().isEmpty ? null : text.trim();
@@ -219,6 +261,7 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
           children: [
             _LocationCard(
               location: _location,
+              finding: _finding,
               onPick: () => _pickLocation(),
               onLocate: () => _pickLocation(locate: true),
             ),
@@ -331,9 +374,15 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
 
 /// The pin, or the two ways to drop one. No map is drawn here: the picker has the real one.
 class _LocationCard extends StatelessWidget {
-  const _LocationCard({required this.location, required this.onPick, required this.onLocate});
+  const _LocationCard({
+    required this.location,
+    required this.onPick,
+    required this.onLocate,
+    this.finding = false,
+  });
 
   final LatLng? location;
+  final bool finding;
   final VoidCallback onPick;
   final VoidCallback onLocate;
 
@@ -366,6 +415,17 @@ class _LocationCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (finding) ...[
+              const SizedBox(height: 8),
+              Row(
+                key: const ValueKey('address-finding'),
+                children: [
+                  const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 8),
+                  Text(t.findingAddress, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ],
             const SizedBox(height: 10),
             Row(
               children: [
