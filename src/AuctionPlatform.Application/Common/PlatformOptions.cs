@@ -315,6 +315,12 @@ public sealed class M5aznOptions
 
     public int ProductSyncMinutes { get; set; } = 60;
 
+    /// <summary>
+    /// The pause between the import's one-category-at-a-time questions, in milliseconds. M5azn
+    /// answers "too many requests" (429) when they come too fast.
+    /// </summary>
+    public int CatalogRequestDelayMs { get; set; } = 1000;
+
     /// <summary>Attempts at sending one order before it is marked failed for an administrator.</summary>
     public int MaxAttempts { get; set; } = 5;
 

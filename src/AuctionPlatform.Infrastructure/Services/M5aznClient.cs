@@ -342,12 +342,39 @@ public sealed class M5aznClient : IM5aznClient
         var token = await GetTokenAsync(ct);
         var response = await _http.SendAsync(Prepare(build(), token), ct);
 
-        if (response.StatusCode != HttpStatusCode.Unauthorized) return response;
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            response.Dispose();
+            _tokens.Clear(token);
+            token = await GetTokenAsync(ct);
+            response = await _http.SendAsync(Prepare(build(), token), ct);
+        }
 
-        response.Dispose();
-        _tokens.Clear(token);
-        token = await GetTokenAsync(ct);
-        return await _http.SendAsync(Prepare(build(), token), ct);
+        // Too many requests: a read is waited out and asked again, as M5azn says or a few seconds.
+        // Never an order: that keeps its own rules (a 429 there is "not sent", retried later).
+        for (var attempt = 1; attempt <= 2 && response.StatusCode == HttpStatusCode.TooManyRequests; attempt++)
+        {
+            using var probe = build();
+            if (probe.Method != HttpMethod.Get) break;
+
+            var wait = RetryAfter(response, attempt);
+            _logger.LogInformation("M5azn: too many requests; waiting {Seconds}s before asking again.", wait.TotalSeconds);
+            response.Dispose();
+            await Task.Delay(wait, ct);
+            response = await _http.SendAsync(Prepare(build(), token), ct);
+        }
+
+        return response;
+    }
+
+    /// <summary>M5azn's Retry-After when it gives one (at most 30 s), else 3 s then 9 s.</summary>
+    internal static TimeSpan RetryAfter(HttpResponseMessage response, int attempt)
+    {
+        var header = response.Headers.RetryAfter;
+        var wait = header?.Delta
+                   ?? (header?.Date is { } at ? at - DateTimeOffset.UtcNow : (TimeSpan?)null)
+                   ?? TimeSpan.FromSeconds(attempt == 1 ? 3 : 9);
+        return wait < TimeSpan.Zero ? TimeSpan.Zero : wait > TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(30) : wait;
     }
 
     private HttpRequestMessage Prepare(HttpRequestMessage request, string? token)

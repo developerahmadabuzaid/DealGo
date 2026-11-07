@@ -172,6 +172,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
             o.Enabled = m5azn is not null;
             o.Email = m5azn is null ? string.Empty : "seller@example.test";
             o.Password = m5azn is null ? string.Empty : "not-a-real-password";
+            o.CatalogRequestDelayMs = 0;
             configureM5azn?.Invoke(o);
         });
         services.AddSingleton(m5azn ?? new DisabledM5aznClient());

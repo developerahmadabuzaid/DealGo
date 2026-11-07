@@ -143,7 +143,10 @@ M5azn's product list does not name the category, so the import reads M5azn's cat
 
 Before trusting step 2 it asks for a category that cannot exist: if products still come back,
 M5azn ignores the filter, nothing is guessed, and the import says so. Products already in a store
-category are not asked about again, so the hourly sync stays light. A category you change by hand on
+category are not asked about again, so the hourly sync stays light. The questions are paced (one a
+second, `M5azn__CatalogRequestDelayMs`), stop as soon as every product has a category, and a
+"too many requests" answer (429) is waited out and asked again; if M5azn still refuses, what was
+sorted is kept and the rest are asked about on the next import. A category you change by hand on
 a product stays as long as M5azn names none.
 
 ### Prices and profit

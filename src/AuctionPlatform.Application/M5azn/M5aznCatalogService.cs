@@ -5,6 +5,7 @@ using AuctionPlatform.Domain.Entities;
 using AuctionPlatform.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AuctionPlatform.Application.M5azn;
 
@@ -94,6 +95,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
     private readonly IAuditService _audit;
     private readonly ICacheService _cache;
     private readonly IDateTimeProvider _clock;
+    private readonly M5aznOptions _options;
     private readonly ILogger<M5aznCatalogService> _logger;
 
     public M5aznCatalogService(
@@ -103,6 +105,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         IAuditService audit,
         ICacheService cache,
         IDateTimeProvider clock,
+        IOptions<M5aznOptions> options,
         ILogger<M5aznCatalogService> logger)
     {
         _db = db;
@@ -111,6 +114,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         _audit = audit;
         _cache = cache;
         _clock = clock;
+        _options = options.Value;
         _logger = logger;
     }
 
@@ -532,7 +536,12 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             var ids = new List<long>();
             for (var page = 1; page <= 10 && calls < MaxCategoryCalls; page++)
             {
-                calls++;
+                // Paced: M5azn answers 429 when these come too fast.
+                if (calls++ > 0 && _options.CatalogRequestDelayMs > 0)
+                {
+                    await Task.Delay(Math.Min(_options.CatalogRequestDelayMs, 10_000), ct);
+                }
+
                 var result = await _client.GetMyProductsAsync(page, categoryId, ct);
                 if (result.Unreadable) return null;
                 ids.AddRange(result.Products.Select(p => p.ProductId));
@@ -558,7 +567,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             var hitMains = new HashSet<long>();
             foreach (var main in mains)
             {
-                if (calls >= MaxCategoryCalls) break;
+                // Every product has its main category: no need to ask the others.
+                if (calls >= MaxCategoryCalls || missing.All(id => found[id].CategoryName is not null)) break;
                 var ids = await InCategoryAsync(main.Id);
                 foreach (var id in ids ?? [])
                 {
@@ -584,8 +594,11 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "M5azn: products could not be sorted into categories.");
-            problem($"Products could not be sorted into M5azn's categories ({ex.Message}).");
+            // What was sorted so far is kept; the rest are asked about on the next import.
+            _logger.LogWarning(ex, "M5azn: products could not all be sorted into categories.");
+            var left = missing.Count(id => found[id].CategoryName is null);
+            problem($"M5azn stopped answering while products were being sorted into categories ({ex.Message}). " +
+                    $"{missing.Count - left} placed; the other {left} are tried again on the next import.");
             return;
         }
 

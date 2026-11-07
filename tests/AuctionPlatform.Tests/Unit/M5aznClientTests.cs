@@ -415,6 +415,50 @@ public class M5aznClientTests
     }
 
     [Fact]
+    public async Task A_read_answered_too_many_requests_is_waited_out_and_asked_again()
+    {
+        var router = new Router();
+        var asked = 0;
+        router.On("GET", "/api/v1/catalog/categories", _ =>
+        {
+            if (++asked == 1)
+            {
+                var busy = Json(HttpStatusCode.TooManyRequests, new { message = "Too Many Attempts." });
+                busy.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.Zero);
+                return busy;
+            }
+
+            return Json(HttpStatusCode.OK, new { success = true, data = new object[] { new { id = 1, name_ar = "العناية" } } });
+        });
+
+        var list = await Build(router).GetCategoriesAsync();
+
+        asked.Should().Be(2);
+        list.Categories.Should().ContainSingle(c => c.Name == "العناية");
+    }
+
+    [Fact]
+    public async Task An_order_answered_too_many_requests_is_not_sent_again_on_the_spot()
+    {
+        var router = new Router();
+        var posted = 0;
+        router.On("POST", "/api/v1/orders", _ =>
+        {
+            posted++;
+            var busy = Json(HttpStatusCode.TooManyRequests, new { message = "Too Many Attempts." });
+            busy.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.Zero);
+            return busy;
+        });
+
+        var result = await Build(router).CreateOrderAsync(new M5aznOrderRequest(100001, 10m, "card", 0m, DateTime.UtcNow, "DealGo",
+            new M5aznShippingInfo("a", "Saudi Arabia", "SA", "الرياض"), new M5aznCustomerInfo("a", "b", "c@d.e", "+966500000000"),
+            [new M5aznOrderItem(1, 1, "S", "n", 1)]));
+
+        posted.Should().Be(1, "an order is never repeated by the transport");
+        result.Outcome.Should().Be(M5aznSubmitOutcome.NotSent);
+    }
+
+    [Fact]
     public async Task An_unknown_answer_is_said_to_be_unreadable_not_empty()
     {
         var router = new Router();
