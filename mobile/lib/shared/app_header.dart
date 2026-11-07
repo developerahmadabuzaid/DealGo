@@ -318,10 +318,19 @@ class _SearchRowState extends ConsumerState<_SearchRow> {
                 forceStrutHeight: true,
               ),
               cursorHeight: 18,
+              /*
+               * The field fills the pill's height and centres its one line in it. A collapsed
+               * field (isCollapsed) measured its line as zero high, so "centre" put the text and
+               * the cursor about 10 px above the middle, partly above the pill itself.
+               */
+              expands: true,
+              maxLines: null,
+              minLines: null,
               // Every border is cleared explicitly: the app theme draws outlined fields, and this
               // one sits inside its own white pill.
               decoration: InputDecoration(
-                isCollapsed: true,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
                 filled: false,
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
