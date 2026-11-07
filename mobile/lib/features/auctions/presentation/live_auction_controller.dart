@@ -125,7 +125,9 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
 
     _eventSub = hub.events.listen(_onEvent);
 
-    await hub.connect();
+    // The live connection is for accounts; the server refuses a guest's. A guest still watches
+    // the price, from the snapshot polled below.
+    if (_signedIn) await hub.connect();
     // The status stream only reports changes. When the connection was already up before this
     // screen opened — the usual case, since the app connects at sign-in — nothing changes, so the
     // current status has to be read directly. Without this the screen believed it was offline and
@@ -146,8 +148,15 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
   Timer? _reconnectTimer;
   bool _reconnecting = false;
 
+  bool get _signedIn => _ref.read(authControllerProvider).isSignedIn;
+
   Future<void> _ensureConnected() async {
     final hub = _hub;
+    if (!_signedIn) {
+      // Without a live connection, a guest's price is kept fresh every few seconds instead.
+      unawaited(resync());
+      return;
+    }
     if (_reconnecting || hub.currentStatus != HubStatus.disconnected) return;
 
     _reconnecting = true;

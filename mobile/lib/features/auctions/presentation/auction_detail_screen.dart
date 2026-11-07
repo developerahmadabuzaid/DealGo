@@ -11,6 +11,7 @@ import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/auto_refresh.dart';
 import '../../../shared/app_header.dart';
+import '../../../shared/sign_in_gate.dart';
 import '../../../shared/widgets.dart';
 import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/auction_models.dart';
@@ -298,6 +299,16 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
   bool _busy = false;
 
   Future<void> _join() async {
+    // Joining takes an entry fee from the user's own wallet, so a guest signs in first. Their
+    // account may already be in this auction, so the page reloads and they tap again.
+    if (!ref.read(authControllerProvider).isSignedIn) {
+      if (await SignInGate.ensureSignedIn(context, ref)) {
+        ref.invalidate(auctionDetailProvider(widget.detail.id));
+      }
+      return;
+    }
+
+    if (!mounted) return;
     final t = AppStrings.of(context);
     final d = widget.detail;
     setState(() => _busy = true);

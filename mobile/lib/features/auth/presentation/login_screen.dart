@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/errors/api_exception.dart';
 import '../../../core/format/saudi_phone.dart';
@@ -8,6 +9,7 @@ import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/brand.dart';
 import '../../../shared/legal_links.dart';
+import '../../../shared/sign_in_gate.dart';
 import '../../../shared/widgets.dart';
 import '../../../shared/otp_input.dart';
 import '../data/auth_repository.dart' show OtpChallenge;
@@ -16,8 +18,13 @@ import '../data/auth_repository.dart' show OtpChallenge;
 ///
 /// This is also sign-up: the server creates an account the first time a new number is verified,
 /// and the app then asks for the user's name on the complete-profile screen.
+///
+/// Guests reach it from a page about their own account. Once signed in it leaves by itself: back
+/// to the page it was opened over, or on to [from], the page the guest was trying to open.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.from});
+
+  final String? from;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -80,12 +87,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref
           .read(authControllerProvider.notifier)
           .signInWithOtp(_canonicalPhone!, code);
+      if (mounted) _leave();
     } on ApiException catch (e) {
       setState(() => _error = e.displayMessage);
     } catch (_) {
       setState(() => _error = AppStrings.of(context).somethingWentWrong);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Leaves the sign-in screen, signed in or not. A new account is first sent on to give its
+  /// name; the router does that, so there is nothing to do here.
+  void _leave() {
+    final auth = ref.read(authControllerProvider);
+    if (auth.isSignedIn && auth.user != null && auth.user!.fullName.trim().isEmpty) return;
+
+    final router = GoRouter.of(context);
+    final from = widget.from;
+    final target = from != null && (auth.isSignedIn || !SignInGate.isAccountPage(from))
+        ? from
+        : null;
+
+    if (router.canPop()) {
+      router.pop();
+      if (target != null) router.push(target);
+    } else {
+      router.go(target ?? '/');
     }
   }
 
@@ -118,6 +146,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   SurfaceCard(
                     padding: const EdgeInsets.all(AppTheme.space5),
                     child: _challenge == null ? _phoneStep(t) : _codeStep(t),
+                  ),
+                  const SizedBox(height: AppTheme.space4),
+
+                  // Everything that is not about an account works without one.
+                  TextButton(
+                    onPressed: _busy ? null : _leave,
+                    child: Text(t.browseAsGuest),
                   ),
                 ],
               ),

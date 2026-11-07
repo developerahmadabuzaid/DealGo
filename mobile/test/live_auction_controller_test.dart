@@ -67,8 +67,25 @@ class _Repo extends AuctionRepository {
       });
 }
 
+/// A hub that counts how often anything tries to connect it.
+class _CountingHub extends _AlreadyConnectedHub {
+  int connects = 0;
+
+  @override
+  HubStatus get currentStatus => HubStatus.disconnected;
+  @override
+  Future<void> connect() async => connects++;
+}
+
+final _signedIn = authControllerProvider.overrideWith((ref) => AuthController.withState(
+    ref, const AuthState(checked: true, hasSession: true)));
+
+final _guest = authControllerProvider
+    .overrideWith((ref) => AuthController.withState(ref, const AuthState(checked: true)));
+
 Future<ProviderContainer> _openScreen(_Repo repo) async {
   final container = ProviderContainer(overrides: [
+    _signedIn,
     hubClientProvider.overrideWithValue(_AlreadyConnectedHub()),
     auctionRepositoryProvider.overrideWithValue(repo),
   ]);
@@ -101,6 +118,7 @@ void main() {
 
   test('a screen opened on an already-connected hub can bid', () async {
     final container = ProviderContainer(overrides: [
+      _signedIn,
       hubClientProvider.overrideWithValue(_AlreadyConnectedHub()),
       auctionRepositoryProvider.overrideWithValue(_Repo()),
     ]);
@@ -115,6 +133,26 @@ void main() {
     expect(state.isConnected, isTrue,
         reason: 'the hub was connected before the screen opened; the screen must know that');
     expect(state.canBid, isTrue);
+
+    sub.close();
+    container.dispose();
+  });
+
+  test('a guest watches the price without a live connection the server would refuse', () async {
+    final hub = _CountingHub();
+    final container = ProviderContainer(overrides: [
+      _guest,
+      hubClientProvider.overrideWithValue(hub),
+      auctionRepositoryProvider.overrideWithValue(_Repo()),
+    ]);
+    final sub = container.listen(liveAuctionProvider('a1'), (_, _) {});
+
+    for (var i = 0; i < 20 && container.read(liveAuctionProvider('a1')).snapshot == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
+    expect(container.read(liveAuctionProvider('a1')).snapshot!.currentPrice, 1500);
+    expect(hub.connects, 0);
 
     sub.close();
     container.dispose();

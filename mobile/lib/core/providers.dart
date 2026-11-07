@@ -109,6 +109,10 @@ class AuthController extends StateNotifier<AuthState> {
     _restore();
   }
 
+  /// A session fixed in advance, without looking in storage. For tests.
+  @visibleForTesting
+  AuthController.withState(this._ref, super.state);
+
   final Ref _ref;
 
   AuthRepository get _repo => _ref.read(authRepositoryProvider);
@@ -219,8 +223,14 @@ final localeProvider = Provider<Locale>((ref) => const Locale('ar'));
 
 // ---------------------------------------------------------------- data providers
 
-final walletsProvider = FutureProvider.autoDispose(
-    (ref) => ref.watch(walletRepositoryProvider).get());
+/// A guest has no wallets. Asking anyway would end in a 401, so the provider stays empty until
+/// sign-in, and watching the session reloads it the moment someone signs in.
+final walletsProvider = FutureProvider.autoDispose((ref) {
+  if (!ref.watch(authControllerProvider.select((a) => a.isSignedIn))) {
+    return Completer<Wallets>().future;
+  }
+  return ref.watch(walletRepositoryProvider).get();
+});
 
 final storeHomeProvider = FutureProvider.autoDispose(
     (ref) => ref.watch(storeRepositoryProvider).home());
@@ -234,8 +244,11 @@ final myClaimsProvider = FutureProvider.autoDispose(
 final notificationsProvider = FutureProvider.autoDispose(
     (ref) => ref.watch(notificationRepositoryProvider).list());
 
-final unreadCountProvider = FutureProvider.autoDispose(
-    (ref) => ref.watch(notificationRepositoryProvider).unreadCount());
+/// Zero for a guest, who has no notifications; the header shows it on every page.
+final unreadCountProvider = FutureProvider.autoDispose((ref) async {
+  if (!ref.watch(authControllerProvider.select((a) => a.isSignedIn))) return 0;
+  return ref.watch(notificationRepositoryProvider).unreadCount();
+});
 
 /// One store category's offers, biggest saving first.
 final categoryOffersProvider = FutureProvider.autoDispose.family(

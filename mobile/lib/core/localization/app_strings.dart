@@ -78,6 +78,7 @@ class AppStrings {
         "Enter your Saudi mobile number and we'll text you a code. A new number gets a new account.",
       );
   String get mobileNumber => _t('رقم الجوال', 'Mobile number');
+  String get browseAsGuest => _t('تصفّح بدون تسجيل', 'Browse without an account');
   String get invalidSaudiPhone => _t(
         'أدخل رقم جوال سعودي صحيح يبدأ بـ 5، مثل 05XXXXXXXX.',
         'Enter a valid Saudi mobile number starting with 5, e.g. 05XXXXXXXX.',

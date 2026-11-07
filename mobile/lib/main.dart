@@ -23,6 +23,7 @@ import 'features/store/presentation/store_screen.dart';
 import 'features/support/support.dart';
 import 'features/wallets/presentation/wallet_screen.dart';
 import 'shared/app_header.dart';
+import 'shared/sign_in_gate.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -121,17 +122,28 @@ GoRouter _router(WidgetRef ref) {
       // The terms are read before an account exists, from sign-in and from the name step.
       if (state.matchedLocation == '/terms') return null;
 
-      if (!auth.isSignedIn) return atLogin ? null : '/login';
+      // Guests browse freely; only pages about their own account ask them to sign in, and the
+      // sign-in screen then brings them on to the page they wanted.
+      if (!auth.isSignedIn) {
+        if (atLogin || !SignInGate.isAccountPage(state.uri.toString())) return null;
+        return Uri(path: '/login', queryParameters: {'from': state.uri.toString()}).toString();
+      }
 
       // An account created by phone sign-in has no name until the user gives one.
       final needsName = auth.user != null && auth.user!.fullName.trim().isEmpty;
       if (needsName) return atProfile ? null : '/complete-profile';
 
-      if (atLogin || atProfile) return '/';
+      // The sign-in screen leaves by itself once it is done: back to the page it was opened over,
+      // or on to the page the guest was trying to open.
+      if (atProfile) return '/';
       return null;
     },
     routes: [
-      GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(
+        path: '/login',
+        parentNavigatorKey: _rootKey,
+        builder: (_, state) => LoginScreen(from: state.uri.queryParameters['from']),
+      ),
       GoRoute(
           path: '/complete-profile', builder: (_, _) => const CompleteProfileScreen()),
       GoRoute(
@@ -256,7 +268,12 @@ class _MainShell extends ConsumerWidget {
       floatingActionButton: const WhatsAppSupportButton(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
-        onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        onDestinationSelected: (i) async {
+          // The wallet and profile tabs are a guest's own account: sign in over the current tab
+          // first, so closing the sign-in screen leaves them where they were.
+          if (i >= 3 && !await SignInGate.ensureSignedIn(context, ref)) return;
+          shell.goBranch(i, initialLocation: i == shell.currentIndex);
+        },
         destinations: [
           NavigationDestination(
               icon: const Icon(Icons.home_outlined),
