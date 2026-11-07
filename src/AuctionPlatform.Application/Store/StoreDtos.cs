@@ -39,7 +39,10 @@ public sealed record StoreProductListItemDto(
     StoreProductStatus Status,
     StorePaymentMode PaymentMode,
     bool AcceptsShoppingCredit,
-    bool IsFeatured)
+    bool IsFeatured,
+
+    /// <summary>Added by staff in the dashboard, or imported from M5azn.</summary>
+    StoreProductSource Source = StoreProductSource.Admin)
 {
     public bool IsOnOffer => StoreDiscount.Applies(Price, CompareAtPrice);
     public int DiscountPercentage => StoreDiscount.Percentage(Price, CompareAtPrice);
@@ -115,6 +118,9 @@ public sealed class StoreProductQuery : PagedQuery
     public StoreProductStatus? Status { get; set; }
 
     public bool? LowStockOnly { get; set; }
+
+    /// <summary>Admin-only filter: products added in the dashboard, or imported from M5azn.</summary>
+    public StoreProductSource? Source { get; set; }
 }
 
 public sealed record StoreHomeDto(

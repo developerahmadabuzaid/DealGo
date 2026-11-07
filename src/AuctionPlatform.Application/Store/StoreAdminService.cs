@@ -97,6 +97,7 @@ public sealed class StoreAdminService : IStoreAdminService
         var q = _db.StoreProducts.AsNoTracking().AsQueryable();
 
         if (query.Status.HasValue) q = q.Where(p => p.Status == query.Status.Value);
+        if (query.Source.HasValue) q = q.Where(p => p.Source == query.Source.Value);
         if (query.CategoryId.HasValue)
         {
             var categoryId = query.CategoryId.Value;
@@ -120,8 +121,22 @@ public sealed class StoreAdminService : IStoreAdminService
 
         var total = await q.LongCountAsync(ct);
 
-        var items = await q
-            .OrderByDescending(p => p.CreatedAt)
+        // Newest first unless asked otherwise; ties fall back to newest first so pages are stable.
+        var desc = query.SortDescending;
+        IOrderedQueryable<StoreProduct> ordered = query.SortBy?.ToLowerInvariant() switch
+        {
+            "source" => desc ? q.OrderByDescending(p => p.Source) : q.OrderBy(p => p.Source),
+            "name" => desc ? q.OrderByDescending(p => p.Name) : q.OrderBy(p => p.Name),
+            "price" => desc ? q.OrderByDescending(p => p.Price) : q.OrderBy(p => p.Price),
+            "stock" => desc
+                ? q.OrderByDescending(p => p.StockQuantity - p.ReservedQuantity)
+                : q.OrderBy(p => p.StockQuantity - p.ReservedQuantity),
+            "oldest" => q.OrderBy(p => p.CreatedAt),
+            _ => q.OrderByDescending(p => p.CreatedAt)
+        };
+
+        var items = await ordered
+            .ThenByDescending(p => p.CreatedAt).ThenBy(p => p.Id)
             .Skip(query.Skip).Take(query.PageSize)
             .Select(StoreCatalogService.Projection)
             .ToListAsync(ct);

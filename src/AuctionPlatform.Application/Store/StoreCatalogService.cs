@@ -90,7 +90,8 @@ public sealed class StoreCatalogService : IStoreCatalogService
             p.StockQuantity - p.ReservedQuantity > 0,
             p.Status, p.PaymentMode,
             p.PaymentMode == StorePaymentMode.ShoppingWallet || p.PaymentMode == StorePaymentMode.Both,
-            p.IsFeatured);
+            p.IsFeatured,
+            p.Source);
 
     public async Task<PagedResult<StoreProductListItemDto>> GetProductsAsync(
         StoreProductQuery query, CancellationToken ct = default)

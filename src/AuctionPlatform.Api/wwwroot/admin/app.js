@@ -346,6 +346,12 @@ const AR = {
   'Automatic sending': 'الإرسال التلقائي', 'Profit %': 'نسبة الربح %',
   'Leave empty to keep the saved password': 'اتركها فارغة للإبقاء على كلمة المرور المحفوظة',
   'Check sign-in': 'اختبار تسجيل الدخول',
+  'Source': 'المصدر', 'Any source': 'كل المصادر', 'Added by admin': 'أضافه المشرف',
+  'From M5azn': 'من مخزن', 'Sort': 'الترتيب', 'Newest first': 'الأحدث أولاً', 'Oldest first': 'الأقدم أولاً',
+  'Name (A-Z)': 'الاسم (أ-ي)', 'Price: low to high': 'السعر: من الأقل', 'Price: high to low': 'السعر: من الأعلى',
+  'Stock: low to high': 'المتاح: من الأقل', 'M5azn first': 'منتجات مخزن أولاً', 'Admin products first': 'منتجات المشرف أولاً',
+  'Imported from M5azn: price and stock follow M5azn every hour.': 'مستورد من مخزن: السعر والمخزون يتحدّثان من مخزن كل ساعة.',
+  'Added in the dashboard: DealGo ships it.': 'أُضيف من لوحة التحكم: يشحنه DealGo.',
   'Shrink uploaded pictures': 'تصغير الصور المرفوعة',
   'Pictures you upload are now made smaller automatically (at most 1600 px, WebP). This makes the ones uploaded before smaller too, so the app loads faster. Nothing is deleted. Super admins only.':
     'الصور التي ترفعها تُصغَّر الآن تلقائيًا (1600 بكسل كحد أقصى، بصيغة WebP). هذا الزر يصغّر الصور التي رُفعت من قبل أيضًا ليصبح التطبيق أسرع. لا يُحذف شيء. للمدير العام فقط.',
@@ -3592,11 +3598,29 @@ async function viewStoreOverview() {
 }
 
 async function viewStoreProducts() {
-  const q = state.cache.products || (state.cache.products = { page: 1, search: '', status: '' });
+  const q = state.cache.products || (state.cache.products = { page: 1, search: '', status: '', source: '', sort: '' });
+
+  // Each sort choice is a column and a direction for the server.
+  const sorts = {
+    '': ['Newest first', null, true],
+    oldest: ['Oldest first', 'oldest', false],
+    name: ['Name (A-Z)', 'name', false],
+    priceUp: ['Price: low to high', 'price', false],
+    priceDown: ['Price: high to low', 'price', true],
+    stock: ['Stock: low to high', 'stock', false],
+    m5azn: ['M5azn first', 'source', true],
+    admin: ['Admin products first', 'source', false],
+  };
 
   const params = new URLSearchParams({ page: q.page, pageSize: 20 });
   if (q.search) params.set('search', q.search);
   if (q.status) params.set('status', q.status);
+  if (q.source) params.set('source', q.source);
+  const [, sortBy, sortDescending] = sorts[q.sort] || sorts[''];
+  if (sortBy) {
+    params.set('sortBy', sortBy);
+    params.set('sortDescending', String(sortDescending));
+  }
 
   const [data, categories] = await Promise.all([
     api(`/admin/store/products?${params}`),
@@ -3607,6 +3631,15 @@ async function viewStoreProducts() {
   const status = h('select', {}, ...[['', 'Any status'], ['Draft', 'Draft'], ['Active', 'Active'],
     ['OutOfStock', 'Out of stock'], ['Hidden', 'Hidden'], ['Archived', 'Archived']]
     .map(([v, l]) => h('option', { value: v, selected: v === q.status ? '' : null }, l)));
+  const source = h('select', {}, ...[['', 'Any source'], ['Admin', 'Added by admin'], ['M5azn', 'From M5azn']]
+    .map(([v, l]) => h('option', { value: v, selected: v === q.source ? '' : null }, l)));
+  const sort = h('select', {}, ...Object.entries(sorts)
+    .map(([v, [l]]) => h('option', { value: v, selected: v === (q.sort || '') ? '' : null }, l)));
+
+  // Where a product came from, next to its name: M5azn's are kept in step with M5azn.
+  const sourceBadge = (p) => p.source === 'M5azn'
+    ? h('span', { class: 'badge warn', title: tr('Imported from M5azn: price and stock follow M5azn every hour.') }, 'From M5azn')
+    : h('span', { class: 'badge', title: tr('Added in the dashboard: DealGo ships it.') }, 'Added by admin');
 
   const setStatus = async (id, action) => {
     try {
@@ -3621,15 +3654,19 @@ async function viewStoreProducts() {
       h('button', { class: 'btn', onclick: () => productForm(null, categories) }, 'Add product')),
 
     h('div', { class: 'card' },
-      h('div', { class: 'toolbar' }, search, status,
+      h('div', { class: 'toolbar' }, search, status, source, sort,
         h('button', {
           class: 'btn ghost sm',
-          onclick: () => { q.search = search.value; q.status = status.value; q.page = 1; render(); },
+          onclick: () => {
+            q.search = search.value; q.status = status.value; q.source = source.value; q.sort = sort.value;
+            q.page = 1; render();
+          },
         }, 'Apply')),
 
       pagedTable({
         columns: [
           { label: 'Product', render: (p) => p.name },
+          { label: 'Source', render: sourceBadge },
           { label: 'SKU', mono: true, render: (p) => p.sku },
           { label: 'Category', render: (p) => p.categoryName || '—' },
           { label: 'Price', num: true, render: (p) => money(p.price, p.currency) },
