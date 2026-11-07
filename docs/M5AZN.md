@@ -138,8 +138,13 @@ M5azn's product list does not name the category, so the import reads M5azn's cat
 (`GET /api/v1/catalog/categories`) and:
 
 1. uses the category id a product carries, when it carries one;
-2. otherwise asks the product list one category at a time (`?category_id=`): main categories first,
-   then the sub-categories of those that had products, so the most specific one wins.
+2. otherwise reads the product's details (`product/details/{id}`), which may name it;
+3. otherwise asks the product list one category at a time (`?category_id=`): main categories first,
+   then deeper ones, so the most specific one wins. A main category may list only its own
+   products, not its sub-categories', so the search goes on while a product has no category.
+
+When a product still has none, the result lists the field names of M5azn's details for it (names
+only, never values), which says where M5azn keeps the category.
 
 Before trusting step 2 it asks for a category that cannot exist: if products still come back,
 M5azn ignores the filter, nothing is guessed, and the import says so. Products already in a store

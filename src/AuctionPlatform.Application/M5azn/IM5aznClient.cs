@@ -71,7 +71,10 @@ public sealed record M5aznCatalogProduct(
     long? CategoryId = null,
 
     /// <summary>The main category above <see cref="CategoryName"/>, when that is a sub-category.</summary>
-    string? ParentCategoryName = null);
+    string? ParentCategoryName = null,
+
+    /// <summary>The field names of the answer it was read from (never values), to say what M5azn sent.</summary>
+    string? Shape = null);
 
 /// <summary>One category of M5azn's catalogue (<c>GET /api/v1/catalog/categories</c>), sub-categories flattened.</summary>
 public sealed record M5aznCategory(long Id, string Name, long? ParentId, string? ImageUrl);

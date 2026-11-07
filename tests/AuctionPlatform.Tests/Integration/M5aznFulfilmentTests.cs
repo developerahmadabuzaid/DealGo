@@ -564,6 +564,46 @@ public class M5aznFulfilmentTests
     }
 
     [Fact]
+    public async Task The_details_or_a_sub_category_place_products_their_main_category_does_not_list()
+    {
+        var fromDetails = NextRemoteId();
+        var onlyInSub = NextRemoteId();
+        var lost = NextRemoteId();
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        long watches = NextRemoteId(), men = NextRemoteId(), phones = NextRemoteId();
+
+        var m5azn = new FakeM5azn();
+        m5azn.Categories.AddRange([
+            new M5aznCategory(watches, $"الساعات {tag}", null, null),
+            new M5aznCategory(men, $"ساعات رجالية {tag}", watches, null),
+            new M5aznCategory(phones, $"الجوال {tag}", null, null)
+        ]);
+        // The main category lists only its own products, not its sub-categories'.
+        m5azn.InCategory[men] = [onlyInSub];
+        m5azn.ListPage(
+            Catalog(fromDetails, $"D-{fromDetails}", "From details", 10m, 1, ["https://cdn.m5azn.test/d1.jpg", "https://cdn.m5azn.test/d2.jpg"], null, "x"),
+            Catalog(onlyInSub, $"U-{onlyInSub}", "Only in sub", 10m, 1, ["https://cdn.m5azn.test/u1.jpg", "https://cdn.m5azn.test/u2.jpg"], null, "x"),
+            Catalog(lost, $"L-{lost}", "Nowhere", 10m, 1, ["https://cdn.m5azn.test/l1.jpg", "https://cdn.m5azn.test/l2.jpg"], null, "x"));
+        m5azn.Details[fromDetails] = Catalog(fromDetails, null, null, null, null, [], null, null) with { CategoryId = phones };
+        m5azn.Details[lost] = Catalog(lost, null, null, null, null, [], null, null) with { Shape = "id, name_ar, sku, brand{id, name}" };
+
+        try
+        {
+            var summary = await ImportAsync(m5azn);
+
+            (await ImportedAsync(fromDetails)).Category!.Name.Should().Be($"الجوال {tag}");
+            (await ImportedAsync(onlyInSub)).Category!.Name.Should().Be($"ساعات رجالية {tag}");
+            (await ImportedAsync(lost)).CategoryId.Should().BeNull();
+            summary.Problems.Should().Contain(p => p.Contains("1 product(s) were found in no M5azn category")
+                                                   && p.Contains("id, name_ar, sku, brand{id, name}"));
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
     public async Task A_list_that_ignores_the_category_filter_puts_nobody_in_the_wrong_category()
     {
         var id = NextRemoteId();

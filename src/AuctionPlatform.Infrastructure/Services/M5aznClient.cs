@@ -287,7 +287,21 @@ public sealed class M5aznClient : IM5aznClient
         if (data is not JsonObject product) return null;
 
         var parsed = ParseProduct(product);
-        return parsed is null ? null : parsed with { ProductId = productId };
+        return parsed is null ? null : parsed with { ProductId = productId, Shape = ShapeOf(product) };
+    }
+
+    /// <summary>"id, name_ar, category{id, name}, images[]": field names only, never values.</summary>
+    internal static string ShapeOf(JsonObject obj, int depth = 0)
+    {
+        var parts = obj.Select(kv => kv.Value switch
+        {
+            JsonObject inner when depth < 1 => $"{kv.Key}{{{ShapeOf(inner, depth + 1)}}}",
+            JsonObject => $"{kv.Key}{{…}}",
+            JsonArray => $"{kv.Key}[]",
+            _ => kv.Key
+        });
+        var text = string.Join(", ", parts);
+        return text.Length <= 900 ? text : text[..900] + "…";
     }
 
     public async Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default)

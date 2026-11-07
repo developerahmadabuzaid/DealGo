@@ -84,7 +84,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
     private const int MaxPages = 50;
     private const int MaxDetailCalls = 300;
     private const int MaxProblems = 12;
-    private const int MaxCategoryCalls = 120;
+    private const int MaxCategoryCalls = 150;
 
     /// <summary>Pictures of M5azn's categories by name, for the store categories an import makes.</summary>
     private Dictionary<string, string> _categoryImages = new(StringComparer.OrdinalIgnoreCase);
@@ -523,7 +523,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             }
         }
 
-        // 2. By asking the list one category at a time, for products in no store category yet.
+        // Products in no store category yet, and none named by M5azn's list.
         var missing = found.Values
             .Where(p => p.CategoryName is null && !alreadyPlaced.Contains(p.ProductId))
             .Select(p => p.ProductId)
@@ -531,28 +531,66 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         if (missing.Count == 0) return;
 
         var calls = 0;
-        async Task<IReadOnlyList<long>?> InCategoryAsync(long categoryId)
+        async Task PaceAsync()
         {
-            var ids = new List<long>();
-            for (var page = 1; page <= 10 && calls < MaxCategoryCalls; page++)
+            // Paced: M5azn answers 429 when questions come too fast.
+            if (calls++ > 0 && _options.CatalogRequestDelayMs > 0)
             {
-                // Paced: M5azn answers 429 when these come too fast.
-                if (calls++ > 0 && _options.CatalogRequestDelayMs > 0)
-                {
-                    await Task.Delay(Math.Min(_options.CatalogRequestDelayMs, 10_000), ct);
-                }
-
-                var result = await _client.GetMyProductsAsync(page, categoryId, ct);
-                if (result.Unreadable) return null;
-                ids.AddRange(result.Products.Select(p => p.ProductId));
-                if (!result.HasMore || result.Products.Count == 0) break;
+                await Task.Delay(Math.Min(_options.CatalogRequestDelayMs, 10_000), ct);
             }
+        }
 
-            return ids;
+        bool Unplaced(long id) => found[id].CategoryName is null;
+        string? exampleShape = null;
+        var placedAt = new Dictionary<long, long>();
+
+        void PlaceAt(long productId, M5aznCategory c)
+        {
+            Place(productId, c);
+            placedAt[productId] = c.Id;
         }
 
         try
         {
+            // 2. The product's own details usually say its category.
+            foreach (var id in missing.ToList())
+            {
+                if (calls >= MaxCategoryCalls) break;
+                await PaceAsync();
+                if (await _client.GetProductAsync(id, ct) is not { } details) continue;
+
+                if (details.CategoryName is not null)
+                {
+                    var known = list.Categories.FirstOrDefault(x => string.Equals(x.Name, details.CategoryName, StringComparison.OrdinalIgnoreCase));
+                    if (known is not null) PlaceAt(id, known);
+                    else found[id] = found[id] with { CategoryName = details.CategoryName, ParentCategoryName = details.ParentCategoryName };
+                }
+                else if (details.CategoryId is { } cid && byId.TryGetValue(cid, out var byDetails))
+                {
+                    PlaceAt(id, byDetails);
+                }
+
+                if (Unplaced(id)) exampleShape ??= details.Shape;
+            }
+
+            if (missing.All(id => !Unplaced(id))) return;
+
+            // 3. Else the list, one category at a time.
+            async Task<IReadOnlyList<long>?> InCategoryAsync(long categoryId)
+            {
+                var ids = new List<long>();
+                for (var page = 1; page <= 10 && calls < MaxCategoryCalls; page++)
+                {
+                    await PaceAsync();
+                    var result = await _client.GetMyProductsAsync(page, categoryId, ct);
+                    if (result.Unreadable) return null;
+                    ids.AddRange(result.Products.Select(p => p.ProductId));
+                    if (!result.HasMore || result.Products.Count == 0) break;
+                }
+
+                return ids;
+            }
+
             // If M5azn ignored the filter, every product would land in the first category asked.
             // A category that cannot exist must come back empty before the answers are trusted.
             var nowhere = await InCategoryAsync(-1);
@@ -562,29 +600,47 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
                 return;
             }
 
-            // Main categories first; then the sub-categories of those that had products, which win.
-            var mains = list.Categories.Where(c => c.ParentId is null || !byId.ContainsKey(c.ParentId.Value)).ToList();
-            var hitMains = new HashSet<long>();
-            foreach (var main in mains)
+            int DepthOf(M5aznCategory c)
             {
-                // Every product has its main category: no need to ask the others.
-                if (calls >= MaxCategoryCalls || missing.All(id => found[id].CategoryName is not null)) break;
-                var ids = await InCategoryAsync(main.Id);
-                foreach (var id in ids ?? [])
-                {
-                    if (!found.ContainsKey(id) || !missing.Contains(id)) continue;
-                    Place(id, main);
-                    hitMains.Add(main.Id);
-                }
+                var depth = 0;
+                for (var at = c; at.ParentId is { } p && byId.TryGetValue(p, out var parent) && depth < 5; at = parent) depth++;
+                return depth;
             }
 
-            foreach (var sub in list.Categories.Where(c => c.ParentId is { } p && hitMains.Contains(p)))
+            bool IsAncestor(long ancestor, M5aznCategory c)
+            {
+                for (var (at, guard) = (c, 0); at.ParentId is { } p && byId.TryGetValue(p, out var parent) && guard < 5; at = parent, guard++)
+                {
+                    if (parent.Id == ancestor) return true;
+                }
+                return false;
+            }
+
+            // Main categories first, then deeper ones: a sub-category under a category that already
+            // had products comes first, and the deepest category a product is found in wins. A main
+            // category may list only its own products, not its sub-categories', so the search goes
+            // on while a product has no category at all.
+            var hit = new HashSet<long>();
+            var ordered = list.Categories
+                .OrderBy(DepthOf)
+                .ToList();
+
+            foreach (var c in ordered)
             {
                 if (calls >= MaxCategoryCalls) break;
-                var ids = await InCategoryAsync(sub.Id);
+
+                var refines = c.ParentId is { } parentId && hit.Contains(parentId);
+                if (!refines && missing.All(id => !Unplaced(id))) continue;
+
+                var ids = await InCategoryAsync(c.Id);
                 foreach (var id in ids ?? [])
                 {
-                    if (found.ContainsKey(id) && missing.Contains(id)) Place(id, sub);
+                    if (!missing.Contains(id)) continue;
+                    if (Unplaced(id) || (placedAt.TryGetValue(id, out var at) && IsAncestor(at, c)))
+                    {
+                        PlaceAt(id, c);
+                        hit.Add(c.Id);
+                    }
                 }
             }
         }
@@ -603,7 +659,11 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         }
 
         var unplaced = missing.Count(id => found[id].CategoryName is null);
-        if (unplaced > 0) problem($"{unplaced} product(s) were found in no M5azn category and have no category in the store.");
+        if (unplaced > 0)
+        {
+            problem($"{unplaced} product(s) were found in no M5azn category and have no category in the store." +
+                    (exampleShape is null ? string.Empty : $" M5azn's product details have these fields: {exampleShape}"));
+        }
     }
 
     private async Task RecordAsync(M5aznImportSummary summary, M5aznAccount account, CancellationToken ct)
