@@ -127,6 +127,25 @@ A product is **skipped**, and the result says so, when M5azn gives it no SKU (M5
 every order) or no price (nothing is sold without one). If M5azn's answer as a whole cannot be
 read, nothing at all is changed: an unreadable answer is never taken for an empty shop.
 
+### Categories
+
+Each imported product goes into the store category matching its M5azn category. The store
+categories are made the first time, with M5azn's Arabic names and pictures; a sub-category goes
+under its main category (the store has two levels). An existing store category with the same name
+is used rather than duplicated.
+
+M5azn's product list does not name the category, so the import reads M5azn's category list
+(`GET /api/v1/catalog/categories`) and:
+
+1. uses the category id a product carries, when it carries one;
+2. otherwise asks the product list one category at a time (`?category_id=`): main categories first,
+   then the sub-categories of those that had products, so the most specific one wins.
+
+Before trusting step 2 it asks for a category that cannot exist: if products still come back,
+M5azn ignores the filter, nothing is guessed, and the import says so. Products already in a store
+category are not asked about again, so the hourly sync stays light. A category you change by hand on
+a product stays as long as M5azn names none.
+
 ### Prices and profit
 
 - **The rule**: DealGo price = M5azn price × (1 + profit % ÷ 100), rounded to the halala, where the
@@ -205,6 +224,7 @@ From the documentation at <https://m5azn-api.stoplight.io> (project *M5azn Api D
 | `GET /api/orders/{id}` | Status and tracking. Note: documented **without** `/v1`. |
 | `GET /api/v1/products/qty-changed?hours=N` | Stock changes. |
 | `GET /api/v1/seller/myproductlist?page=N` | The import: the products in your M5azn shop. |
+| `GET /api/v1/catalog/categories` | The import: M5azn's categories, for each product's category. |
 | `GET /api/v1/product/details/{id}` | The import, to fill in pictures and the description when the list has too few. |
 
 Every call carries `X-Lang`, `X-Website: M5AZN`, `X-Api`, `X-Device`, `X-Version`,

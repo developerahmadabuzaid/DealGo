@@ -83,6 +83,10 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
     private const int MaxPages = 50;
     private const int MaxDetailCalls = 300;
     private const int MaxProblems = 12;
+    private const int MaxCategoryCalls = 120;
+
+    /// <summary>Pictures of M5azn's categories by name, for the store categories an import makes.</summary>
+    private Dictionary<string, string> _categoryImages = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IApplicationDbContext _db;
     private readonly IM5aznClient _client;
@@ -134,7 +138,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             M5aznProductPage result;
             try
             {
-                result = await _client.GetMyProductsAsync(page, ct);
+                result = await _client.GetMyProductsAsync(page, ct: ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -182,6 +186,13 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
                 Problem($"Details of M5azn product {id} could not be read ({ex.Message}); the list's own fields were used.");
             }
         }
+
+        // ---- categories: M5azn's list rarely names them, so they are looked up
+        var placed = await _db.StoreProducts.AsNoTracking()
+            .Where(p => p.Source == StoreProductSource.M5azn && p.CategoryId != null && p.M5aznProductId != null)
+            .Select(p => p.M5aznProductId!.Value)
+            .ToListAsync(ct);
+        await AssignCategoriesAsync(found, placed.ToHashSet(), Problem, ct);
 
         // ---- apply
         var now = _clock.UtcNow;
@@ -310,7 +321,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
 
         if (Clip(item.CategoryName, 128) is { } categoryName)
         {
-            var category = CategoryFor(categoryName, categories, takenCategorySlugs, now);
+            var category = CategoryFor(categoryName, Clip(item.ParentCategoryName, 128), categories, takenCategorySlugs, now);
             if (product.CategoryId != category.Id)
             {
                 product.CategoryId = category.Id;
@@ -396,11 +407,34 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         return sku;
     }
 
-    /// <summary>The store category of that name, made (as a main department) when there is none.</summary>
-    private StoreCategory CategoryFor(string name, List<StoreCategory> categories, HashSet<string> takenSlugs, DateTime now)
+    /// <summary>
+    /// The store category for M5azn's category: found by name, or made, under its main category
+    /// when M5azn has one (the store has two levels). M5azn's picture is used when the store
+    /// category has none.
+    /// </summary>
+    private StoreCategory CategoryFor(
+        string name, string? parentName, List<StoreCategory> categories, HashSet<string> takenSlugs, DateTime now)
     {
-        var match = categories.FirstOrDefault(c => string.Equals(c.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
-        if (match is not null) return match;
+        StoreCategory? parent = null;
+        if (parentName is not null && !string.Equals(parentName, name, StringComparison.OrdinalIgnoreCase))
+        {
+            parent = CategoryFor(parentName, null, categories, takenSlugs, now);
+            if (parent.ParentId is not null) parent = null;   // a sub-department cannot have its own
+        }
+
+        static bool Same(StoreCategory c, string n) => string.Equals(c.Name.Trim(), n, StringComparison.OrdinalIgnoreCase);
+
+        var match = (parent is null ? null : categories.FirstOrDefault(c => Same(c, name) && c.ParentId == parent.Id))
+                    ?? categories.FirstOrDefault(c => Same(c, name));
+        if (match is not null)
+        {
+            if (match.ImageUrl is null && _categoryImages.TryGetValue(name, out var picture) && picture.Length <= 1024)
+            {
+                match.ImageUrl = picture;
+                match.UpdatedAt = now;
+            }
+            return match;
+        }
 
         var slug = StoreAdminService.Slugify(name);
         if (slug.Length == 0) slug = "m5azn";
@@ -413,6 +447,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         {
             Name = name,
             Slug = candidate,
+            ParentId = parent?.Id,
+            ImageUrl = _categoryImages.TryGetValue(name, out var image) && image.Length <= 1024 ? image : null,
             Status = StoreCategoryStatus.Active,
             DisplayOrder = 100,
             CreatedAt = now,
@@ -421,6 +457,140 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         _db.StoreCategories.Add(category);
         categories.Add(category);
         return category;
+    }
+
+    /// <summary>
+    /// Fills in each product's category from M5azn's category list: by the category id a product
+    /// carries, else by asking the product list one category at a time (it takes a
+    /// <c>category_id</c>). Products already in a store category are not asked about again.
+    /// </summary>
+    private async Task AssignCategoriesAsync(
+        Dictionary<long, M5aznCatalogProduct> found, HashSet<long> alreadyPlaced, Action<string> problem, CancellationToken ct)
+    {
+        _categoryImages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Nothing to look up: every product is named with its main category, or already placed.
+        var anyToPlace = found.Values.Any(p => p.CategoryName is null && (!alreadyPlaced.Contains(p.ProductId) || p.CategoryId is not null));
+        var needsParent = found.Values.Any(p => p.CategoryName is not null && p.ParentCategoryName is null);
+        if (!anyToPlace && !needsParent) return;
+
+        M5aznCategoryList list;
+        try
+        {
+            list = await _client.GetCategoriesAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "M5azn: the category list could not be read.");
+            problem($"M5azn's categories could not be read ({ex.Message}); products keep the category they had.");
+            return;
+        }
+
+        if (list.Problem is not null) problem(list.Problem);
+        if (list.Categories.Count == 0) return;
+
+        var byId = list.Categories.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First());
+        foreach (var c in list.Categories)
+        {
+            if (c.ImageUrl is not null) _categoryImages.TryAdd(c.Name.Trim(), c.ImageUrl);
+        }
+
+        string? ParentOf(M5aznCategory c) =>
+            c.ParentId is { } p && p != c.Id && byId.TryGetValue(p, out var parent) ? parent.Name : null;
+
+        void Place(long productId, M5aznCategory c) =>
+            found[productId] = found[productId] with { CategoryName = c.Name, ParentCategoryName = ParentOf(c) };
+
+        // 1. By the id or name the product carries.
+        foreach (var item in found.Values.ToList())
+        {
+            if (item.CategoryName is null && item.CategoryId is { } cid && byId.TryGetValue(cid, out var c))
+            {
+                Place(item.ProductId, c);
+            }
+            else if (item.CategoryName is not null && item.ParentCategoryName is null
+                     && list.Categories.FirstOrDefault(x => string.Equals(x.Name, item.CategoryName, StringComparison.OrdinalIgnoreCase)) is { } named
+                     && ParentOf(named) is { } parentName)
+            {
+                found[item.ProductId] = item with { ParentCategoryName = parentName };
+            }
+        }
+
+        // 2. By asking the list one category at a time, for products in no store category yet.
+        var missing = found.Values
+            .Where(p => p.CategoryName is null && !alreadyPlaced.Contains(p.ProductId))
+            .Select(p => p.ProductId)
+            .ToHashSet();
+        if (missing.Count == 0) return;
+
+        var calls = 0;
+        async Task<IReadOnlyList<long>?> InCategoryAsync(long categoryId)
+        {
+            var ids = new List<long>();
+            for (var page = 1; page <= 10 && calls < MaxCategoryCalls; page++)
+            {
+                calls++;
+                var result = await _client.GetMyProductsAsync(page, categoryId, ct);
+                if (result.Unreadable) return null;
+                ids.AddRange(result.Products.Select(p => p.ProductId));
+                if (!result.HasMore || result.Products.Count == 0) break;
+            }
+
+            return ids;
+        }
+
+        try
+        {
+            // If M5azn ignored the filter, every product would land in the first category asked.
+            // A category that cannot exist must come back empty before the answers are trusted.
+            var nowhere = await InCategoryAsync(-1);
+            if (nowhere is null || nowhere.Count > 0)
+            {
+                problem("M5azn's product list does not filter by category, so products without a category name were left as they were.");
+                return;
+            }
+
+            // Main categories first; then the sub-categories of those that had products, which win.
+            var mains = list.Categories.Where(c => c.ParentId is null || !byId.ContainsKey(c.ParentId.Value)).ToList();
+            var hitMains = new HashSet<long>();
+            foreach (var main in mains)
+            {
+                if (calls >= MaxCategoryCalls) break;
+                var ids = await InCategoryAsync(main.Id);
+                foreach (var id in ids ?? [])
+                {
+                    if (!found.ContainsKey(id) || !missing.Contains(id)) continue;
+                    Place(id, main);
+                    hitMains.Add(main.Id);
+                }
+            }
+
+            foreach (var sub in list.Categories.Where(c => c.ParentId is { } p && hitMains.Contains(p)))
+            {
+                if (calls >= MaxCategoryCalls) break;
+                var ids = await InCategoryAsync(sub.Id);
+                foreach (var id in ids ?? [])
+                {
+                    if (found.ContainsKey(id) && missing.Contains(id)) Place(id, sub);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "M5azn: products could not be sorted into categories.");
+            problem($"Products could not be sorted into M5azn's categories ({ex.Message}).");
+            return;
+        }
+
+        var unplaced = missing.Count(id => found[id].CategoryName is null);
+        if (unplaced > 0) problem($"{unplaced} product(s) were found in no M5azn category and have no category in the store.");
     }
 
     private async Task RecordAsync(M5aznImportSummary summary, M5aznAccount account, CancellationToken ct)

@@ -290,11 +290,13 @@ public sealed class M5aznClient : IM5aznClient
         return parsed is null ? null : parsed with { ProductId = productId };
     }
 
-    public async Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default)
+    public async Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default)
     {
         page = Math.Max(1, page);
-        using var response = await SendAsync(
-            () => new HttpRequestMessage(HttpMethod.Get, $"api/v1/seller/myproductlist?page={page}"), ct);
+        var path = categoryId is { } c
+            ? $"api/v1/seller/myproductlist?page={page}&category_id={c}"
+            : $"api/v1/seller/myproductlist?page={page}";
+        using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, path), ct);
         response.EnsureSuccessStatusCode();
 
         var root = await ReadJsonAsync(response, ct);
@@ -527,6 +529,61 @@ public sealed class M5aznClient : IM5aznClient
         return false;
     }
 
+    // ---------------------------------------------------------------- categories
+
+    public async Task<M5aznCategoryList> GetCategoriesAsync(CancellationToken ct = default)
+    {
+        using var response = await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, "api/v1/catalog/categories"), ct);
+        response.EnsureSuccessStatusCode();
+
+        var root = await ReadJsonAsync(response, ct);
+        var found = FindList(root, LooksLikeCategory, ["links", "meta", "filters", "products", "brands"]);
+        if (found is null)
+        {
+            _logger.LogWarning("M5azn: the category list came in an unknown shape: {Shape}", Snippet(root));
+            return new M5aznCategoryList([], $"M5azn's category list came in a shape DealGo does not know yet: {Snippet(root, 1500)}");
+        }
+
+        var categories = new List<M5aznCategory>();
+        void Walk(JsonArray list, long? parent, int depth)
+        {
+            foreach (var node in list.OfType<JsonObject>())
+            {
+                if (!long.TryParse(Find(node, ["id", "category_id"], false), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)) continue;
+                var name = Find(node, CategoryNameKeys, false);
+                if (name is null) continue;
+
+                long? parentId = parent;
+                if (parentId is null && long.TryParse(Find(node, ["parent_id", "parentId", "parent"], false),
+                        NumberStyles.Integer, CultureInfo.InvariantCulture, out var p) && p > 0 && p != id)
+                {
+                    parentId = p;
+                }
+
+                var image = Find(node, ["image", "icon", "image_url", "photo", "thumbnail", "banner"], false);
+                categories.Add(new M5aznCategory(id, name, parentId, image is null ? null : Absolute(image)));
+
+                if (depth < 4)
+                {
+                    foreach (var key in new[] { "children", "sub_categories", "subcategories", "subCategories", "childs", "sub" })
+                    {
+                        if (node[key] is JsonArray children) Walk(children, id, depth + 1);
+                    }
+                }
+            }
+        }
+
+        Walk(found.Value.List, null, 0);
+        return new M5aznCategoryList(categories.DistinctBy(c => c.Id).ToList(), null);
+    }
+
+    // Arabic first: the store is shown in Arabic.
+    private static readonly string[] CategoryNameKeys = ["name_ar", "name", "title_ar", "title", "name_en", "title_en"];
+
+    private static bool LooksLikeCategory(JsonObject o) =>
+        Find(o, ["id", "category_id"], false) is not null && Find(o, CategoryNameKeys, false) is not null;
+
     // ---------------------------------------------------------------- products
 
     private static readonly string[] IdKeys = ["product_id", "productId", "id"];
@@ -540,7 +597,7 @@ public sealed class M5aznClient : IM5aznClient
     private static readonly string[] ImageListKeys = ["images", "gallery", "product_images", "photos", "pictures", "media"];
     private static readonly string[] ImageKeys = ["image", "main_image", "image_url", "thumbnail", "cover", "photo"];
     private static readonly string[] ImageUrlKeys = ["url", "image", "src", "path", "original", "large", "image_url", "full"];
-    private static readonly string[] CategoryKeys = ["category_name", "category", "main_category", "category_title"];
+    private static readonly string[] CategoryKeys = ["category_name", "category", "sub_category", "main_category", "category_title"];
     private static readonly string[] DeliveryKeys =
         ["delivery_time", "shipping_time", "delivery_days", "delivery_period", "delivery_duration", "estimated_delivery"];
 
@@ -576,11 +633,37 @@ public sealed class M5aznClient : IM5aznClient
             if (TryQuantity(src, out var q)) { quantity = q; break; }
         }
 
-        string? category = null;
+        // A category may come as a name, as an object ({ id, name_ar, parent }), or only as an id.
+        string? category = null, parentCategory = null;
+        long? categoryId = null;
         foreach (var src in sources)
         {
-            category = Find(src, CategoryKeys, false)
-                       ?? (AsArray(src["categories"])?.FirstOrDefault() is { } c ? Text(c) : null);
+            foreach (var key in CategoryKeys.Append("categories"))
+            {
+                var value = src[key] is JsonArray arr ? arr.FirstOrDefault() : src[key];
+                switch (value)
+                {
+                    case JsonObject obj:
+                        category ??= Find(obj, CategoryNameKeys, false);
+                        if (categoryId is null && long.TryParse(Find(obj, ["id", "category_id"], false), out var oid)) categoryId = oid;
+                        if (obj["parent"] is JsonObject parent) parentCategory ??= Find(parent, CategoryNameKeys, false);
+                        break;
+                    case JsonValue v when v.TryGetValue<long>(out var numeric):
+                        categoryId ??= numeric;
+                        break;
+                    case JsonValue v when Text(v) is { } text:
+                        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var textId)) categoryId ??= textId;
+                        else category ??= text;
+                        break;
+                }
+            }
+
+            if (categoryId is null && long.TryParse(Find(src, ["category_id", "categoryId", "sub_category_id", "main_category_id"], false),
+                    NumberStyles.Integer, CultureInfo.InvariantCulture, out var cid) && cid > 0)
+            {
+                categoryId = cid;
+            }
+
             if (category is not null) break;
         }
 
@@ -593,7 +676,9 @@ public sealed class M5aznClient : IM5aznClient
             quantity,
             Images(sources),
             category,
-            First(DeliveryKeys));
+            First(DeliveryKeys),
+            categoryId,
+            parentCategory);
     }
 
     /// <summary>Every picture of the product, main one first, without repeats; at most twelve.</summary>
@@ -656,13 +741,20 @@ public sealed class M5aznClient : IM5aznClient
     /// holding it (where a paginator keeps <c>last_page</c> and the like). M5azn's seller list is
     /// <c>{ data: { records: { current_page, data: [ ... ] } } }</c>; other wrappers are found the same way.
     /// </summary>
-    internal static (JsonArray List, JsonObject? Holder)? FindProductList(JsonNode? root)
+    internal static (JsonArray List, JsonObject? Holder)? FindProductList(JsonNode? root) =>
+        FindList(root, LooksLikeProduct, ["categories", "brands", "links", "meta", "filters"]);
+
+    /// <summary>The first non-empty list whose items look like <paramref name="looksRight"/>, and the object holding it.</summary>
+    internal static (JsonArray List, JsonObject? Holder)? FindList(
+        JsonNode? root, Func<JsonObject, bool> looksRight, string[]? skip = null)
     {
-        if (root is JsonArray top && IsProductList(top)) return (top, null);
+        bool IsList(JsonArray a) => a.Count > 0 && a.Any(e => e is JsonObject eo && looksRight(eo));
+
+        if (root is JsonArray top && IsList(top)) return (top, null);
 
         // Lists named like products first, so a "categories" or "brands" list is never taken for them.
         string[] preferred = ["data", "records", "products", "items", "product_list", "list", "result", "rows"];
-        string[] never = ["categories", "brands", "links", "meta", "filters"];
+        string[] never = skip ?? ["links", "meta", "filters"];
 
         var level = new List<JsonObject>();
         if (root is JsonObject r) level.Add(r);
@@ -679,7 +771,7 @@ public sealed class M5aznClient : IM5aznClient
                 {
                     switch (holder[key])
                     {
-                        case JsonArray a when IsProductList(a):
+                        case JsonArray a when IsList(a):
                             return (a, holder);
                         case JsonObject o:
                             next.Add(o);
@@ -693,10 +785,6 @@ public sealed class M5aznClient : IM5aznClient
 
         return null;
     }
-
-    private static bool IsProductList(JsonArray a) => a.Count == 0
-        ? false
-        : a.Any(e => e is JsonObject eo && LooksLikeProduct(eo));
 
     private static bool LooksLikeProduct(JsonObject o) =>
         Find(o, IdKeys, false) is not null && (Find(o, NameKeys, false) is not null || o["product"] is JsonObject

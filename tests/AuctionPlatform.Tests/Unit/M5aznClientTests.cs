@@ -365,6 +365,56 @@ public class M5aznClientTests
     }
 
     [Fact]
+    public async Task Categories_and_their_sub_categories_are_read_in_Arabic_with_pictures()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/catalog/categories", _ => Json(HttpStatusCode.OK, new
+        {
+            success = true,
+            data = new object[]
+            {
+                new
+                {
+                    id = 10, name_en = "Care", name_ar = "العناية", image = "/storage/cat/care.png",
+                    children = new object[] { new { id = 11, name_en = "Skin", name_ar = "العناية بالبشرة" } }
+                },
+                new { id = 20, name_ar = "الكاميرات", icon = "https://cdn.m5azn.test/cam.png" }
+            }
+        }));
+
+        var list = await Build(router).GetCategoriesAsync();
+
+        list.Problem.Should().BeNull();
+        list.Categories.Should().BeEquivalentTo(new[]
+        {
+            new M5aznCategory(10, "العناية", null, "https://m5azn.test/storage/cat/care.png"),
+            new M5aznCategory(11, "العناية بالبشرة", 10, null),
+            new M5aznCategory(20, "الكاميرات", null, "https://cdn.m5azn.test/cam.png")
+        });
+    }
+
+    [Fact]
+    public async Task A_product_category_given_as_an_id_or_an_object_is_kept()
+    {
+        var router = new Router();
+        router.On("GET", "/api/v1/seller/myproductlist", req => Json(HttpStatusCode.OK, new
+        {
+            success = true,
+            data = new { records = new { current_page = 1, last_page = 1, data = new object[]
+            {
+                new { id = 1, name_ar = "أ", sku = "A", price = 1, category_id = 55 },
+                new { id = 2, name_ar = "ب", sku = "B", price = 1, category = new { id = 11, name_ar = "العناية بالبشرة", parent = new { id = 10, name_ar = "العناية" } } }
+            } } }
+        }));
+
+        var page = await Build(router).GetMyProductsAsync(1, categoryId: 10);
+
+        page.Products[0].CategoryId.Should().Be(55);
+        page.Products[0].CategoryName.Should().BeNull();
+        page.Products[1].Should().BeEquivalentTo(new { CategoryId = 11L, CategoryName = "العناية بالبشرة", ParentCategoryName = "العناية" });
+    }
+
+    [Fact]
     public async Task An_unknown_answer_is_said_to_be_unreadable_not_empty()
     {
         var router = new Router();

@@ -300,7 +300,10 @@ public sealed class DatabaseFixture : IAsyncLifetime
         public Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default) =>
             throw new InvalidOperationException("M5azn is disabled and must not be called.");
 
-        public Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default) =>
+        public Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default) =>
+            throw new InvalidOperationException("M5azn is disabled and must not be called.");
+
+        public Task<M5aznCategoryList> GetCategoriesAsync(CancellationToken ct = default) =>
             throw new InvalidOperationException("M5azn is disabled and must not be called.");
     }
 

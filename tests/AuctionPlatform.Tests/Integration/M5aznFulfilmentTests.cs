@@ -515,6 +515,76 @@ public class M5aznFulfilmentTests
     }
 
     [Fact]
+    public async Task Each_product_gets_its_M5azn_category_and_the_store_gets_the_same_categories()
+    {
+        var serum = NextRemoteId();
+        var camera = NextRemoteId();
+        var byId = NextRemoteId();
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        long care = NextRemoteId(), skin = NextRemoteId(), cameras = NextRemoteId();
+
+        var m5azn = new FakeM5azn();
+        m5azn.Categories.AddRange([
+            new M5aznCategory(care, $"العناية {tag}", null, "https://cdn.m5azn.test/cat/care.png"),
+            new M5aznCategory(skin, $"العناية بالبشرة {tag}", care, null),
+            new M5aznCategory(cameras, $"الكاميرات {tag}", null, "https://cdn.m5azn.test/cat/cam.png")
+        ]);
+        m5azn.InCategory[care] = [serum];
+        m5azn.InCategory[skin] = [serum];
+        m5azn.InCategory[cameras] = [camera];
+        m5azn.ListPage(
+            Catalog(serum, $"S-{serum}", "Serum", 35m, 3, ["https://cdn.m5azn.test/s1.jpg", "https://cdn.m5azn.test/s2.jpg"], null, "x"),
+            Catalog(camera, $"C-{camera}", "Camera", 200m, 1, ["https://cdn.m5azn.test/c1.jpg", "https://cdn.m5azn.test/c2.jpg"], null, "x"),
+            Catalog(byId, $"I-{byId}", "Known by id", 10m, 1, ["https://cdn.m5azn.test/i1.jpg", "https://cdn.m5azn.test/i2.jpg"], null, "x") with { CategoryId = cameras });
+
+        try
+        {
+            var summary = await ImportAsync(m5azn);
+            summary.Problems.Should().BeEmpty();
+
+            var s = await ImportedAsync(serum);
+            s.Category!.Name.Should().Be($"العناية بالبشرة {tag}", "the most specific category wins");
+
+            await using (var scope = _fixture.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var sub = await db.StoreCategories.AsNoTracking().Include(c => c.Parent).FirstAsync(c => c.Id == s.CategoryId);
+                sub.Parent!.Name.Should().Be($"العناية {tag}", "M5azn's main category becomes the main department");
+                sub.Parent.ImageUrl.Should().Be("https://cdn.m5azn.test/cat/care.png");
+            }
+
+            (await ImportedAsync(camera)).Category!.Name.Should().Be($"الكاميرات {tag}");
+            (await ImportedAsync(camera)).Category!.ImageUrl.Should().Be("https://cdn.m5azn.test/cat/cam.png");
+            (await ImportedAsync(byId)).Category!.Name.Should().Be($"الكاميرات {tag}", "a category id is looked up by name");
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_list_that_ignores_the_category_filter_puts_nobody_in_the_wrong_category()
+    {
+        var id = NextRemoteId();
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        var m5azn = new FakeM5azn { IgnoresCategoryFilter = true };
+        m5azn.Categories.Add(new M5aznCategory(NextRemoteId(), $"Wrong {tag}", null, null));
+        m5azn.ListPage(Catalog(id, $"F-{id}", "Filtered", 10m, 1, ["https://cdn.m5azn.test/f1.jpg", "https://cdn.m5azn.test/f2.jpg"], null, "x"));
+
+        try
+        {
+            var summary = await ImportAsync(m5azn);
+            summary.Problems.Should().Contain(p => p.Contains("does not filter by category"));
+            (await ImportedAsync(id)).CategoryId.Should().BeNull();
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
     public async Task An_answer_that_cannot_be_read_changes_nothing()
     {
         var id = NextRemoteId();
@@ -912,10 +982,27 @@ public class M5aznFulfilmentTests
 
         public void ListPage(params M5aznCatalogProduct[] products) => Pages.Add(new M5aznProductPage(products, false, null));
 
-        public Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default) =>
-            Task.FromResult(page <= Pages.Count
+        public List<M5aznCategory> Categories { get; } = new();
+
+        /// <summary>The products M5azn lists under each category id, when asked for one category.</summary>
+        public Dictionary<long, List<long>> InCategory { get; } = new();
+
+        /// <summary>True: M5azn answers every category with the whole list, as if it ignored the filter.</summary>
+        public bool IgnoresCategoryFilter { get; set; }
+
+        public Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default)
+        {
+            var all = page <= Pages.Count
                 ? Pages[page - 1] with { HasMore = page < Pages.Count }
-                : new M5aznProductPage([], false, null));
+                : new M5aznProductPage([], false, null);
+            if (categoryId is null || IgnoresCategoryFilter) return Task.FromResult(all);
+
+            var ids = InCategory.TryGetValue(categoryId.Value, out var list) ? list : [];
+            return Task.FromResult(all with { Products = all.Products.Where(p => ids.Contains(p.ProductId)).ToList() });
+        }
+
+        public Task<M5aznCategoryList> GetCategoriesAsync(CancellationToken ct = default) =>
+            Task.FromResult(new M5aznCategoryList(Categories.ToList(), null));
 
         public Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default) =>
             Task.FromResult(Details.TryGetValue(productId, out var d) ? d : null);

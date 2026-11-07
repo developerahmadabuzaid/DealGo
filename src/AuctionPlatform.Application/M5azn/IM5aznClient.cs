@@ -65,7 +65,19 @@ public sealed record M5aznCatalogProduct(
     int? Quantity,
     IReadOnlyList<string> Images,
     string? CategoryName,
-    string? DeliveryTime);
+    string? DeliveryTime,
+
+    /// <summary>M5azn's id of the product's category, when the answer gives one but no name.</summary>
+    long? CategoryId = null,
+
+    /// <summary>The main category above <see cref="CategoryName"/>, when that is a sub-category.</summary>
+    string? ParentCategoryName = null);
+
+/// <summary>One category of M5azn's catalogue (<c>GET /api/v1/catalog/categories</c>), sub-categories flattened.</summary>
+public sealed record M5aznCategory(long Id, string Name, long? ParentId, string? ImageUrl);
+
+/// <summary>M5azn's categories. <c>Problem</c> says, in words, what could not be read.</summary>
+public sealed record M5aznCategoryList(IReadOnlyList<M5aznCategory> Categories, string? Problem);
 
 /// <summary>
 /// One page of the seller's product list. <c>Problem</c> says what could not be read, in words.
@@ -99,6 +111,12 @@ public interface IM5aznClient
 
     Task<M5aznCatalogProduct?> GetProductAsync(long productId, CancellationToken ct = default);
 
-    /// <summary>One page (from 1) of the products the seller has added to their M5azn shop. Read-only.</summary>
-    Task<M5aznProductPage> GetMyProductsAsync(int page, CancellationToken ct = default);
+    /// <summary>
+    /// One page (from 1) of the products the seller has added to their M5azn shop, or only those of
+    /// one category. Read-only.
+    /// </summary>
+    Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default);
+
+    /// <summary>M5azn's catalogue categories, sub-categories included. Read-only.</summary>
+    Task<M5aznCategoryList> GetCategoriesAsync(CancellationToken ct = default);
 }
