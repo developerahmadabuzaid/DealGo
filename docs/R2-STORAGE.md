@@ -119,3 +119,22 @@ paths still work on the host while the files are there.
 
 Remove the R2 values from `local-secrets.ps1` and rebuild. New uploads go to `wwwroot/uploads`
 again; pictures already stored with an R2 address keep loading from R2.
+
+## Picture sizes
+
+Pictures are made fit for phones when they are uploaded (`ImageShrinker`, with SixLabors.ImageSharp
+3.1): turned upright from the camera's rotation flag, at most 1600 px on the longest side, without
+camera metadata (GPS and the like), saved as WebP at quality 80, under a name ending in `-s.webp`.
+A 1.8 MB poster becomes roughly 150-300 KB and looks the same on a screen. A picture already small
+(200 KB or less and within 1600 px), an animation, or a file the library cannot read is stored
+exactly as sent.
+
+Pictures uploaded before this are shrunk once from the admin console: **Store → Settings →
+Pictures → Shrink uploaded pictures** (super admins; `POST /api/v1/admin/uploads/shrink-existing`).
+It finds every uploaded picture the database refers to, stores a small copy next to it, and points
+every address of it (auctions, prizes, products, store pictures, order lines, ads, site content) at
+the copy. Nothing is deleted, so the old file stays and nothing can break. It works in rounds of
+about a minute, because the host ends long requests: press again until it says nothing is left.
+
+ImageSharp is free for open-source use and for companies under USD 1M yearly revenue (Six Labors
+Split License); above that it needs a commercial licence.

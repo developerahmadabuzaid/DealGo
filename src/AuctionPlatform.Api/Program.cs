@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -386,6 +387,10 @@ else
 {
     builder.Services.AddSingleton<IMediaStorage, LocalMediaStorage>();
 }
+
+// The one-off shrinking of pictures uploaded before uploads were shrunk, with any storage.
+builder.Services.TryAddScoped<MediaAddressRewriter>();
+builder.Services.AddScoped<ExistingPictureShrinker>();
 
 var app = builder.Build();
 

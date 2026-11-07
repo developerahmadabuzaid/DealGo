@@ -19,6 +19,10 @@ namespace AuctionPlatform.Api.Controllers.Admin;
 ///   * The stored name is generated here. A caller-supplied name could carry path separators and
 ///     write outside the folder, or end in an extension the server treats as executable.
 ///   * Size is capped before anything is written to disk.
+///
+/// A picture is then made fit for phones before it is stored (<see cref="IImageShrinker"/>):
+/// upright, at most 1600 px on its longest side, without camera metadata, as WebP. A 2 MB poster
+/// becomes about 150-300 KB and looks the same on a screen. Shrunk files end in "-s.webp".
 /// </summary>
 [Route("api/v1/admin/uploads")]
 [Authorize]
@@ -47,12 +51,17 @@ public sealed class AdminUploadsController : ApiControllerBase
     private static bool StartsWith(byte[] header, int offset, params byte[] magic) =>
         header.Length >= offset + magic.Length && header.AsSpan(offset, magic.Length).SequenceEqual(magic);
 
+    /// <summary>The end of every name a shrunk picture is stored under.</summary>
+    public const string ShrunkSuffix = "-s.webp";
+
     private readonly IMediaStorage _storage;
+    private readonly IImageShrinker _shrinker;
     private readonly ILogger<AdminUploadsController> _logger;
 
-    public AdminUploadsController(IMediaStorage storage, ILogger<AdminUploadsController> logger)
+    public AdminUploadsController(IMediaStorage storage, IImageShrinker shrinker, ILogger<AdminUploadsController> logger)
     {
         _storage = storage;
+        _shrinker = shrinker;
         _logger = logger;
     }
 
@@ -94,20 +103,53 @@ public sealed class AdminUploadsController : ApiControllerBase
                 "Only JPEG, PNG, WebP and GIF images are accepted.");
         }
 
-        // The name is ours. Nothing the caller sent reaches the filesystem or the container.
-        var storedName = $"{Guid.NewGuid():N}{match.Extension}";
+        byte[] original;
+        await using (var source = file.OpenReadStream())
+        using (var buffer = new MemoryStream((int)file.Length))
+        {
+            await source.CopyToAsync(buffer, ct);
+            original = buffer.ToArray();
+        }
+
+        // Shrunk for phones when that helps; otherwise (an animation, a picture already small)
+        // kept exactly as sent. The name is ours either way: nothing the caller sent reaches the
+        // filesystem or the container.
+        var shrunk = _shrinker.Shrink(original);
+        var id = Guid.NewGuid().ToString("N");
+        var (bytes, storedName, contentType) = shrunk is null
+            ? (original, $"{id}{match.Extension}", match.ContentType)
+            : (shrunk.Bytes, $"{id}{ShrunkSuffix}", shrunk.ContentType);
 
         string url;
-        await using (var source = file.OpenReadStream())
+        using (var content = new MemoryStream(bytes, writable: false))
         {
-            url = await _storage.SaveAsync(source, storedName, match.ContentType, ct);
+            url = await _storage.SaveAsync(content, storedName, contentType, ct);
         }
 
         _logger.LogInformation(
-            "Administrator {UserId} uploaded {StoredName} ({Bytes} bytes) to {Url}.",
-            CurrentUserId, storedName, file.Length, url);
+            "Administrator {UserId} uploaded {StoredName} ({Bytes} bytes, {Original} sent) to {Url}.",
+            CurrentUserId, storedName, bytes.Length, original.Length, url);
 
-        return Ok(new UploadedFileDto(url, storedName, file.Length));
+        return Ok(new UploadedFileDto(url, storedName, bytes.Length));
+    }
+
+    /// <summary>
+    /// One-off: shrinks the pictures uploaded before uploads were shrunk, stores each small copy as a
+    /// new file and points every address at it. Nothing is deleted. Works in rounds of about a
+    /// minute; run it again until "remaining" is 0.
+    /// </summary>
+    [HttpPost("shrink-existing")]
+    [Authorize(Roles = Roles.SuperAdmin)]
+    public async Task<ActionResult<ExistingPictureShrinker.Result>> ShrinkExisting(
+        [FromServices] ExistingPictureShrinker shrinker, CancellationToken ct)
+    {
+        var result = await shrinker.ShrinkAsync(ct);
+
+        _logger.LogInformation(
+            "Administrator {UserId} shrank {Shrunk} existing pictures ({Before} -> {After} bytes).",
+            CurrentUserId, result.Shrunk, result.BytesBefore, result.BytesAfter);
+
+        return Ok(result);
     }
 
     /// <summary>

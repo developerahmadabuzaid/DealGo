@@ -346,6 +346,11 @@ const AR = {
   'Automatic sending': 'الإرسال التلقائي', 'Profit %': 'نسبة الربح %',
   'Leave empty to keep the saved password': 'اتركها فارغة للإبقاء على كلمة المرور المحفوظة',
   'Check sign-in': 'اختبار تسجيل الدخول',
+  'Shrink uploaded pictures': 'تصغير الصور المرفوعة',
+  'Pictures you upload are now made smaller automatically (at most 1600 px, WebP). This makes the ones uploaded before smaller too, so the app loads faster. Nothing is deleted. Super admins only.':
+    'الصور التي ترفعها تُصغَّر الآن تلقائيًا (1600 بكسل كحد أقصى، بصيغة WebP). هذا الزر يصغّر الصور التي رُفعت من قبل أيضًا ليصبح التطبيق أسرع. لا يُحذف شيء. للمدير العام فقط.',
+  'Shrinks each picture once and points every use of it at the smaller copy. Takes up to a minute; press again while some are left.':
+    'يصغّر كل صورة مرة واحدة ويستبدلها بالنسخة الأصغر في كل مكان. قد يستغرق حتى دقيقة؛ اضغط مرة أخرى إن بقي شيء.',
   'Products from M5azn': 'منتجات مخزن', 'Own profit %': 'نسبة ربح خاصة %',
   'General rate': 'النسبة العامة', 'Profit rate saved.': 'تم حفظ نسبة الربح.',
   'Leave empty to use the general rate.': 'اتركها فارغة لاستخدام النسبة العامة.', 'Import from M5azn': 'استيراد من مخزن',
@@ -4365,7 +4370,30 @@ async function viewStoreSettings() {
       h('div', { class: 'hint', style: 'margin-top:8px' },
         'Credit is only ever expired through an explicit ledger entry, so a balance always matches its history.')),
 
-    h('div', { class: 'card' }, h('button', { class: 'btn', onclick: save }, 'Save settings')));
+    h('div', { class: 'card' }, h('button', { class: 'btn', onclick: save }, 'Save settings')),
+
+    // Pictures uploaded before uploads were shrunk: made smaller once, on request.
+    h('div', { class: 'card' },
+      h('h3', {}, 'Pictures'),
+      h('p', { class: 'hint' },
+        'Pictures you upload are now made smaller automatically (at most 1600 px, WebP). This makes the ones uploaded before smaller too, so the app loads faster. Nothing is deleted. Super admins only.'),
+      h('button', {
+        class: 'btn ghost',
+        onclick: (e) => confirmDialog('Shrink uploaded pictures',
+          'Shrinks each picture once and points every use of it at the smaller copy. Takes up to a minute; press again while some are left.',
+          async () => {
+            const button = e.target.closest('button');
+            button.disabled = true;
+            try {
+              const r = await api('/admin/uploads/shrink-existing', { method: 'POST' });
+              const mb = (n) => (n / 1048576).toFixed(1);
+              toast(`${r.shrunk} / ${r.checked} · ${mb(r.bytesBefore)} MB → ${mb(r.bytesAfter)} MB`
+                + (r.remaining ? ` · ${r.remaining} …` : '')
+                + (r.failed && r.failed.length ? ` · ${r.failed[0]}` : ''), r.failed && r.failed.length ? 'err' : 'ok');
+            } catch (err) { toast(err.message, 'err'); }
+            button.disabled = false;
+          }),
+      }, 'Shrink uploaded pictures')));
 }
 
 // ---------------------------------------------------------------- support

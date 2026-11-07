@@ -3,6 +3,7 @@ using System.Text;
 using AuctionPlatform.Api.Controllers.Admin;
 using AuctionPlatform.Api.Services;
 using AuctionPlatform.Domain.Common;
+using AuctionPlatform.Infrastructure.Services;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -35,7 +36,7 @@ public class UploadValidationTests : IDisposable
         // same folder-based one the API uses while developing.
         var storage = new LocalMediaStorage(environment);
 
-        var controller = new AdminUploadsController(storage, NullLogger<AdminUploadsController>.Instance)
+        var controller = new AdminUploadsController(storage, new ImageShrinker(NullLogger<ImageShrinker>.Instance), NullLogger<AdminUploadsController>.Instance)
         {
             ControllerContext = new ControllerContext
             {
@@ -109,6 +110,24 @@ public class UploadValidationTests : IDisposable
         dto.FileName.Should().MatchRegex("^[0-9a-f]{32}\\.png$");
 
         File.Exists(Path.Combine(_root, "wwwroot", "uploads", dto.FileName)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_big_photo_is_stored_shrunk_as_webp()
+    {
+        var controller = BuildController();
+        var bytes = ImageShrinkerTests.Photo(3000, 2000);
+
+        var result = await controller.UploadImage(FileFrom(bytes, "poster.jpg", "image/jpeg"), CancellationToken.None);
+
+        var dto = result.Result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<AdminUploadsController.UploadedFileDto>().Subject;
+        dto.FileName.Should().MatchRegex(@"^[0-9a-f]{32}-s\.webp$");
+        dto.Url.Should().EndWith("-s.webp");
+        dto.SizeBytes.Should().BeLessThan(bytes.Length / 3);
+
+        var stored = Path.Combine(_root, "wwwroot", "uploads", dto.FileName);
+        new FileInfo(stored).Length.Should().Be(dto.SizeBytes);
     }
 
     /// <summary>
