@@ -568,13 +568,6 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<long?>("M5aznProductId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("M5aznSku")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
                     b.Property<decimal>("OriginalPrice")
                         .HasColumnType("numeric(18,2)");
 
@@ -594,9 +587,6 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("M5aznProductId")
-                        .HasFilter("\"M5aznProductId\" IS NOT NULL");
 
                     b.HasIndex("ProductId");
 

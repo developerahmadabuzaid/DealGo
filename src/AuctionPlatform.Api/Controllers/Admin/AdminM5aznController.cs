@@ -1,7 +1,6 @@
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.M5azn;
 using AuctionPlatform.Domain.Common;
-using AuctionPlatform.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -27,10 +26,10 @@ public sealed class AdminM5aznController : ApiControllerBase
         [FromQuery] M5aznShipmentQuery query, CancellationToken ct) =>
         Ok(await _m5azn.GetShipmentsAsync(query, ct));
 
-    [HttpGet("shipments/by-source/{type}/{sourceId:guid}")]
+    [HttpGet("shipments/by-order/{orderId:guid}")]
     [Authorize(Policy = Permissions.StoreRead)]
-    public async Task<ActionResult<M5aznShipmentDto>> BySource(M5aznSourceType type, Guid sourceId, CancellationToken ct) =>
-        await _m5azn.GetForSourceAsync(type, sourceId, ct) is { } s ? Ok(s) : NoContent();
+    public async Task<ActionResult<M5aznShipmentDto>> ByOrder(Guid orderId, CancellationToken ct) =>
+        await _m5azn.GetForStoreOrderAsync(orderId, ct) is { } s ? Ok(s) : NoContent();
 
     /// <summary>Sends a waiting shipment, or a failed one again. This places a paid order at M5azn.</summary>
     [HttpPost("shipments/{id:guid}/submit")]
@@ -53,14 +52,6 @@ public sealed class AdminM5aznController : ApiControllerBase
     public async Task<IActionResult> LinkStoreProduct(Guid id, M5aznLinkRequest request, CancellationToken ct)
     {
         await _m5azn.LinkStoreProductAsync(id, request, ct);
-        return NoContent();
-    }
-
-    [HttpPut("links/prizes/{id:guid}")]
-    [Authorize(Policy = Permissions.StoreUpdateProduct)]
-    public async Task<IActionResult> LinkPrize(Guid id, M5aznLinkRequest request, CancellationToken ct)
-    {
-        await _m5azn.LinkPrizeAsync(id, request, ct);
         return NoContent();
     }
 

@@ -21,16 +21,6 @@ class StoreOrderShipment extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => _fromAsync(ref.watch(storeOrderShipmentProvider(orderId)));
 }
 
-/// Tracking for a won prize, when M5azn delivers it.
-class PrizeClaimShipment extends ConsumerWidget {
-  const PrizeClaimShipment({super.key, required this.claimId});
-
-  final String claimId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) => _fromAsync(ref.watch(prizeClaimShipmentProvider(claimId)));
-}
-
 Widget _fromAsync(AsyncValue<ShipmentTracking?> value) {
   final tracking = value.valueOrNull;
   if (tracking == null) return const SizedBox.shrink();

@@ -284,7 +284,7 @@ public sealed class M5aznOptions
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
 
-    /// <summary>Send each paid order or prize without waiting for an administrator. Off: they wait for approval.</summary>
+    /// <summary>Send each paid store order without waiting for an administrator. Off: they wait for approval.</summary>
     public bool AutoSubmit { get; set; } = true;
 
     /// <summary>"card" because the customer has already paid DealGo; "cod" would have M5azn collect on delivery.</summary>
@@ -293,7 +293,7 @@ public sealed class M5aznOptions
     /// <summary>The name M5azn shows for where the order came from.</summary>
     public string PlatformName { get; set; } = "DealGo";
 
-    /// <summary>Only orders and prizes paid this recently are picked up, so switching on never sends old ones.</summary>
+    /// <summary>Only store orders paid this recently are picked up, so switching on never sends old ones.</summary>
     public int LookbackDays { get; set; } = 3;
 
     /// <summary>How often the worker looks for new work, in seconds.</summary>

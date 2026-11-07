@@ -27,7 +27,7 @@ public sealed class M5aznShipmentConfiguration : IEntityTypeConfiguration<M5aznS
         b.Property(s => s.Version).IsRowVersion();
         b.Ignore(s => s.IsInFlight);
 
-        // A store order or a prize is never sent twice.
+        // A store order is never sent twice.
         b.HasIndex(s => new { s.SourceType, s.SourceId }).IsUnique();
         b.HasIndex(s => new { s.Status, s.NextAttemptAt });
         b.HasIndex(s => s.UserId);

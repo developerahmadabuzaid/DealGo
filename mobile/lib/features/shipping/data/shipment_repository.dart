@@ -1,7 +1,7 @@
 import '../../../core/network/api_client.dart';
 
-/// Delivery by M5azn, the supplier that packs and ships some products and prizes from its own
-/// warehouse. Only present once the order or prize has actually gone to M5azn.
+/// Delivery by M5azn, the supplier that packs and ships some store products from its own
+/// warehouse. Store orders only. Only present once the order has actually gone to M5azn.
 class ShipmentTracking {
   const ShipmentTracking({
     required this.provider,
@@ -79,9 +79,6 @@ class ShipmentRepository {
   /// Null when the order is not delivered by M5azn, or not sent to it yet (the server answers 204).
   Future<ShipmentTracking?> forStoreOrder(String orderId) =>
       _read('/store/orders/$orderId/shipment');
-
-  Future<ShipmentTracking?> forPrizeClaim(String claimId) =>
-      _read('/me/prize-claims/$claimId/shipment');
 
   Future<ShipmentTracking?> _read(String path) async {
     final data = await _api.get(path);

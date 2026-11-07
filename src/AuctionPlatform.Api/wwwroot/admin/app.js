@@ -334,14 +334,13 @@ const AR = {
 
   // M5azn dropshipping
   'M5azn': 'مخزن (M5azn)', 'M5azn delivery': 'التوصيل عبر مخزن', 'Shipments': 'الشحنات',
-  'Products and prizes M5azn packs and delivers from its warehouse.':
-    'المنتجات والجوائز التي يجهزها مخزن ويوصلها من مستودعه.',
+  'Store products M5azn packs and delivers from its warehouse.':
+    'منتجات المتجر التي يجهزها مخزن ويوصلها من مستودعه.',
   'Send to M5azn': 'إرسال إلى مخزن', 'Send again': 'إرسال مرة أخرى', 'Refresh': 'تحديث',
-  'Check': 'تحقق', 'Reference': 'المرجع', 'For': 'لـ', 'Order': 'طلب', 'Prize': 'جائزة',
+  'Check': 'تحقق', 'Reference': 'المرجع', 'For': 'لـ', 'Order': 'طلب',
   'Problem': 'المشكلة', 'Last checked': 'آخر تحقق', 'Track shipment': 'تتبّع الشحنة',
   'Waiting for approval': 'بانتظار الموافقة', 'On the way': 'في الطريق', 'Failed': 'فشل',
-  'Linked products': 'منتجات مرتبطة', 'Linked prizes': 'جوائز مرتبطة',
-  'Prizes of upcoming auctions': 'جوائز المزادات القادمة',
+  'Linked products': 'منتجات مرتبطة',
   'M5azn product id': 'رقم المنتج في مخزن', 'M5azn SKU': 'رمز SKU في مخزن',
   'Linked to M5azn.': 'تم الربط بمخزن.', 'Link removed.': 'تم إلغاء الربط.',
   'Enter the M5azn product id first.': 'أدخل رقم المنتج في مخزن أولاً.',
@@ -3903,7 +3902,7 @@ async function viewOrders() {
 async function openOrder(id) {
   const o = await api(`/admin/store/orders/${id}`);
   // Only some orders go to M5azn; none (204), or M5azn off, simply shows nothing.
-  const shipment = await api(`/admin/m5azn/shipments/by-source/StoreOrder/${id}`).catch(() => null);
+  const shipment = await api(`/admin/m5azn/shipments/by-order/${id}`).catch(() => null);
   const back = h('div', { class: 'modal-back' });
 
   const act = async (path, body, message) => {
@@ -4010,7 +4009,8 @@ async function openOrder(id) {
 // ---------------------------------------------------------------- M5azn dropshipping
 
 /*
- * M5azn packs and delivers the products and prizes linked to it (docs/M5AZN.md). This page shows
+ * M5azn packs and delivers the store products linked to it (docs/M5AZN.md); auctions and prizes
+ * never go to M5azn. This page shows
  * what was sent, what failed and why, and which products are M5azn's. Sending places a paid order
  * at M5azn, so the button that does it always asks first.
  */
@@ -4096,7 +4096,7 @@ async function viewM5azn() {
   const status = h('select', {}, h('option', { value: '' }, 'Any status'),
     ...M5AZN_STATUSES.map((s) => h('option', { value: s, selected: s === q.status ? '' : null }, s)));
 
-  const linkRow = (kind, item) => {
+  const linkRow = (item) => {
     const id = h('input', { type: 'number', min: '1', placeholder: 'M5azn product id', value: item.m5aznProductId ?? '', style: 'width:140px' });
     const sku = h('input', { placeholder: 'M5azn SKU', value: item.m5aznSku ?? '', style: 'width:150px' });
     const save = async () => {
@@ -4104,7 +4104,7 @@ async function viewM5azn() {
         ? { m5aznProductId: Number(id.value) || null, m5aznSku: sku.value || null }
         : { m5aznProductId: null, m5aznSku: null };
       try {
-        await api(`/admin/m5azn/links/${kind}/${item.id}`, { method: 'PUT', body: JSON.stringify(body) });
+        await api(`/admin/m5azn/links/store-products/${item.id}`, { method: 'PUT', body: JSON.stringify(body) });
         toast(body.m5aznProductId ? 'Linked to M5azn.' : 'Link removed.', 'ok');
         render();
       } catch (e) { toast(e.message, 'err'); }
@@ -4122,33 +4122,32 @@ async function viewM5azn() {
     };
     return h('tr', {},
       h('td', {}, text(item.name)),
-      h('td', { class: 'hint' }, text(item.context || item.sku || '')),
-      kind === 'store-products' ? h('td', { class: 'num' }, item.stock ?? '—') : null,
+      h('td', { class: 'hint' }, text(item.sku || '')),
+      h('td', { class: 'num' }, item.stock ?? '—'),
       h('td', {}, id), h('td', {}, sku),
       h('td', {}, h('div', { class: 'toolbar' },
         o.enabled ? h('button', { class: 'btn ghost sm', onclick: check }, 'Check') : null,
         h('button', { class: 'btn sm', onclick: save }, 'Save'))));
   };
 
-  const linkTable = (title, kind, rows) => h('div', { class: 'card' },
-    h('h3', {}, title),
+  const linkTable = (rows) => h('div', { class: 'card' },
+    h('h3', {}, 'Store products'),
     h('p', { class: 'hint' }, 'Both the M5azn product id and its SKU are needed. Clear both and save to remove the link.'),
     h('div', { class: 'table-wrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, kind === 'prizes' ? 'Auction' : 'SKU'),
-        kind === 'store-products' ? h('th', { class: 'num' }, 'Stock') : null,
+      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'SKU'),
+        h('th', { class: 'num' }, 'Stock'),
         h('th', {}, 'M5azn product id'), h('th', {}, 'M5azn SKU'), h('th', {}, ''))),
-      h('tbody', {}, ...rows.map((r) => linkRow(kind, r))))));
+      h('tbody', {}, ...rows.map((r) => linkRow(r))))));
 
   return h('div', {},
-    pageHead('M5azn', 'Products and prizes M5azn packs and delivers from its warehouse.'),
+    pageHead('M5azn', 'Store products M5azn packs and delivers from its warehouse.'),
     h('div', { class: 'card' }, h('div', { class: o.enabled && o.configured ? 'hint' : 'err-text' }, stateLine)),
-    h('div', { class: 'kpi-grid cols-3' },
+    h('div', { class: 'kpi-grid cols-5' },
       kpi('Waiting for approval', num(c.AwaitingApproval || 0), false, { icon: 'clock' }),
       kpi('On the way', num((c.Submitted || 0) + (c.Processing || 0) + (c.Shipped || 0)), false, { icon: 'box' }),
       kpi('Delivered', num(c.Delivered || 0), false, { icon: 'check' }),
       kpi('Failed', num(c.Failed || 0), false, { icon: 'alert' }),
-      kpi('Linked products', num(o.linkedStoreProducts), false, { icon: 'tag' }),
-      kpi('Linked prizes', num(o.linkedPrizes), false, { icon: 'gift' })),
+      kpi('Linked products', num(o.linkedStoreProducts), false, { icon: 'tag' })),
     h('div', { class: 'card' },
       h('h3', {}, 'Shipments'),
       h('div', { class: 'toolbar' }, search, status,
@@ -4159,7 +4158,7 @@ async function viewM5azn() {
       pagedTable({
         columns: [
           { label: 'Reference', mono: true, render: (s) => String(s.reference) },
-          { label: 'For', render: (s) => h('span', {}, s.sourceType === 'StoreOrder' ? 'Order' : 'Prize', ' ',
+          { label: 'Order', render: (s) => h('span', {},
               h('span', { class: 'mono' }, text(s.sourceNumber || shortId(s.sourceId)))) },
           { label: 'Customer', render: (s) => text(s.customerName || shortId(s.userId)) },
           { label: 'Status', render: (s) => h('div', {}, m5aznBadge(s.status),
@@ -4175,8 +4174,7 @@ async function viewM5azn() {
         totalCount: data.totalCount,
         onPage: (p) => { q.page = p; render(); },
       })),
-    linkTable('Store products', 'store-products', links.storeProducts),
-    linkTable('Prizes of upcoming auctions', 'prizes', links.prizes));
+    linkTable(links.storeProducts));
 }
 
 async function viewStoreSettings() {

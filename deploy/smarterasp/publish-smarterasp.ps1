@@ -253,7 +253,7 @@ $r2Line = ($webConfig -split "`r?`n") | Where-Object { $_.Contains($r2Marker) } 
 $r2Indent = if ($r2Line) { $r2Line.Substring(0, $r2Line.IndexOf($r2Marker)) } else { '' }
 $webConfig = $webConfig.Replace($r2Marker, (@($r2Lines) -join "`n$r2Indent"))
 
-# M5azn: the dropshipping supplier that packs and delivers products and prizes linked to it.
+# M5azn: the dropshipping supplier that packs and delivers store products linked to it (store only, never auction prizes).
 # Optional: without it nothing is ever sent to M5azn. Set $M5aznEmail and $M5aznPassword (the
 # M5azn seller account) in local-secrets.ps1; docs/M5AZN.md has the rest. The optional values
 # below keep the server's defaults when they are not set.

@@ -4,9 +4,12 @@
 catalogue and sell them; when a customer buys one, the order is sent to M5azn, which packs it in
 its own warehouse, delivers it, and charges the cost to your M5azn seller balance.
 
+**Store only.** M5azn is used for the store and nothing else: auctions, their prizes and
+anything won in an auction are never sent to M5azn and are delivered by you as before.
+
 M5azn is **not** a general courier. It can only deliver products that are in its own warehouse,
 so DealGo's own stock (ADOMO, the demo catalogue, anything you keep yourself) is still shipped by
-you as before. The integration only touches products and prizes you link to an M5azn product.
+you as before. The integration only touches store products you link to an M5azn product.
 
 It is **off** by default. With it off nothing is sent, synced or called, and the app works
 exactly as it did.
@@ -16,12 +19,11 @@ exactly as it did.
 | Part | What happens |
 |---|---|
 | Store orders | A paid order with at least one linked product, and a delivery address, is sent to M5azn. Only the linked lines are sent; the rest stay DealGo's to ship. |
-| Prizes | A paid or claimed prize whose auction prize is linked, with a delivery address, is sent to M5azn as a one-line order. |
 | Tracking | Every 30 minutes the server asks M5azn about each order on its way and copies its status, tracking number, tracking link and courier. |
-| Order status | Sent → the DealGo order becomes **Processing** (the customer can no longer cancel it). When M5azn delivers *everything* on the order: **Shipped** (with the tracking number) and **Delivered**, with the usual notifications. A mixed order stays Processing for you to finish. A prize becomes **Fulfilled** when delivered. |
+| Order status | Sent → the DealGo order becomes **Processing** (the customer can no longer cancel it). When M5azn delivers *everything* on the order: **Shipped** (with the tracking number) and **Delivered**, with the usual notifications. A mixed order stays Processing for you to finish. |
 | Stock | Every hour the server reads M5azn's recent stock changes and sets the stock of linked store products to M5azn's quantity (an inventory entry "Stock synced from M5azn" is written). A product at 0 shows as out of stock. |
-| App | "My orders" and "My wins" show a *Shipping and tracking* box once the order has gone to M5azn: progress, courier, tracking number (copyable) and a *Track shipment* link. |
-| Admin | **Store → M5azn**: shipments and their status, the reason for any failure, *Send to M5azn* / *Send again* / *Refresh*, and the product and prize links. The order window also shows its M5azn delivery. |
+| App | "My orders" shows a *Shipping and tracking* box once the order has gone to M5azn: progress, courier, tracking number (copyable) and a *Track shipment* link. |
+| Admin | **Store → M5azn**: shipments and their status, the reason for any failure, *Send to M5azn* / *Send again* / *Refresh*, and the store product links. The order window also shows its M5azn delivery. |
 
 What it never does on its own: cancel or refund a DealGo order. If M5azn cancels or returns an
 order, the shipment shows *Cancelled* with a note, and the decision is yours.
@@ -65,7 +67,7 @@ Environment variables (or user secrets in development):
 | `M5azn__Enabled` | `false` | The feature flag. |
 | `M5azn__Email`, `M5azn__Password` | — | The seller account. Required when enabled; the API refuses to start without them. |
 | `M5azn__BaseUrl` | `https://m5azn.com` | KSA. `https://m5azn.ae` (UAE), `https://m5azn.om` (Oman). |
-| `M5azn__AutoSubmit` | `true` | Send paid orders and prizes without waiting. `false`: they wait as *Awaiting approval*. |
+| `M5azn__AutoSubmit` | `true` | Send paid store orders without waiting. `false`: they wait as *Awaiting approval*. |
 | `M5azn__PaymentMethod` | `card` | `card` (already paid) or `cod` (M5azn collects the total on delivery). |
 | `M5azn__LookbackDays` | `3` | Only orders paid this recently are picked up, so switching on never sends old ones. |
 | `M5azn__WorkerIntervalSeconds` | `120` | How often the worker looks for new work. |
@@ -74,7 +76,7 @@ Environment variables (or user secrets in development):
 | `M5azn__MaxAttempts` | `5` | Attempts before a send is marked failed. |
 | `M5azn__Language` / `Website` / `ApiVersion` / `AppVersion` / `Device` | `ar` / `M5AZN` / `1.0` / `1.0` / `Web` | The fixed headers M5azn's API asks for. |
 
-## 2. Link products and prizes
+## 2. Link store products
 
 In the admin console, **Store → M5azn**:
 
@@ -84,8 +86,6 @@ In the admin console, **Store → M5azn**:
    order is placed) and fills in the SKU if it was empty. Then **Save**.
 3. Set the DealGo price and stock as usual. With stock sync on, the stock follows M5azn's within
    the hour after M5azn's stock next changes.
-4. For a prize, link the prize row of the auction (listed under *Prizes of upcoming auctions*)
-   before the auction ends.
 
 To unlink, clear both boxes and save. Linking and unlinking are recorded in the audit log.
 
@@ -101,9 +101,9 @@ Every order sent costs money at M5azn. For the first days:
 
 ## How sending stays safe
 
-- **Once only.** A store order or prize gets one shipment (`UNIQUE(SourceType, SourceId)`); the
+- **Once only.** A store order gets one shipment (`UNIQUE(SourceType, SourceId)`); the
   worker runs under a lock so two server instances never send the same one.
-- **After the money, outside it.** Nothing calls M5azn during checkout or a prize payment. The
+- **After the money, outside it.** Nothing calls M5azn during checkout. The
   worker picks paid work up afterwards, so a slow M5azn never holds a customer up.
 - **Never blindly repeated.** Each answer is sorted by what it means for sending again:
   - *Accepted* — done.
@@ -170,12 +170,12 @@ When the real answers are known, `M5aznClient` (`src/AuctionPlatform.Infrastruct
 
 | | |
 |---|---|
-| `Domain/Entities/M5aznShipment.cs`, `Domain/Enums/M5aznEnums.cs` | The shipment and its statuses. `StoreProduct` and `AuctionPrize` gain `M5aznProductId` and `M5aznSku`. Migration `M5aznDropshipping`. |
+| `Domain/Entities/M5aznShipment.cs`, `Domain/Enums/M5aznEnums.cs` | The shipment and its statuses. `StoreProduct` gains `M5aznProductId` and `M5aznSku`. Migration `M5aznDropshipping`. |
 | `Application/M5azn/` | `IM5aznClient`, `M5aznFulfilmentService` (pick up, send, follow, stock, admin and customer reads), `M5aznStatusMap`. |
 | `Infrastructure/Services/M5aznClient.cs` | The typed `HttpClient`. |
 | `Api/BackgroundServices/M5aznWorker.cs` | The schedule. |
 | `Api/Controllers/Admin/AdminM5aznController.cs` | `/api/v1/admin/m5azn/...` |
-| `Api/Controllers/ShipmentTrackingController.cs` | `GET /api/v1/store/orders/{id}/shipment`, `GET /api/v1/me/prize-claims/{id}/shipment` (204 when not with M5azn). |
+| `Api/Controllers/ShipmentTrackingController.cs` | `GET /api/v1/store/orders/{id}/shipment` (204 when not with M5azn). |
 | `mobile/lib/features/shipping/` | The app's tracking box. |
 | `wwwroot/admin/app.js` (`viewM5azn`) | The admin page. |
 | Tests | `Unit/M5aznClientTests.cs` (against a stand-in HTTP server), `Integration/M5aznFulfilmentTests.cs` (real PostgreSQL, stand-in M5azn), `mobile/test/shipment_tracking_test.dart`. None of them reaches m5azn.com. |

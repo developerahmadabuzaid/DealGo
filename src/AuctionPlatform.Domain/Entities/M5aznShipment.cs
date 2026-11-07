@@ -5,8 +5,8 @@ namespace AuctionPlatform.Domain.Entities;
 
 /// <summary>
 /// One order handed to M5azn, the dropshipping supplier that packs and delivers products from its
-/// own warehouse (docs/M5AZN.md). It fulfils either a store order (only its M5azn-linked lines) or
-/// a won prize. UNIQUE(SourceType, SourceId): a source is never sent twice.
+/// own warehouse (docs/M5AZN.md). It fulfils the M5azn-linked lines of one store order; auctions
+/// and their prizes never go to M5azn. UNIQUE(SourceType, SourceId): an order is never sent twice.
 /// </summary>
 public class M5aznShipment : Entity
 {

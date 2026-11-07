@@ -25,19 +25,6 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                 maxLength: 128,
                 nullable: true);
 
-            migrationBuilder.AddColumn<long>(
-                name: "M5aznProductId",
-                table: "AuctionPrizes",
-                type: "bigint",
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "M5aznSku",
-                table: "AuctionPrizes",
-                type: "character varying(128)",
-                maxLength: 128,
-                nullable: true);
-
             migrationBuilder.CreateTable(
                 name: "M5aznShipments",
                 columns: table => new
@@ -80,12 +67,6 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                 filter: "\"M5aznProductId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
-                name: "IX_AuctionPrizes_M5aznProductId",
-                table: "AuctionPrizes",
-                column: "M5aznProductId",
-                filter: "\"M5aznProductId\" IS NOT NULL");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_M5aznShipments_Reference",
                 table: "M5aznShipments",
                 column: "Reference",
@@ -118,10 +99,6 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                 name: "IX_StoreProducts_M5aznProductId",
                 table: "StoreProducts");
 
-            migrationBuilder.DropIndex(
-                name: "IX_AuctionPrizes_M5aznProductId",
-                table: "AuctionPrizes");
-
             migrationBuilder.DropColumn(
                 name: "M5aznProductId",
                 table: "StoreProducts");
@@ -129,14 +106,6 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
             migrationBuilder.DropColumn(
                 name: "M5aznSku",
                 table: "StoreProducts");
-
-            migrationBuilder.DropColumn(
-                name: "M5aznProductId",
-                table: "AuctionPrizes");
-
-            migrationBuilder.DropColumn(
-                name: "M5aznSku",
-                table: "AuctionPrizes");
         }
     }
 }

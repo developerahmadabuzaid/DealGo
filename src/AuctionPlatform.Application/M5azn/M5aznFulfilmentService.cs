@@ -57,13 +57,11 @@ public sealed record M5aznOverviewDto(
     string BaseUrl,
     string PaymentMethod,
     IReadOnlyDictionary<string, int> CountsByStatus,
-    int LinkedStoreProducts,
-    int LinkedPrizes);
+    int LinkedStoreProducts);
 
 public sealed class M5aznShipmentQuery : PagedQuery
 {
     public M5aznShipmentStatus? Status { get; set; }
-    public M5aznSourceType? SourceType { get; set; }
 }
 
 /// <summary>Both null removes the link. A link needs both: M5azn's documented order line carries the two.</summary>
@@ -73,14 +71,11 @@ public sealed record M5aznLinkedItemDto(
     Guid Id,
     string Name,
     string? Sku,
-    string? Context,
     long? M5aznProductId,
     string? M5aznSku,
     int? Stock);
 
-public sealed record M5aznLinksDto(
-    IReadOnlyList<M5aznLinkedItemDto> StoreProducts,
-    IReadOnlyList<M5aznLinkedItemDto> Prizes);
+public sealed record M5aznLinksDto(IReadOnlyList<M5aznLinkedItemDto> StoreProducts);
 
 public sealed record M5aznRunSummary(int Found, int Sent, int Refreshed);
 
@@ -106,19 +101,18 @@ public interface IM5aznFulfilmentService
 
     Task<M5aznLinksDto> GetLinksAsync(CancellationToken ct = default);
     Task LinkStoreProductAsync(Guid productId, M5aznLinkRequest request, CancellationToken ct = default);
-    Task LinkPrizeAsync(Guid prizeId, M5aznLinkRequest request, CancellationToken ct = default);
     Task<M5aznProductInfo?> LookupProductAsync(long m5aznProductId, CancellationToken ct = default);
 
     Task<ShipmentTrackingDto?> GetStoreOrderTrackingAsync(Guid userId, Guid orderId, CancellationToken ct = default);
-    Task<ShipmentTrackingDto?> GetPrizeClaimTrackingAsync(Guid userId, Guid claimId, CancellationToken ct = default);
 
-    /// <summary>For staff screens: the shipment of any order or prize, whoever owns it.</summary>
-    Task<M5aznShipmentDto?> GetForSourceAsync(M5aznSourceType type, Guid sourceId, CancellationToken ct = default);
+    /// <summary>For staff screens: the shipment of any store order, whoever owns it.</summary>
+    Task<M5aznShipmentDto?> GetForStoreOrderAsync(Guid orderId, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Sends paid store orders and won prizes whose products come from M5azn to M5azn, follows them
-/// until delivered, and keeps linked products' stock in step with M5azn's.
+/// Sends paid store orders whose products come from M5azn to M5azn, follows them until
+/// delivered, and keeps linked products' stock in step with M5azn's. Store only: auctions and
+/// their prizes are never sent to M5azn.
 ///
 /// Nothing here runs inside a checkout or a payment: the worker picks paid work up afterwards, so
 /// a slow or unreachable M5azn never holds up a customer, and a crash in between loses nothing.
@@ -173,7 +167,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
         return new M5aznRunSummary(found, sent, refreshed);
     }
 
-    /// <summary>Opens a shipment for each recently paid order or prize that has an M5azn product and an address.</summary>
+    /// <summary>Opens a shipment for each recently paid store order that has an M5azn product and an address.</summary>
     private async Task<int> DiscoverAsync(CancellationToken ct)
     {
         var now = _clock.UtcNow;
@@ -191,28 +185,12 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
             .Take(100)
             .ToListAsync(ct);
 
-        var claims = await _db.PrizeClaims.AsNoTracking()
-            .Where(c => (c.Status == PrizeClaimStatus.Paid || c.Status == PrizeClaimStatus.Claimed)
-                        && c.ShippingAddressId != null
-                        && ((c.PaidAt != null && c.PaidAt >= since) || (c.ClaimedAt != null && c.ClaimedAt >= since))
-                        && c.Prize!.M5aznProductId != null
-                        && !_db.M5aznShipments.Any(s => s.SourceType == M5aznSourceType.PrizeClaim && s.SourceId == c.Id))
-            .OrderBy(c => c.CreatedAt)
-            .Select(c => new { c.Id, c.UserId })
-            .Take(100)
-            .ToListAsync(ct);
-
         foreach (var o in orders)
         {
             _db.M5aznShipments.Add(NewShipment(M5aznSourceType.StoreOrder, o.Id, o.UserId, initial, now));
         }
 
-        foreach (var c in claims)
-        {
-            _db.M5aznShipments.Add(NewShipment(M5aznSourceType.PrizeClaim, c.Id, c.UserId, initial, now));
-        }
-
-        var count = orders.Count + claims.Count;
+        var count = orders.Count;
         if (count == 0) return 0;
 
         try
@@ -227,7 +205,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
             return 0;
         }
 
-        _logger.LogInformation("M5azn: {Orders} store order(s) and {Prizes} prize(s) picked up.", orders.Count, claims.Count);
+        _logger.LogInformation("M5azn: {Orders} store order(s) picked up.", count);
         return count;
     }
 
@@ -410,7 +388,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
         return refreshed;
     }
 
-    /// <summary>Asks M5azn about one shipment and carries a change on to the order or prize. True when it changed.</summary>
+    /// <summary>Asks M5azn about one shipment and carries a change on to the order. True when it changed.</summary>
     private async Task<bool> RefreshOneAsync(M5aznShipment shipment, CancellationToken ct)
     {
         var remote = await TryGetRemoteAsync(shipment.RemoteOrderId ?? shipment.Reference.ToString(), ct);
@@ -463,7 +441,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
             if (shipment.Status == M5aznShipmentStatus.Delivered) return;
             shipment.Status = M5aznShipmentStatus.Cancelled;
             shipment.CancelledAt ??= now;
-            shipment.LastError = "M5azn cancelled or returned this order. Review the DealGo order or prize; nothing was refunded automatically.";
+            shipment.LastError = "M5azn cancelled or returned this order. Review the DealGo order; nothing was refunded automatically.";
             _logger.LogWarning("M5azn: shipment {Reference} was cancelled at M5azn ({Remote}).",
                 shipment.Reference, shipment.RemoteStatus);
             return;
@@ -484,21 +462,13 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
     /// Carries a shipment's progress onto what it fulfils. A store order moves to Processing once
     /// M5azn has it, and on to Shipped and Delivered (with the usual customer notifications) only
     /// when M5azn delivers everything on it; a mixed order's other lines are still DealGo's to ship.
-    /// A prize becomes Fulfilled when delivered. A cancellation at M5azn is never turned into a
-    /// refund here: that is a decision for a person.
+    /// A cancellation at M5azn is never turned into a refund here: that is a decision for a person.
     /// </summary>
     private async Task AdvanceSourceAsync(M5aznShipment shipment, CancellationToken ct)
     {
         try
         {
-            if (shipment.SourceType == M5aznSourceType.StoreOrder)
-            {
-                await AdvanceStoreOrderAsync(shipment, ct);
-            }
-            else
-            {
-                await AdvancePrizeClaimAsync(shipment, ct);
-            }
+            await AdvanceStoreOrderAsync(shipment, ct);
         }
         catch (DomainException ex)
         {
@@ -557,18 +527,6 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
         };
     }
 
-    private async Task AdvancePrizeClaimAsync(M5aznShipment shipment, CancellationToken ct)
-    {
-        if (shipment.Status != M5aznShipmentStatus.Delivered) return;
-
-        var claim = await _db.PrizeClaims.FirstOrDefaultAsync(c => c.Id == shipment.SourceId, ct);
-        if (claim is null || claim.Status is not (PrizeClaimStatus.Paid or PrizeClaimStatus.Claimed)) return;
-
-        claim.Status = PrizeClaimStatus.Fulfilled;
-        claim.FulfilledAt = shipment.DeliveredAt ?? _clock.UtcNow;
-        await _db.SaveChangesAsync(ct);
-    }
-
     private async Task<M5aznRemoteOrder?> TryGetRemoteAsync(string id, CancellationToken ct)
     {
         try
@@ -590,12 +548,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
     private sealed record BuiltOrder(M5aznOrderRequest? Request, string? CancelReason = null, string? Problem = null);
 
-    private async Task<BuiltOrder> BuildOrderAsync(M5aznShipment shipment, CancellationToken ct) =>
-        shipment.SourceType == M5aznSourceType.StoreOrder
-            ? await BuildStoreOrderAsync(shipment, ct)
-            : await BuildPrizeClaimAsync(shipment, ct);
-
-    private async Task<BuiltOrder> BuildStoreOrderAsync(M5aznShipment shipment, CancellationToken ct)
+    private async Task<BuiltOrder> BuildOrderAsync(M5aznShipment shipment, CancellationToken ct)
     {
         var order = await _db.StoreOrders.AsNoTracking()
             .Include(o => o.Items).ThenInclude(i => i.Product)
@@ -630,40 +583,6 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
         var total = Money.Round(lines.Sum(i => i.TotalPrice));
         return new BuiltOrder(BuildRequest(shipment, total, order.PaidAt ?? order.CreatedAt,
             order.ShippingAddress, order.User?.Email, items));
-    }
-
-    private async Task<BuiltOrder> BuildPrizeClaimAsync(M5aznShipment shipment, CancellationToken ct)
-    {
-        var claim = await _db.PrizeClaims.AsNoTracking()
-            .Include(c => c.Prize)
-            .Include(c => c.ShippingAddress)
-            .FirstOrDefaultAsync(c => c.Id == shipment.SourceId, ct);
-
-        if (claim is null) return new BuiltOrder(null, CancelReason: "The prize claim no longer exists.");
-        if (claim.Status is not (PrizeClaimStatus.Paid or PrizeClaimStatus.Claimed))
-        {
-            return new BuiltOrder(null, CancelReason: $"Not sent: the prize is {claim.Status}.");
-        }
-
-        var prize = claim.Prize;
-        if (prize?.M5aznProductId is null) return new BuiltOrder(null, CancelReason: "The prize is no longer linked to M5azn.");
-        if (string.IsNullOrWhiteSpace(prize.M5aznSku))
-        {
-            return new BuiltOrder(null, Problem: $"Prize \"{prize.ProductNameSnapshot}\" has no M5azn SKU. Add it, then send again.");
-        }
-
-        if (claim.ShippingAddress is null) return new BuiltOrder(null, Problem: "The prize has no delivery address.");
-
-        var email = await _db.Users.AsNoTracking()
-            .Where(u => u.Id == claim.UserId).Select(u => u.Email).FirstOrDefaultAsync(ct);
-
-        var items = new[]
-        {
-            new M5aznOrderItem(1, prize.M5aznProductId.Value, prize.M5aznSku.Trim(), prize.ProductNameSnapshot, 1)
-        };
-
-        return new BuiltOrder(BuildRequest(shipment, Money.Round(claim.PaymentAmount),
-            claim.PaidAt ?? claim.ClaimedAt ?? claim.CreatedAt, claim.ShippingAddress, email, items));
     }
 
     private M5aznOrderRequest BuildRequest(
@@ -812,7 +731,6 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
             .ToListAsync(ct);
 
         var linkedProducts = await _db.StoreProducts.CountAsync(p => p.M5aznProductId != null, ct);
-        var linkedPrizes = await _db.AuctionPrizes.CountAsync(p => p.M5aznProductId != null, ct);
 
         return new M5aznOverviewDto(
             _options.Enabled,
@@ -823,15 +741,13 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
             _options.PaymentMethod,
             Enum.GetValues<M5aznShipmentStatus>().ToDictionary(
                 s => s.ToString(), s => counts.FirstOrDefault(c => c.Key == s)?.Count ?? 0),
-            linkedProducts,
-            linkedPrizes);
+            linkedProducts);
     }
 
     public async Task<PagedResult<M5aznShipmentDto>> GetShipmentsAsync(M5aznShipmentQuery query, CancellationToken ct = default)
     {
         var q = _db.M5aznShipments.AsNoTracking().AsQueryable();
         if (query.Status is { } status) q = q.Where(s => s.Status == status);
-        if (query.SourceType is { } type) q = q.Where(s => s.SourceType == type);
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -903,24 +819,10 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
             .Where(p => p.Status != StoreProductStatus.Archived || p.M5aznProductId != null)
             .OrderByDescending(p => p.M5aznProductId != null).ThenBy(p => p.Name)
             .Take(500)
-            .Select(p => new M5aznLinkedItemDto(p.Id, p.Name, p.Sku, null, p.M5aznProductId, p.M5aznSku, p.StockQuantity))
+            .Select(p => new M5aznLinkedItemDto(p.Id, p.Name, p.Sku, p.M5aznProductId, p.M5aznSku, p.StockQuantity))
             .ToListAsync(ct);
 
-        var prizes = await _db.AuctionPrizes.AsNoTracking()
-            .Where(p => p.M5aznProductId != null || p.Auction!.Status < AuctionStatus.Finished)
-            .OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Rank)
-            .Take(300)
-            .Select(p => new
-            {
-                p.Id, p.ProductNameSnapshot, p.Rank, p.M5aznProductId, p.M5aznSku,
-                p.Auction!.AuctionNumber, p.Auction.Title
-            })
-            .ToListAsync(ct);
-
-        return new M5aznLinksDto(products, prizes
-            .Select(p => new M5aznLinkedItemDto(p.Id, p.ProductNameSnapshot, null,
-                $"{p.AuctionNumber} · {p.Title} · #{p.Rank}", p.M5aznProductId, p.M5aznSku, null))
-            .ToList());
+        return new M5aznLinksDto(products);
     }
 
     public async Task LinkStoreProductAsync(Guid productId, M5aznLinkRequest request, CancellationToken ct = default)
@@ -937,22 +839,6 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
         await _db.SaveChangesAsync(ct);
 
         await _audit.LogAsync(AuditActionType.M5aznLinkChanged, nameof(StoreProduct), productId,
-            before, new { M5aznProductId = id, M5aznSku = sku }, ct: ct);
-    }
-
-    public async Task LinkPrizeAsync(Guid prizeId, M5aznLinkRequest request, CancellationToken ct = default)
-    {
-        var (id, sku) = ValidateLink(request);
-
-        var prize = await _db.AuctionPrizes.FirstOrDefaultAsync(p => p.Id == prizeId, ct)
-            ?? throw new DomainException(ErrorCodes.NotFound, "Prize not found.");
-
-        var before = new { prize.M5aznProductId, prize.M5aznSku };
-        prize.M5aznProductId = id;
-        prize.M5aznSku = sku;
-        await _db.SaveChangesAsync(ct);
-
-        await _audit.LogAsync(AuditActionType.M5aznLinkChanged, nameof(AuctionPrize), prizeId,
             before, new { M5aznProductId = id, M5aznSku = sku }, ct: ct);
     }
 
@@ -999,17 +885,11 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
     // ================================================================ customer
 
-    public Task<ShipmentTrackingDto?> GetStoreOrderTrackingAsync(Guid userId, Guid orderId, CancellationToken ct = default) =>
-        TrackingAsync(userId, M5aznSourceType.StoreOrder, orderId, ct);
-
-    public Task<ShipmentTrackingDto?> GetPrizeClaimTrackingAsync(Guid userId, Guid claimId, CancellationToken ct = default) =>
-        TrackingAsync(userId, M5aznSourceType.PrizeClaim, claimId, ct);
-
-    private async Task<ShipmentTrackingDto?> TrackingAsync(Guid userId, M5aznSourceType type, Guid sourceId, CancellationToken ct)
+    public async Task<ShipmentTrackingDto?> GetStoreOrderTrackingAsync(Guid userId, Guid orderId, CancellationToken ct = default)
     {
         // Only once it has actually gone to M5azn: a queued or waiting one is not news for the customer.
         var s = await _db.M5aznShipments.AsNoTracking()
-            .Where(x => x.SourceType == type && x.SourceId == sourceId && x.UserId == userId
+            .Where(x => x.SourceType == M5aznSourceType.StoreOrder && x.SourceId == orderId && x.UserId == userId
                         && x.Status != M5aznShipmentStatus.AwaitingApproval
                         && x.Status != M5aznShipmentStatus.Queued
                         && x.Status != M5aznShipmentStatus.Failed)
@@ -1021,10 +901,10 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
                 s.CreatedAt, s.SubmittedAt, s.ShippedAt, s.DeliveredAt, s.LastSyncedAt);
     }
 
-    public async Task<M5aznShipmentDto?> GetForSourceAsync(M5aznSourceType type, Guid sourceId, CancellationToken ct = default)
+    public async Task<M5aznShipmentDto?> GetForStoreOrderAsync(Guid orderId, CancellationToken ct = default)
     {
         var s = await _db.M5aznShipments.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.SourceType == type && x.SourceId == sourceId, ct);
+            .FirstOrDefaultAsync(x => x.SourceType == M5aznSourceType.StoreOrder && x.SourceId == orderId, ct);
         return s is null ? null : (await MapAsync(new[] { s }, ct))[0];
     }
 
@@ -1049,19 +929,13 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
     {
         if (rows.Count == 0) return Array.Empty<M5aznShipmentDto>();
 
-        var orderIds = rows.Where(r => r.SourceType == M5aznSourceType.StoreOrder).Select(r => r.SourceId).ToList();
-        var claimIds = rows.Where(r => r.SourceType == M5aznSourceType.PrizeClaim).Select(r => r.SourceId).ToList();
+        var orderIds = rows.Select(r => r.SourceId).ToList();
         var userIds = rows.Select(r => r.UserId).Distinct().ToList();
 
         var orderNumbers = await _db.StoreOrders.AsNoTracking()
             .Where(o => orderIds.Contains(o.Id))
             .Select(o => new { o.Id, o.OrderNumber })
             .ToDictionaryAsync(o => o.Id, o => o.OrderNumber, ct);
-
-        var claimNumbers = await _db.PrizeClaims.AsNoTracking()
-            .Where(c => claimIds.Contains(c.Id))
-            .Select(c => new { c.Id, Label = c.Prize!.ProductNameSnapshot })
-            .ToDictionaryAsync(c => c.Id, c => c.Label, ct);
 
         var names = await _db.Users.AsNoTracking()
             .Where(u => userIds.Contains(u.Id))
@@ -1070,9 +944,7 @@ public sealed class M5aznFulfilmentService : IM5aznFulfilmentService
 
         return rows.Select(s => new M5aznShipmentDto(
             s.Id, s.Reference, s.SourceType, s.SourceId,
-            s.SourceType == M5aznSourceType.StoreOrder
-                ? orderNumbers.GetValueOrDefault(s.SourceId)
-                : claimNumbers.GetValueOrDefault(s.SourceId),
+            orderNumbers.GetValueOrDefault(s.SourceId),
             s.UserId, names.GetValueOrDefault(s.UserId),
             s.Status, s.RemoteOrderId, s.RemoteStatus, s.TrackingNumber, s.TrackingUrl, s.Carrier,
             s.LastError, s.Attempts, s.NextAttemptAt, s.CreatedAt, s.SubmittedAt, s.ShippedAt,

@@ -1,10 +1,9 @@
 namespace AuctionPlatform.Domain.Enums;
 
-/// <summary>What an M5azn shipment fulfils.</summary>
+/// <summary>What an M5azn shipment fulfils. Store orders only: auctions and their prizes never go to M5azn.</summary>
 public enum M5aznSourceType
 {
-    StoreOrder = 0,
-    PrizeClaim = 1
+    StoreOrder = 0
 }
 
 /// <summary>

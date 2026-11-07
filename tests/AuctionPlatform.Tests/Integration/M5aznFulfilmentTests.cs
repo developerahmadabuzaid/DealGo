@@ -14,7 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace AuctionPlatform.Tests.Integration;
 
 /// <summary>
-/// Orders and prizes handed to M5azn, against a real database and a stand-in for M5azn's API.
+/// Store orders handed to M5azn (store only: never auction prizes), against a real database and a stand-in for M5azn's API.
 ///
 /// What matters most: a paid order is sent once and only once — money moves at M5azn on every
 /// send — and what M5azn says afterwards is carried onto the order without ever moving it
@@ -43,7 +43,7 @@ public class M5aznFulfilmentTests
         await RunAsync(m5azn);
         await RunAsync(m5azn);
 
-        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        var shipment = await ShipmentForAsync(orderId);
         shipment.Status.Should().Be(M5aznShipmentStatus.Submitted);
         shipment.RemoteOrderId.Should().Be($"M-{shipment.Reference}");
         shipment.Attempts.Should().Be(1);
@@ -110,7 +110,7 @@ public class M5aznFulfilmentTests
         var orderId = await CheckoutAsync(buyer, addressId, (product, 1));
 
         await RunAsync(m5azn);
-        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        var shipment = await ShipmentForAsync(orderId);
 
         m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "shipped", "AWB-555", "https://track.example/AWB-555", "SMSA");
         await RefreshAsync(m5azn, shipment.Id);
@@ -119,7 +119,7 @@ public class M5aznFulfilmentTests
         order.Status.Should().Be(StoreOrderStatus.Shipped);
         order.TrackingNumber.Should().Be("AWB-555");
 
-        shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        shipment = await ShipmentForAsync(orderId);
         shipment.Status.Should().Be(M5aznShipmentStatus.Shipped);
         shipment.Carrier.Should().Be("SMSA");
         shipment.TrackingUrl.Should().Be("https://track.example/AWB-555");
@@ -127,13 +127,13 @@ public class M5aznFulfilmentTests
         // A stale answer must not move it back.
         m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "processing", null, null, null);
         await RefreshAsync(m5azn, shipment.Id);
-        (await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId)).Status.Should().Be(M5aznShipmentStatus.Shipped);
+        (await ShipmentForAsync(orderId)).Status.Should().Be(M5aznShipmentStatus.Shipped);
 
         m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "تم التوصيل", null, null, null);
         await RefreshAsync(m5azn, shipment.Id);
 
         (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Delivered);
-        (await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId)).DeliveredAt.Should().NotBeNull();
+        (await ShipmentForAsync(orderId)).DeliveredAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class M5aznFulfilmentTests
         var orderId = await CheckoutAsync(buyer, addressId, (theirs, 1), (ours, 3));
 
         await RunAsync(m5azn);
-        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        var shipment = await ShipmentForAsync(orderId);
 
         var body = m5azn.Created.Single(c => c.Id == shipment.Reference);
         body.Items.Should().ContainSingle().Which.ProductId.Should().Be(M5aznProduct);
@@ -155,7 +155,7 @@ public class M5aznFulfilmentTests
         m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "delivered", "AWB-1", null, null);
         await RefreshAsync(m5azn, shipment.Id);
 
-        (await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId)).Status.Should().Be(M5aznShipmentStatus.Delivered);
+        (await ShipmentForAsync(orderId)).Status.Should().Be(M5aznShipmentStatus.Delivered);
         (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Processing,
             "DealGo still has its own lines to ship");
     }
@@ -178,7 +178,7 @@ public class M5aznFulfilmentTests
         var firstOrder = await CheckoutAsync(buyer, addressId, (product, 1));
 
         await RunAsync(reached);
-        var first = await ShipmentForAsync(M5aznSourceType.StoreOrder, firstOrder);
+        var first = await ShipmentForAsync(firstOrder);
         first.Status.Should().BeOneOf(M5aznShipmentStatus.Submitted, M5aznShipmentStatus.Processing);
         first.RemoteOrderId.Should().Be("R-77");
         reached.Created.Count(c => c.Id == first.Reference).Should().Be(1);
@@ -193,7 +193,7 @@ public class M5aznFulfilmentTests
         await RunAsync(lost);
         await RunAsync(lost);
 
-        var second = await ShipmentForAsync(M5aznSourceType.StoreOrder, secondOrder);
+        var second = await ShipmentForAsync(secondOrder);
         second.Status.Should().Be(M5aznShipmentStatus.Queued);
         second.Attempts.Should().Be(1);
         second.NextAttemptAt.Should().BeAfter(DateTime.UtcNow);
@@ -214,7 +214,7 @@ public class M5aznFulfilmentTests
 
         await RunAsync(m5azn);
 
-        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        var shipment = await ShipmentForAsync(orderId);
         shipment.Status.Should().Be(M5aznShipmentStatus.Failed);
         shipment.LastError.Should().Contain("sku not found");
         (await OrderAsync(orderId)).Status.Should().Be(StoreOrderStatus.Paid, "nothing was sent");
@@ -240,7 +240,7 @@ public class M5aznFulfilmentTests
 
         await RunAsync(m5azn, o => o.AutoSubmit = false);
 
-        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        var shipment = await ShipmentForAsync(orderId);
         shipment.Status.Should().Be(M5aznShipmentStatus.AwaitingApproval);
         m5azn.Created.Should().NotContain(c => c.Id == shipment.Reference);
 
@@ -275,7 +275,7 @@ public class M5aznFulfilmentTests
                 .CancelOrderAsync(buyer, orderId, "changed my mind");
         }
 
-        var shipment = await ShipmentForAsync(M5aznSourceType.StoreOrder, orderId);
+        var shipment = await ShipmentForAsync(orderId);
         await using (var scope = _fixture.CreateScope(m5azn: m5azn))
         {
             (await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>().SubmitNowAsync(shipment.Id))
@@ -328,50 +328,35 @@ public class M5aznFulfilmentTests
         (await db.M5aznShipments.AnyAsync(s => s.SourceId == orderId)).Should().BeFalse();
     }
 
-    // ---------------------------------------------------------------- prizes
+    // ---------------------------------------------------------------- store only
 
     [Fact]
-    public async Task A_claimed_M5azn_prize_is_sent_and_becomes_fulfilled_when_delivered()
+    public async Task Auction_prizes_are_never_sent_to_M5azn()
     {
         var m5azn = new FakeM5azn();
         var (winner, addressId) = await NewBuyerAsync();
-        var (claimId, prizeId) = await CreatePaidClaimAsync(winner);
-
-        await using (var scope = _fixture.CreateScope(m5azn: m5azn))
-        {
-            await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>()
-                .LinkPrizeAsync(prizeId, new M5aznLinkRequest(313658, "M2-4-3-6-S"));
-        }
+        var claimId = await CreatePaidClaimAsync(winner);
 
         await using (var scope = _fixture.CreateScope(winner))
         {
             await scope.ServiceProvider.GetRequiredService<IPrizeClaimService>().ClaimAsync(winner, claimId, addressId);
         }
 
+        // A linked store order in the same pass shows the worker did run.
+        var product = await NewProductAsync(price: 31m, linked: true);
+        var orderId = await CheckoutAsync(winner, addressId, (product, 1));
+
         await RunAsync(m5azn);
 
-        var shipment = await ShipmentForAsync(M5aznSourceType.PrizeClaim, claimId);
-        shipment.Status.Should().Be(M5aznShipmentStatus.Submitted);
+        (await ShipmentForAsync(orderId)).Status.Should().Be(M5aznShipmentStatus.Submitted);
 
-        var body = m5azn.Created.Single(c => c.Id == shipment.Reference);
-        body.Items.Should().ContainSingle().Which.Should().BeEquivalentTo(
-            new M5aznOrderItem(1, 313658, "M2-4-3-6-S", body.Items[0].Name, 1));
-        body.Total.Should().Be(2480m);
-
-        m5azn.Remote[shipment.RemoteOrderId!] = new M5aznRemoteOrder(shipment.RemoteOrderId, "delivered", "AWB-9", null, null);
-        await RefreshAsync(m5azn, shipment.Id);
-
-        await using (var scope = _fixture.CreateScope(winner, m5azn: m5azn))
+        await using (var scope = _fixture.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var claim = await db.PrizeClaims.AsNoTracking().FirstAsync(c => c.Id == claimId);
-            claim.Status.Should().Be(PrizeClaimStatus.Fulfilled);
-            claim.FulfilledAt.Should().NotBeNull();
-
-            var tracking = await scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>()
-                .GetPrizeClaimTrackingAsync(winner, claimId);
-            tracking!.TrackingNumber.Should().Be("AWB-9");
+            (await db.M5aznShipments.AnyAsync(s => s.SourceId == claimId)).Should().BeFalse();
         }
+
+        m5azn.Created.Should().NotContain(c => c.Total == 2480m);
     }
 
     // ---------------------------------------------------------------- links and stock
@@ -502,14 +487,14 @@ public class M5aznFulfilmentTests
             .StoreOrders.AsNoTracking().FirstAsync(o => o.Id == orderId);
     }
 
-    private async Task<M5aznShipment> ShipmentForAsync(M5aznSourceType type, Guid sourceId)
+    private async Task<M5aznShipment> ShipmentForAsync(Guid orderId)
     {
         await using var scope = _fixture.CreateScope();
         return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>()
-            .M5aznShipments.AsNoTracking().SingleAsync(s => s.SourceType == type && s.SourceId == sourceId);
+            .M5aznShipments.AsNoTracking().SingleAsync(s => s.SourceType == M5aznSourceType.StoreOrder && s.SourceId == orderId);
     }
 
-    private async Task<(Guid ClaimId, Guid PrizeId)> CreatePaidClaimAsync(Guid userId)
+    private async Task<Guid> CreatePaidClaimAsync(Guid userId)
     {
         await using var scope = _fixture.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -535,7 +520,7 @@ public class M5aznFulfilmentTests
         db.PrizeClaims.Add(claim);
         await db.SaveChangesAsync();
 
-        return (claim.Id, prize.Id);
+        return claim.Id;
     }
 
     /// <summary>M5azn as far as these tests need: it remembers what was sent and answers what it is told to.</summary>

@@ -261,12 +261,9 @@ final myOrdersProvider = FutureProvider.autoDispose(
 final shipmentRepositoryProvider =
     Provider((ref) => ShipmentRepository(ref.watch(apiClientProvider)));
 
-/// M5azn delivery tracking for one order or prize; null when M5azn is not delivering it.
+/// M5azn delivery tracking for one store order; null when M5azn is not delivering it.
 final storeOrderShipmentProvider = FutureProvider.autoDispose
     .family((ref, String orderId) => ref.watch(shipmentRepositoryProvider).forStoreOrder(orderId));
-
-final prizeClaimShipmentProvider = FutureProvider.autoDispose
-    .family((ref, String claimId) => ref.watch(shipmentRepositoryProvider).forPrizeClaim(claimId));
 
 final auctionListProvider = FutureProvider.autoDispose
     .family((ref, String group) => ref.watch(auctionRepositoryProvider).list(group: group));

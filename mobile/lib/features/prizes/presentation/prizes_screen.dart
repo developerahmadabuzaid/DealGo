@@ -46,7 +46,6 @@ class PrizesScreen extends ConsumerWidget {
             onRefresh: () async {
               ref.invalidate(myClaimsProvider);
               ref.invalidate(myWinsProvider);
-              ref.invalidate(prizeClaimShipmentProvider);
             },
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -160,7 +159,6 @@ class _ClaimCard extends StatelessWidget {
                   const SizedBox(height: AppTheme.space3),
                   _PrizeDelivery(claim: claim),
                 ],
-                if (claim.isPaid) PrizeClaimShipment(claimId: claim.id),
               ],
             ),
           ),

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace AuctionPlatform.Api.BackgroundServices;
 
 /// <summary>
-/// Sends paid M5azn orders and prizes, follows them, and copies M5azn's stock (docs/M5AZN.md).
+/// Sends paid store orders with M5azn products, follows them, and copies M5azn's stock (docs/M5AZN.md).
 /// M5azn documents no webhooks, so following an order means asking about it now and then.
 /// With M5azn switched off it wakes, sees that, and does nothing.
 /// </summary>
