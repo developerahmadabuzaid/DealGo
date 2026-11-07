@@ -29,6 +29,10 @@
 	<!-- Shown when the customer taps "use my location" while adding a delivery address. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>نستخدم موقعك لتحديد عنوان التوصيل على الخريطة بدقة، حتى تصل طلباتك وجوائزك إلى بابك.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>نستخدم موقعك فقط أثناء استخدامك للتطبيق، لتحديد عنوان التوصيل على الخريطة بدقة حتى تصل طلباتك وجوائزك إلى بابك. لا نتتبع موقعك في الخلفية.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>نستخدم موقعك فقط أثناء استخدامك للتطبيق، لتحديد عنوان التوصيل على الخريطة بدقة حتى تصل طلباتك وجوائزك إلى بابك. لا نتتبع موقعك في الخلفية.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
