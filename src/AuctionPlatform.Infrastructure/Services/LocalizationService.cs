@@ -53,6 +53,8 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.AdminMessageBody] = "{0}",
             [NotificationKeys.NewAuctionTitle] = "مزاد جديد",
             [NotificationKeys.NewAuctionBody] = "«{0}» مفتوح للتسجيل الآن. سجّل قبل اكتمال العدد!",
+            [NotificationKeys.SmsBalanceEmptyTitle] = "انتهى رصيد الرسائل",
+            [NotificationKeys.SmsBalanceEmptyBody] = "لا يستطيع العملاء استلام رمز الدخول. اشحن الرصيد من Wallet في لوحة Tawked.",
 
             [OtpMessageKeys.Login] = "رمز الدخول الخاص بك هو {0}. صالح لمدة {1} دقائق. لا تشاركه مع أحد.",
             [OtpMessageKeys.Withdrawal] = "رمز تأكيد السحب هو {0}. صالح لمدة {1} دقائق. إذا لم تطلب سحباً، تجاهل هذه الرسالة.",
@@ -99,6 +101,8 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.AdminMessageBody] = "{0}",
             [NotificationKeys.NewAuctionTitle] = "New auction",
             [NotificationKeys.NewAuctionBody] = "\"{0}\" is open for registration. Join before it fills up!",
+            [NotificationKeys.SmsBalanceEmptyTitle] = "SMS balance is empty",
+            [NotificationKeys.SmsBalanceEmptyBody] = "Customers cannot receive sign-in codes. Top up under Wallet in the Tawked console.",
 
             [OtpMessageKeys.Login] = "Your sign-in code is {0}. It is valid for {1} minutes. Do not share it with anyone.",
             [OtpMessageKeys.Withdrawal] = "Your withdrawal confirmation code is {0}. It is valid for {1} minutes. If you did not request a withdrawal, ignore this message.",

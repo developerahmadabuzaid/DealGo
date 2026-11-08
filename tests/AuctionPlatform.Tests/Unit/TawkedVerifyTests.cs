@@ -150,6 +150,16 @@ public class TawkedVerifyTests
     }
 
     [Fact]
+    public async Task An_empty_balance_is_told_apart_so_staff_can_be_alerted()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.PaymentRequired, new { error = "insufficient_credits" }));
+
+        var act = () => Build(handler).StartAsync(Phone, "ar", "Login:a", null, "idem");
+
+        await act.Should().ThrowAsync<TawkedOutOfCreditException>();
+    }
+
+    [Fact]
     public async Task A_network_failure_is_reported_as_temporarily_unavailable()
     {
         var handler = new StubHandler(_ => throw new HttpRequestException("the socket went away"));

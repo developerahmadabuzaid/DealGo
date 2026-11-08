@@ -158,7 +158,8 @@ public class TestAccountTests
             sp.GetRequiredService<ICurrentUserService>(),
             Options.Create(new OtpOptions { TestAccounts = testAccounts }),
             sp.GetRequiredService<IHostEnvironment>(),
-            NullLogger<OtpService>.Instance);
+            NullLogger<OtpService>.Instance,
+            sp.GetRequiredService<AuctionPlatform.Application.Notifications.ISmsBalanceAlert>());
 
         return (otp, tawked, sms);
     }

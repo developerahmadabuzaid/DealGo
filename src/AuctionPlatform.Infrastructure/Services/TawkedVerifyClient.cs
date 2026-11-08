@@ -34,6 +34,17 @@ public enum TawkedCheckOutcome
     NotFound
 }
 
+/// <summary>
+/// Tawked refused because our balance is empty. To the caller it is the ordinary "temporarily
+/// unavailable"; the type only lets the server tell its staff.
+/// </summary>
+public sealed class TawkedOutOfCreditException : DomainException
+{
+    public TawkedOutOfCreditException(string message) : base(ErrorCodes.ServiceUnavailable, message)
+    {
+    }
+}
+
 public interface ITawkedVerifyClient
 {
     /// <summary>False when no API key is configured, which sends codes back down the local path.</summary>
@@ -293,8 +304,10 @@ public sealed class TawkedVerifyClient : ITawkedVerifyClient
         // the only thing the caller can do about it.
         (HttpStatusCode.TooManyRequests, _) => (TooManyCodes(), true),
 
-        // Everything left — no balance, a dead key, an unapproved or paused application, a 5xx —
-        // is ours, and none of it is any of the caller's business.
+        (_, "insufficient_credits") => (new TawkedOutOfCreditException(UnavailableMessage), true),
+
+        // Everything left — a dead key, an unapproved or paused application, a 5xx — is ours, and
+        // none of it is any of the caller's business.
         _ => (Unavailable(), true)
     };
 
@@ -323,9 +336,10 @@ public sealed class TawkedVerifyClient : ITawkedVerifyClient
     private static DomainException TooManyCodes() => new(
         ErrorCodes.RateLimited, "Too many verification codes requested. Please try again later.");
 
-    private static DomainException Unavailable() => new(
-        ErrorCodes.ServiceUnavailable,
-        "Verification codes are briefly unavailable. Please try again in a moment.");
+    private const string UnavailableMessage =
+        "Verification codes are briefly unavailable. Please try again in a moment.";
+
+    private static DomainException Unavailable() => new(ErrorCodes.ServiceUnavailable, UnavailableMessage);
 
     private async Task<T> ReadAsync<T>(HttpResponseMessage response, string operation, CancellationToken ct)
     {

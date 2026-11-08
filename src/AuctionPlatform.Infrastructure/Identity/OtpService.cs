@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Identity;
+using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Entities;
 using AuctionPlatform.Domain.Enums;
@@ -42,6 +43,7 @@ public sealed partial class OtpService : IOtpService
     private readonly OtpOptions _options;
     private readonly IHostEnvironment _environment;
     private readonly ILogger<OtpService> _logger;
+    private readonly ISmsBalanceAlert _balanceAlert;
 
     public OtpService(
         ApplicationDbContext db,
@@ -51,8 +53,10 @@ public sealed partial class OtpService : IOtpService
         ICurrentUserService currentUser,
         IOptions<OtpOptions> options,
         IHostEnvironment environment,
-        ILogger<OtpService> logger)
+        ILogger<OtpService> logger,
+        ISmsBalanceAlert balanceAlert)
     {
+        _balanceAlert = balanceAlert;
         _db = db;
         _sender = sender;
         _tawked = tawked;
@@ -104,13 +108,22 @@ public sealed partial class OtpService : IOtpService
             // Deliberately before the row is written. If this throws, nothing was sent and nothing
             // is recorded, so the user may try again at once; writing the row first would leave a
             // dead code behind and the resend cooldown would then refuse the retry.
-            var verification = await _tawked.StartAsync(
-                destination,
-                request.Language,
-                reference: $"{request.Purpose}:{id:N}",
-                clientIp: _currentUser.IpAddress,
-                idempotencyKey: id.ToString("N"),
-                ct);
+            TawkedVerification verification;
+            try
+            {
+                verification = await _tawked.StartAsync(
+                    destination,
+                    request.Language,
+                    reference: $"{request.Purpose}:{id:N}",
+                    clientIp: _currentUser.IpAddress,
+                    idempotencyKey: id.ToString("N"),
+                    ct);
+            }
+            catch (TawkedOutOfCreditException)
+            {
+                await _balanceAlert.RaiseAsync(ct);
+                throw;
+            }
 
             providerVerificationId = verification.Id;
 

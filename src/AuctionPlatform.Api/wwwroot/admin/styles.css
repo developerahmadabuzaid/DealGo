@@ -1205,6 +1205,20 @@ label {
   color: var(--muted);
 }
 
+.ops-alert {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  margin-bottom: var(--s4);
+  padding: var(--s4);
+  color: var(--danger-text);
+  background: var(--danger-soft);
+  border: 1px solid #f6c4c9;
+  border-radius: var(--radius);
+}
+.ops-alert svg { flex: none; }
+.ops-alert p { margin: var(--s1) 0; }
+
 .empty {
   color: var(--muted);
   padding: var(--s7) var(--s5);

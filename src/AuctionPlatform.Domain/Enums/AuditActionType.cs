@@ -64,5 +64,8 @@ public enum AuditActionType
     M5aznPricesUpdated = 34,
 
     /// <summary>Products were imported from (or synced with) the M5azn seller account.</summary>
-    M5aznProductsImported = 35
+    M5aznProductsImported = 35,
+
+    /// <summary>Tawked refused a sign-in code because our SMS balance is empty; staff were told.</summary>
+    SmsBalanceEmpty = 36
 }

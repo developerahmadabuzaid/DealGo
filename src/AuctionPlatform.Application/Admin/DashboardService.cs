@@ -1,4 +1,5 @@
 using AuctionPlatform.Application.Common;
+using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Enums;
@@ -36,7 +37,8 @@ public sealed record DashboardDto(
     PeriodChangeDto ParticipantsTrend,
     PeriodChangeDto StoreRevenueTrend,
     PeriodChangeDto CreditIssuedTrend,
-    string Currency);
+    string Currency,
+    DateTime? SmsBalanceEmptySince);
 
 public sealed record AuditLogDto(
     Guid Id,
@@ -84,13 +86,16 @@ public sealed class DashboardService : IDashboardService
     private readonly IWalletService _wallets;
     private readonly IDateTimeProvider _clock;
     private readonly AuctionOptions _options;
+    private readonly ISmsBalanceAlert _smsBalance;
 
     public DashboardService(
         IApplicationDbContext db,
         IWalletService wallets,
         IDateTimeProvider clock,
-        Microsoft.Extensions.Options.IOptions<AuctionOptions> options)
+        Microsoft.Extensions.Options.IOptions<AuctionOptions> options,
+        ISmsBalanceAlert smsBalance)
     {
+        _smsBalance = smsBalance;
         _db = db;
         _wallets = wallets;
         _clock = clock;
@@ -208,7 +213,8 @@ public sealed class DashboardService : IDashboardService
             new PeriodChangeDto(participantsThisMonth, participantsLastMonth),
             new PeriodChangeDto(Money.Round(storeThisMonth), Money.Round(storeLastMonth)),
             new PeriodChangeDto(Money.Round(creditThisMonth), Money.Round(creditLastMonth)),
-            currency);
+            currency,
+            await _smsBalance.GetEmptySinceAsync(ct));
     }
 
     public async Task<PagedResult<AuditLogDto>> GetAuditLogsAsync(

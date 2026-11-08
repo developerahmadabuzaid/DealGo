@@ -273,6 +273,12 @@ const AR = {
   'Actor email or reason': 'بريد المنفِّذ أو السبب',
   'Optional': 'اختياري', 'Participants': 'المشاركون',
 
+  // the warning at the top of the dashboard when SMS codes cannot be sent
+  'The SMS balance is empty': 'انتهى رصيد الرسائل النصية',
+  'Customers cannot receive sign-in codes. Top up under Wallet in the Tawked console. This warning goes away after the next code is sent.':
+    'لا يستطيع العملاء استلام رمز الدخول. اشحن الرصيد من Wallet في لوحة Tawked. يختفي هذا التنبيه بعد إرسال أول رمز.',
+  'Since': 'منذ',
+
   // dashboard figures
   'Active auctions': 'مزادات نشطة', 'Upcoming auctions': 'مزادات قادمة',
   'Completed auctions': 'مزادات مكتملة', 'Total participants': 'إجمالي المشاركين',
@@ -1430,6 +1436,13 @@ async function viewDashboard() {
   return h('div', {},
     pageHead('Dashboard', 'Platform-wide figures, straight from the database.',
       h('span', { class: 'context-chip' }, icon('calendar'), h('span', {}, today))),
+
+    d.smsBalanceEmptySince && h('div', { class: 'ops-alert', role: 'alert' },
+      icon('alert'),
+      h('div', {},
+        h('strong', {}, 'The SMS balance is empty'),
+        h('p', {}, 'Customers cannot receive sign-in codes. Top up under Wallet in the Tawked console. This warning goes away after the next code is sent.'),
+        h('small', {}, h('span', {}, 'Since'), ' ', when(d.smsBalanceEmptySince)))),
 
     // The four counts that describe the platform at a glance.
     h('div', { class: 'kpi-grid cols-4' },

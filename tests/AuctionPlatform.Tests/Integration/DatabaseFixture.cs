@@ -123,6 +123,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<INotificationBroadcaster>(Broadcasts);
         services.AddScoped<IAdminNotificationService, AdminNotificationService>();
+        services.AddScoped<ISmsBalanceAlert, SmsBalanceAlert>();
 
         if (failWalletCredits)
         {
