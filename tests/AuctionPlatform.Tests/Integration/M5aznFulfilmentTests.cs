@@ -776,8 +776,9 @@ public class M5aznFulfilmentTests
             await using (var running = await locks.AcquireAsync("m5azn:import", TimeSpan.FromMinutes(1)))
             {
                 running.Should().NotBeNull();
-                var second = () => catalog.ImportAsync();
-                (await second.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.Conflict);
+                var second = await catalog.ImportAsync();
+                second.AlreadyRunning.Should().BeTrue();
+                second.Found.Should().Be(0);
             }
 
             // Finished: the button works again.

@@ -124,7 +124,7 @@ What an import never does: touch a product added in the dashboard, delete anythi
 again a product you set to *draft* yourself.
 
 Only one import runs at a time, on any server: pressing the button while the hourly sync runs
-says "already running; try again in a minute". If a product is changed while an import saves (staff
+says an import is already running and the products will update when it finishes. If a product is changed while an import saves (staff
 editing it, say), the import applies once more from fresh data without asking M5azn again.
 
 A product is **skipped**, and the result says so, when M5azn gives it no SKU (M5azn needs one on

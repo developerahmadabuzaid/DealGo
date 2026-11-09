@@ -41,7 +41,8 @@ public sealed record M5aznImportSummary(
     int Unchanged,
     int Hidden,
     int Skipped,
-    IReadOnlyList<string> Problems)
+    IReadOnlyList<string> Problems,
+    bool AlreadyRunning = false)
 {
     public string Describe() =>
         $"{Found} found: {Created} new, {Updated} updated, {Unchanged} unchanged, {Hidden} hidden, {Skipped} skipped." +
@@ -141,8 +142,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         await using var importLock = await _locks.AcquireAsync("m5azn:import", TimeSpan.FromMinutes(45), ct);
         if (importLock is null)
         {
-            throw new DomainException(ErrorCodes.Conflict,
-                "An import from M5azn is already running (it also runs every hour on its own). Try again in a minute.");
+            // Not a failure: the products are being refreshed, which is what was asked for.
+            return new M5aznImportSummary(_clock.UtcNow, 0, 0, 0, 0, 0, 0, [], AlreadyRunning: true);
         }
 
         var problems = new List<string>();

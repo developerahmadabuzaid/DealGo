@@ -353,6 +353,8 @@ const AR = {
   'Leave empty to keep the saved password': 'اتركها فارغة للإبقاء على كلمة المرور المحفوظة',
   'Check sign-in': 'اختبار تسجيل الدخول',
   'M5azn holds this stock. It refreshes every hour.': 'الكمية تأتي من مخزن وتتحدث كل ساعة.',
+  'An import is already running. The products will update when it finishes.':
+    'الاستيراد يعمل الآن، وستتحدث المنتجات عند انتهائه.',
   'Source': 'المصدر', 'Any source': 'كل المصادر', 'Added by admin': 'أضافه المشرف',
   'From M5azn': 'من مخزن', 'Sort': 'الترتيب', 'Newest first': 'الأحدث أولاً', 'Oldest first': 'الأقدم أولاً',
   'Name (A-Z)': 'الاسم (أ-ي)', 'Price: low to high': 'السعر: من الأقل', 'Price: high to low': 'السعر: من الأعلى',
@@ -4182,6 +4184,11 @@ async function viewM5azn() {
     button.disabled = true;
     try {
       const r = await api('/admin/m5azn/import', { method: 'POST' });
+      if (r.alreadyRunning) {
+        toast('An import is already running. The products will update when it finishes.', 'ok');
+        button.disabled = false;
+        return;
+      }
       const line = `${r.found} · +${r.created} · ↻${r.updated} · ${r.hidden} ⨯ · ${r.skipped} !`;
       toast(r.problems && r.problems.length ? `${line} — ${r.problems[0]}` : line, r.problems && r.problems.length ? 'err' : 'ok');
       render();
