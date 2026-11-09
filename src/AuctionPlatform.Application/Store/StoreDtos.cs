@@ -208,7 +208,8 @@ public sealed record InventoryRowDto(
     int SoldQuantity,
     int LowStockThreshold,
     bool IsLowStock,
-    StoreProductStatus Status);
+    StoreProductStatus Status,
+    StoreProductSource Source);
 
 // ---- Orders ----
 

@@ -876,6 +876,42 @@ public class M5aznFulfilmentTests
     }
 
     [Fact]
+    public async Task A_very_long_list_is_read_far_and_hides_nothing_when_it_is_cut_off()
+    {
+        var beyond = NextRemoteId();
+        var page60 = NextRemoteId();
+        string[] pictures = ["https://cdn.m5azn.test/x.jpg", "https://cdn.m5azn.test/y.jpg"];
+
+        var first = new FakeM5azn();
+        first.ListPage(Catalog(beyond, $"B-{beyond}", "Past the limit", 10m, 5, pictures, null, "x"));
+
+        var longList = new FakeM5azn();
+        for (var page = 1; page <= 400; page++)
+        {
+            var id = page == 60 ? page60 : NextRemoteId();
+            longList.ListPage(Catalog(id, $"P-{id}", $"Page {page}", 10m, 5, pictures, null, "x"));
+        }
+        longList.ListPage(Catalog(beyond, $"B-{beyond}", "Past the limit", 10m, 5, pictures, null, "x"));
+
+        try
+        {
+            await ImportAsync(first);
+            var summary = await ImportAsync(longList);
+
+            (await ImportedAsync(page60)).Status.Should().Be(StoreProductStatus.Active,
+                "a list of more than 50 pages is read past the 50th");
+            summary.Problems.Should().Contain(x => x.Contains("longer than"));
+            summary.Hidden.Should().Be(0);
+            (await ImportedAsync(beyond)).Status.Should().Be(StoreProductStatus.Active,
+                "a product past the end of what was read has not left M5azn");
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
     public async Task A_product_without_a_sku_or_a_price_is_skipped_and_said_so()
     {
         var noSku = NextRemoteId();

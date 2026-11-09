@@ -525,7 +525,7 @@ public sealed class StoreAdminService : IStoreAdminService
             .Select(p => new InventoryRowDto(
                 p.Id, p.Name, p.Sku, p.StockQuantity, p.ReservedQuantity,
                 p.StockQuantity - p.ReservedQuantity, p.SoldQuantity, p.LowStockThreshold,
-                p.StockQuantity <= p.LowStockThreshold, p.Status))
+                p.StockQuantity <= p.LowStockThreshold, p.Status, p.Source))
             .ToListAsync(ct);
 
         return PagedResult<InventoryRowDto>.Create(items, query.Page, query.PageSize, total);
@@ -546,6 +546,13 @@ public sealed class StoreAdminService : IStoreAdminService
             .FromSqlRaw("""SELECT *, xmin FROM "StoreProducts" WHERE "Id" = {0} FOR UPDATE""", productId)
             .FirstOrDefaultAsync(ct)
             ?? throw new DomainException(ErrorCodes.ProductNotFound, "Product not found.");
+
+        // M5azn holds this stock and the next sync would overwrite any change made here.
+        if (product.Source == StoreProductSource.M5azn)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed,
+                "This product's stock comes from M5azn and cannot be changed here.");
+        }
 
         var before = product.StockQuantity;
         var after = before + request.Delta;

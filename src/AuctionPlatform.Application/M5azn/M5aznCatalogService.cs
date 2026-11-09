@@ -81,7 +81,8 @@ public interface IM5aznCatalogService
 
 public sealed class M5aznCatalogService : IM5aznCatalogService
 {
-    private const int MaxPages = 50;
+    /// <summary>A stop for a list that never ends. At 25 a page this is 10,000 products.</summary>
+    private const int MaxPages = 400;
 
     /// <summary>M5azn's product types, from its documentation; "local" is what it lists when none is named.</summary>
     private static readonly string[] ProductTypes = ["local", "global", "ali_express", "digital"];
@@ -137,7 +138,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
 
         // One import at a time, across servers: the button and the hourly sync otherwise change the
         // same products at once, and one of them is refused.
-        await using var importLock = await _locks.AcquireAsync("m5azn:import", TimeSpan.FromMinutes(20), ct);
+        await using var importLock = await _locks.AcquireAsync("m5azn:import", TimeSpan.FromMinutes(45), ct);
         if (importLock is null)
         {
             throw new DomainException(ErrorCodes.Conflict,
@@ -167,6 +168,11 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
 
             for (var page = 1; page <= MaxPages; page++)
             {
+                if (page > 1 && _options.CatalogRequestDelayMs > 0)
+                {
+                    await Task.Delay(Math.Min(_options.CatalogRequestDelayMs, 10_000), ct);
+                }
+
                 M5aznProductPage result;
                 try
                 {
@@ -209,6 +215,15 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
                 listed += result.Products.Count;
                 foreach (var product in result.Products) found.TryAdd(product.ProductId, product);
                 if (!result.HasMore || result.Products.Count == 0) break;
+
+                // Products past the last page read are not gone, so nothing may be hidden for
+                // being missing from this list.
+                if (page == MaxPages)
+                {
+                    listComplete = false;
+                    _logger.LogWarning("M5azn: the {Type} list is longer than {Pages} pages; the rest was not read.", type, MaxPages);
+                    Problem($"M5azn's {type} list is longer than {MaxPages} pages; the products after that were not read.");
+                }
             }
 
             perType.Add($"{type} {found.Count - before}");

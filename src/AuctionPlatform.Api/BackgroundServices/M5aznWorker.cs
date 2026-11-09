@@ -61,7 +61,7 @@ public sealed class M5aznWorker : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var locks = scope.ServiceProvider.GetRequiredService<IDistributedLockService>();
 
-                await using var handle = await locks.AcquireAsync("m5azn:worker", TimeSpan.FromMinutes(10), stoppingToken);
+                await using var handle = await locks.AcquireAsync("m5azn:worker", TimeSpan.FromMinutes(45), stoppingToken);
                 if (handle is null) continue;
 
                 var service = scope.ServiceProvider.GetRequiredService<IM5aznFulfilmentService>();

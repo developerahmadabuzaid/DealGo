@@ -352,6 +352,7 @@ const AR = {
   'Automatic sending': 'الإرسال التلقائي', 'Profit %': 'نسبة الربح %',
   'Leave empty to keep the saved password': 'اتركها فارغة للإبقاء على كلمة المرور المحفوظة',
   'Check sign-in': 'اختبار تسجيل الدخول',
+  'M5azn holds this stock. It refreshes every hour.': 'الكمية تأتي من مخزن وتتحدث كل ساعة.',
   'Source': 'المصدر', 'Any source': 'كل المصادر', 'Added by admin': 'أضافه المشرف',
   'From M5azn': 'من مخزن', 'Sort': 'الترتيب', 'Newest first': 'الأحدث أولاً', 'Oldest first': 'الأقدم أولاً',
   'Name (A-Z)': 'الاسم (أ-ي)', 'Price: low to high': 'السعر: من الأقل', 'Price: high to low': 'السعر: من الأعلى',
@@ -3915,7 +3916,12 @@ async function viewInventory() {
               ? h('span', { class: 'badge warn' }, `منخفض (≤${r.lowStockThreshold})`)
               : h('span', { class: 'badge ok' }, 'OK'),
           },
-          { label: '', render: (r) => h('button', { class: 'btn ghost sm', onclick: () => adjust(r) }, 'Adjust') },
+          {
+            label: '',
+            render: (r) => r.source === 'M5azn'
+              ? h('span', { class: 'badge', title: tr('M5azn holds this stock. It refreshes every hour.') }, 'From M5azn')
+              : h('button', { class: 'btn ghost sm', onclick: () => adjust(r) }, 'Adjust'),
+          },
         ],
         rows: data.items,
         page: data.page,
