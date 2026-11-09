@@ -123,7 +123,7 @@ public sealed class StoreCatalogService : IStoreCatalogService
                              (p.Description != null && p.Description.ToLower().Contains(term)));
         }
 
-        q = query.SortBy?.ToLowerInvariant() switch
+        var sorted = query.SortBy?.ToLowerInvariant() switch
         {
             "price" => query.SortDescending ? q.OrderByDescending(p => p.Price) : q.OrderBy(p => p.Price),
             "name" => query.SortDescending ? q.OrderByDescending(p => p.Name) : q.OrderBy(p => p.Name),
@@ -134,6 +134,10 @@ public sealed class StoreCatalogService : IStoreCatalogService
                     : 0),
             _ => q.OrderByDescending(p => p.CreatedAt)
         };
+
+        // Products that tie (an import stamps many with one time) need a fixed order, or the same
+        // product can land on two pages and another on none.
+        q = sorted.ThenBy(p => p.Id);
 
         var total = await q.LongCountAsync(ct);
         var items = await q.Skip(query.Skip).Take(query.PageSize).Select(Projection).ToListAsync(ct);

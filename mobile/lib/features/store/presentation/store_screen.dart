@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/errors/api_exception.dart';
 import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/app_header.dart';
@@ -110,49 +111,64 @@ class _StoreScreenState extends ConsumerState<StoreScreen> {
                 ref.invalidate(categoryProductsProvider((selectedSub ?? selected).id));
               }
             },
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 32),
-              children: [
-                if (mains.isNotEmpty)
-                  _CategoryTabs(
-                    categories: mains,
-                    selectedId: selected?.id,
-                    onSelect: (id) => setState(() => _categoryId = id),
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.only(bottom: 32),
+                  sliver: SliverMainAxisGroup(
+                    slivers: [
+                      if (mains.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: _CategoryTabs(
+                            categories: mains,
+                            selectedId: selected?.id,
+                            onSelect: (id) => setState(() => _categoryId = id),
+                          ),
+                        ),
+
+                      // One department, or the whole store.
+                      if (selected != null)
+                        _CategoryProducts(
+                          key: ValueKey(selected.id),
+                          category: selected,
+                          subcategories:
+                              home.categories.where((c) => c.parentId == selected.id).toList(),
+                          selectedSub: selectedSub,
+                          onSelectSub: (id) => setState(() => _categoryId = id ?? selected.id),
+                          artIndex: mains.indexOf(selected),
+                        )
+                      else
+                        SliverList.list(
+                          children: [
+                            const _StoreBanner(),
+
+                            // What is on offer comes first, everywhere. A shopper opening a shop is
+                            // looking for the price that is down today, not for the shelf plan.
+                            if (home.offers.isNotEmpty)
+                              _OfferGrid(title: t.offers, products: home.offers),
+
+                            _CollectionRow(home: home),
+                            if (mains.isNotEmpty)
+                              _DepartmentGrid(
+                                categories: mains,
+                                onSelect: (id) => setState(() => _categoryId = id),
+                              ),
+                            if (home.creditEligible.isNotEmpty)
+                              _ProductRow(
+                                title: t.buyWithShoppingCredit,
+                                products: home.creditEligible,
+                              ),
+                            if (home.featured.isNotEmpty)
+                              _ProductRow(title: t.featured, products: home.featured),
+                            if (home.newArrivals.isNotEmpty)
+                              _ProductRow(title: t.newArrivals, products: home.newArrivals),
+                            if (home.popular.isNotEmpty)
+                              _ProductRow(title: t.popular, products: home.popular),
+                          ],
+                        ),
+                    ],
                   ),
-
-                // One department, or the whole store.
-                if (selected != null)
-                  _CategoryProducts(
-                    key: ValueKey(selected.id),
-                    category: selected,
-                    subcategories:
-                        home.categories.where((c) => c.parentId == selected.id).toList(),
-                    selectedSub: selectedSub,
-                    onSelectSub: (id) => setState(() => _categoryId = id ?? selected.id),
-                    artIndex: mains.indexOf(selected),
-                  )
-                else ...[
-                  const _StoreBanner(),
-
-                  // What is on offer comes first, everywhere. A shopper opening a shop is looking
-                  // for the price that is down today, not for the shelf plan.
-                  if (home.offers.isNotEmpty) _OfferGrid(title: t.offers, products: home.offers),
-
-                  _CollectionRow(home: home),
-                  if (mains.isNotEmpty)
-                    _DepartmentGrid(
-                      categories: mains,
-                      onSelect: (id) => setState(() => _categoryId = id),
-                    ),
-                  if (home.creditEligible.isNotEmpty)
-                    _ProductRow(title: t.buyWithShoppingCredit, products: home.creditEligible),
-                  if (home.featured.isNotEmpty)
-                    _ProductRow(title: t.featured, products: home.featured),
-                  if (home.newArrivals.isNotEmpty)
-                    _ProductRow(title: t.newArrivals, products: home.newArrivals),
-                  if (home.popular.isNotEmpty)
-                    _ProductRow(title: t.popular, products: home.popular),
-                ],
+                ),
               ],
             ),
           );
@@ -519,7 +535,7 @@ class _CategoryProducts extends ConsumerWidget {
     // The main department's list already holds its sub-departments' products too.
     final shown = selectedSub ?? category;
     final async = ref.watch(categoryProductsProvider(shown.id));
-    final items = async.valueOrNull?.items;
+    final firstPage = async.valueOrNull;
 
     final chips = subcategories.isEmpty
         ? const SizedBox.shrink()
@@ -531,75 +547,196 @@ class _CategoryProducts extends ConsumerWidget {
           );
 
     // The banner and the chips stay put while a sub-department's products load, so nothing jumps.
-    if (items == null) {
+    if (firstPage == null) {
       if (async.hasError) {
-        return Column(
-          children: [
-            _DepartmentAd(category: category, artIndex: artIndex),
-          chips,
-            Padding(
-              padding: const EdgeInsets.all(AppTheme.space4),
-              child: Center(
-                child: TextButton.icon(
-                  onPressed: () => ref.invalidate(categoryProductsProvider(shown.id)),
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: Text(t.retry),
+        return SliverToBoxAdapter(
+          child: Column(
+            children: [
+              _DepartmentAd(category: category, artIndex: artIndex),
+              chips,
+              Padding(
+                padding: const EdgeInsets.all(AppTheme.space4),
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: () => ref.invalidate(categoryProductsProvider(shown.id)),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: Text(t.retry),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       }
 
-      return Column(
-        children: [
-          _DepartmentAd(category: category, artIndex: artIndex),
-          chips,
-          const Padding(
-            padding: EdgeInsets.all(AppTheme.space5),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-        ],
+      return SliverToBoxAdapter(
+        child: Column(
+          children: [
+            _DepartmentAd(category: category, artIndex: artIndex),
+            chips,
+            const Padding(
+              padding: EdgeInsets.all(AppTheme.space5),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
       );
     }
 
-    if (items.isEmpty) {
-      return Column(
-        children: [
-          _DepartmentAd(category: category, artIndex: artIndex),
-          chips,
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: AppTheme.space6),
-            child: EmptyState(icon: Icons.storefront_rounded),
-          ),
-        ],
+    if (firstPage.items.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Column(
+          children: [
+            _DepartmentAd(category: category, artIndex: artIndex),
+            chips,
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppTheme.space6),
+              child: EmptyState(icon: Icons.storefront_rounded),
+            ),
+          ],
+        ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Every department opens on its own advertisement, the way a shop puts its poster at the
-        // front of the aisle rather than halfway down it.
-        _DepartmentAd(category: category, artIndex: artIndex),
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Every department opens on its own advertisement, the way a shop puts its poster at
+              // the front of the aisle rather than halfway down it.
+              _DepartmentAd(category: category, artIndex: artIndex),
 
-        // Its sub-departments, right under the banner: "all", then each one.
-        chips,
+              // Its sub-departments, right under the banner: "all", then each one.
+              chips,
 
-        // Then this department's own offers, before its shelves.
-        _CategoryOffers(category: shown),
+              // Then this department's own offers, before its shelves.
+              _CategoryOffers(category: shown),
 
-        SectionHeader(
-          shown.name,
-          action: TextButton(
-            onPressed: () => context.push('/store/products?categoryId=${shown.id}'),
-            child: Text(t.seeAll),
+              SectionHeader(
+                shown.name,
+                action: TextButton(
+                  onPressed: () => context.push('/store/products?categoryId=${shown.id}'),
+                  child: Text(t.seeAll),
+                ),
+              ),
+            ],
           ),
         ),
-        GridView.builder(
-          padding: const EdgeInsets.fromLTRB(AppTheme.space3, 0, AppTheme.space3, AppTheme.space3),
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+        _PagedProductGrid(
+          firstPage: firstPage,
+          fetchPage: (page) => ref
+              .read(storeRepositoryProvider)
+              .products(categoryId: shown.id, page: page, pageSize: firstPage.pageSize),
+        ),
+      ],
+    );
+  }
+}
+
+/// A product grid that keeps going: near the end of what is shown, the next page is added under it.
+///
+/// A sliver, so the tiles are only built as they scroll into view however long the list gets.
+class _PagedProductGrid extends StatefulWidget {
+  const _PagedProductGrid({required this.firstPage, required this.fetchPage});
+
+  final Paged<StoreProduct> firstPage;
+  final Future<Paged<StoreProduct>> Function(int page) fetchPage;
+
+  @override
+  State<_PagedProductGrid> createState() => _PagedProductGridState();
+}
+
+class _PagedProductGridState extends State<_PagedProductGrid> {
+  final _items = <StoreProduct>[];
+  final _seen = <String>{};
+  int _nextPage = 2;
+  bool _loading = false;
+  ScrollPosition? _position;
+
+  bool get _hasMore => _nextPage <= widget.firstPage.totalPages;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(_PagedProductGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Another sub-department, or a pull to refresh: begin again from the new first page.
+    if (!identical(oldWidget.firstPage, widget.firstPage)) _start();
+  }
+
+  void _start() {
+    _items.clear();
+    _seen.clear();
+    _nextPage = 2;
+    _loading = false;
+    _add(widget.firstPage.items);
+    _checkAfterFrame();
+  }
+
+  /// Products added to the shop between two pages can push one onto the next page twice over.
+  void _add(List<StoreProduct> products) => _items.addAll(products.where((p) => _seen.add(p.id)));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final position = Scrollable.maybeOf(context)?.position;
+    if (identical(position, _position)) return;
+    _position?.removeListener(_check);
+    _position = position?..addListener(_check);
+  }
+
+  @override
+  void dispose() {
+    _position?.removeListener(_check);
+    super.dispose();
+  }
+
+  void _check() {
+    final position = _position;
+    if (position != null && position.hasContentDimensions && position.extentAfter < 600) {
+      _loadMore();
+    }
+  }
+
+  /// A page that does not fill the screen cannot be scrolled, so nothing else would ask for more.
+  void _checkAfterFrame() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted) _check();
+  });
+
+  Future<void> _loadMore() async {
+    if (_loading || !_hasMore) return;
+
+    final list = widget.firstPage;
+    final page = _nextPage;
+    setState(() => _loading = true);
+
+    try {
+      final next = await widget.fetchPage(page);
+      if (!mounted || !identical(list, widget.firstPage)) return;
+      setState(() {
+        _add(next.items);
+        _nextPage = next.items.isEmpty ? list.totalPages + 1 : page + 1;
+        _loading = false;
+      });
+      _checkAfterFrame();
+    } catch (_) {
+      // The next scroll tries again.
+      if (mounted && identical(list, widget.firstPage)) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SliverMainAxisGroup(
+    slivers: [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(AppTheme.space3, 0, AppTheme.space3, AppTheme.space3),
+        sliver: SliverGrid.builder(
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: 124,
             // A height, not a ratio: see ProductCard for why.
@@ -607,12 +744,19 @@ class _CategoryProducts extends ConsumerWidget {
             crossAxisSpacing: 7,
             mainAxisSpacing: 10,
           ),
-          itemCount: items.length,
-          itemBuilder: (_, i) => ProductCard(product: items[i]),
+          itemCount: _items.length,
+          itemBuilder: (_, i) => ProductCard(product: _items[i]),
         ),
-      ],
-    );
-  }
+      ),
+      if (_loading)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(AppTheme.space4),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+    ],
+  );
 }
 
 /// A main department's sub-departments as a row of chips: "all" first, then each one.
@@ -1109,7 +1253,11 @@ class StoreProductsScreen extends ConsumerStatefulWidget {
 
 class _StoreProductsScreenState extends ConsumerState<StoreProductsScreen> {
   late final _search = TextEditingController(text: widget.initialSearch);
-  late Future<dynamic> _future;
+  late Future<Paged<StoreProduct>> _future;
+
+  /// What the list on screen was searched for, which later pages must keep to even if the box has
+  /// been typed in since.
+  String? _query;
 
   @override
   void initState() {
@@ -1118,17 +1266,22 @@ class _StoreProductsScreenState extends ConsumerState<StoreProductsScreen> {
   }
 
   void _reload() {
-    _future = ref
-        .read(storeRepositoryProvider)
-        .products(
-          search: _search.text.trim().isEmpty ? null : _search.text.trim(),
-          categoryId: widget.categoryId,
-          onOfferOnly: widget.offersOnly,
-          shoppingCreditOnly: widget.creditOnly ? true : null,
-          sortBy: widget.offersOnly ? 'discount' : widget.sortBy,
-          pageSize: 40,
-        );
+    final typed = _search.text.trim();
+    _query = typed.isEmpty ? null : typed;
+    _future = _fetch(1);
   }
+
+  Future<Paged<StoreProduct>> _fetch(int page) => ref
+      .read(storeRepositoryProvider)
+      .products(
+        search: _query,
+        categoryId: widget.categoryId,
+        onOfferOnly: widget.offersOnly,
+        shoppingCreditOnly: widget.creditOnly ? true : null,
+        sortBy: widget.offersOnly ? 'discount' : widget.sortBy,
+        page: page,
+        pageSize: 40,
+      );
 
   @override
   void dispose() {
@@ -1178,24 +1331,18 @@ class _StoreProductsScreenState extends ConsumerState<StoreProductsScreen> {
                   );
                 }
 
-                final items = (snapshot.data as dynamic).items as List<StoreProduct>;
-                if (items.isEmpty) return const EmptyState(icon: Icons.storefront_rounded);
+                final firstPage = snapshot.requireData;
+                if (firstPage.items.isEmpty) {
+                  return const EmptyState(icon: Icons.storefront_rounded);
+                }
 
-                return GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppTheme.space3,
-                    0,
-                    AppTheme.space3,
-                    AppTheme.space6,
-                  ),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 124,
-                    mainAxisExtent: ProductCard.tileHeight,
-                    crossAxisSpacing: 7,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (_, i) => ProductCard(product: items[i]),
+                return CustomScrollView(
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.only(bottom: AppTheme.space5),
+                      sliver: _PagedProductGrid(firstPage: firstPage, fetchPage: _fetch),
+                    ),
+                  ],
                 );
               },
             ),
