@@ -791,6 +791,133 @@ public class M5aznFulfilmentTests
     }
 
     [Fact]
+    public async Task The_progress_of_an_import_can_be_read_while_it_runs_and_after()
+    {
+        var (first, second) = (NextRemoteId(), NextRemoteId());
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(first, $"PR-{first}", "First", 10m, 1, ["https://cdn.m5azn.test/p1.jpg", "https://cdn.m5azn.test/p2.jpg"], null, "x"));
+        m5azn.ListPage(Catalog(second, $"PR-{second}", "Second", 10m, 1, ["https://cdn.m5azn.test/p3.jpg", "https://cdn.m5azn.test/p4.jpg"], null, "x"));
+
+        try
+        {
+            await using var scope = _fixture.CreateScope(m5azn: m5azn);
+            var reader = scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>();
+
+            M5aznImportStatus? whileReadingPageTwo = null;
+            m5azn.OnListPage = async page =>
+            {
+                if (page == 2) whileReadingPageTwo = await reader.GetImportStatusAsync();
+            };
+
+            await using var importScope = _fixture.CreateScope(m5azn: m5azn);
+            var summary = await importScope.ServiceProvider.GetRequiredService<IM5aznCatalogService>().ImportAsync();
+
+            whileReadingPageTwo.Should().NotBeNull();
+            whileReadingPageTwo!.Running.Should().BeTrue();
+            whileReadingPageTwo.Phase.Should().Be(M5aznImportPhase.ReadingList);
+            whileReadingPageTwo.Trigger.Should().Be(M5aznImportTrigger.Schedule);
+            whileReadingPageTwo.Found.Should().BeGreaterThanOrEqualTo(1);
+            whileReadingPageTwo.StartedAt.Should().NotBeNull();
+
+            var after = await reader.GetImportStatusAsync();
+            after.Running.Should().BeFalse();
+            after.Phase.Should().Be(M5aznImportPhase.Finished);
+            after.Percent.Should().Be(100);
+            after.Summary!.Found.Should().Be(summary.Found);
+            after.Error.Should().BeNull();
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task The_button_starts_the_import_in_the_background_and_only_once()
+    {
+        var id = NextRemoteId();
+        var m5azn = new FakeM5azn();
+        m5azn.ListPage(Catalog(id, $"BTN-{id}", "Button", 10m, 1, ["https://cdn.m5azn.test/b1.jpg", "https://cdn.m5azn.test/b2.jpg"], null, "x"));
+
+        try
+        {
+            await using var scope = _fixture.CreateScope(m5azn: m5azn);
+            var catalog = scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>();
+
+            var started = await catalog.RequestImportAsync();
+            started.Running.Should().BeTrue();
+            started.AlreadyRunning.Should().BeFalse();
+            started.Phase.Should().Be(M5aznImportPhase.Starting);
+            started.Trigger.Should().Be(M5aznImportTrigger.Button);
+
+            (await catalog.RequestImportAsync()).AlreadyRunning.Should().BeTrue();
+
+            // What the background worker does with the request.
+            await catalog.RunRequestedImportAsync();
+
+            var after = await catalog.GetImportStatusAsync();
+            after.Running.Should().BeFalse();
+            after.Trigger.Should().Be(M5aznImportTrigger.Button);
+            after.Summary!.Found.Should().BeGreaterThanOrEqualTo(1);
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_requested_import_that_cannot_start_does_not_stay_on_the_page()
+    {
+        var m5azn = new FakeM5azn();
+
+        try
+        {
+            await using var scope = _fixture.CreateScope(m5azn: m5azn);
+            var catalog = scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>();
+            var locks = scope.ServiceProvider.GetRequiredService<IDistributedLockService>();
+
+            await catalog.RequestImportAsync();
+
+            // Another server is importing, without a status this server can see.
+            await using (await locks.AcquireAsync("m5azn:import", TimeSpan.FromMinutes(1)))
+            {
+                await catalog.RunRequestedImportAsync();
+            }
+
+            (await catalog.GetImportStatusAsync()).Running.Should().BeFalse();
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_failed_import_says_why_and_is_no_longer_running()
+    {
+        var m5azn = new FakeM5azn();
+        m5azn.OnListPage = _ => throw new HttpRequestException("M5azn answered 500.");
+
+        try
+        {
+            await using var scope = _fixture.CreateScope(m5azn: m5azn);
+            var catalog = scope.ServiceProvider.GetRequiredService<IM5aznCatalogService>();
+
+            await catalog.Invoking(c => c.ImportAsync()).Should().ThrowAsync<DomainException>();
+
+            var after = await catalog.GetImportStatusAsync();
+            after.Running.Should().BeFalse();
+            after.Phase.Should().Be(M5aznImportPhase.Failed);
+            after.Error.Should().Contain("could not be read");
+        }
+        finally
+        {
+            await ClearSettingsAsync();
+        }
+    }
+
+    [Fact]
     public async Task An_answer_that_cannot_be_read_changes_nothing()
     {
         var id = NextRemoteId();
@@ -1302,8 +1429,13 @@ public class M5aznFulfilmentTests
         /// <summary>Product types whose list cannot be read.</summary>
         public HashSet<string> FailingTypes { get; } = new();
 
-        public Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default, string? productType = null)
+        /// <summary>Called as each page of the list is asked for, with the page number.</summary>
+        public Func<int, Task>? OnListPage { get; set; }
+
+        public async Task<M5aznProductPage> GetMyProductsAsync(int page, long? categoryId = null, CancellationToken ct = default, string? productType = null)
         {
+            if (OnListPage is { } onListPage && productType is null && categoryId is null) await onListPage(page);
+
             if (productType is not null && FailingTypes.Contains(productType))
             {
                 throw new HttpRequestException($"M5azn answered 500 for {productType}.");
@@ -1314,10 +1446,10 @@ public class M5aznFulfilmentTests
             var all = page <= pages.Count
                 ? pages[page - 1] with { HasMore = page < pages.Count }
                 : new M5aznProductPage([], false, null);
-            if (categoryId is null || IgnoresCategoryFilter) return Task.FromResult(all);
+            if (categoryId is null || IgnoresCategoryFilter) return all;
 
             var ids = InCategory.TryGetValue(categoryId.Value, out var list) ? list : [];
-            return Task.FromResult(all with { Products = all.Products.Where(p => ids.Contains(p.ProductId)).ToList() });
+            return all with { Products = all.Products.Where(p => ids.Contains(p.ProductId)).ToList() };
         }
 
         public Task<M5aznCategoryList> GetCategoriesAsync(CancellationToken ct = default) =>

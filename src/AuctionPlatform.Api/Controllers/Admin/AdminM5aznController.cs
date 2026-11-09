@@ -64,13 +64,20 @@ public sealed class AdminM5aznController : ApiControllerBase
         Ok(await _catalog.SetProductProfitAsync(id, request.ProfitPercentage, ct));
 
     /// <summary>
-    /// Reads the seller's M5azn product list (read-only; nothing is ordered) and creates, updates or
-    /// hides the imported products. It also runs on its own every hour while M5azn is on.
+    /// Starts reading the seller's M5azn product list (read-only; nothing is ordered) to create,
+    /// update or hide the imported products. Answers at once; the import goes on in the background.
+    /// It also runs on its own every hour while M5azn is on.
     /// </summary>
     [HttpPost("import")]
     [Authorize(Policy = Permissions.StoreUpdateProduct)]
-    public async Task<ActionResult<M5aznImportSummary>> Import(CancellationToken ct) =>
-        Ok(await _catalog.ImportAsync(ct));
+    public async Task<ActionResult<M5aznImportStatus>> Import(CancellationToken ct) =>
+        Ok(await _catalog.RequestImportAsync(ct));
+
+    /// <summary>How the import is going, whether the button or the hourly run started it.</summary>
+    [HttpGet("import/status")]
+    [Authorize(Policy = Permissions.StoreRead)]
+    public async Task<ActionResult<M5aznImportStatus>> ImportStatus(CancellationToken ct) =>
+        Ok(await _catalog.GetImportStatusAsync(ct));
 
     /// <summary>The on/off switch, the seller account (never its password), the address and the profit percentage.</summary>
     [HttpGet("settings")]

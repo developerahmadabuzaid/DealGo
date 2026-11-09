@@ -808,6 +808,91 @@ button { font: inherit; cursor: pointer; }
   transition: width .5s var(--ease);
 }
 .progress.mini { height: 5px; margin-top: 5px; }
+
+/* The M5azn import, while it runs on the server. */
+.import-status {
+  margin: var(--s3) 0;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--accent-tint);
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+.import-status[hidden] { display: none; }
+.import-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s2); }
+.import-head strong { flex: 1; font-size: 13.5px; }
+.import-spinner {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 2px solid var(--accent-tint);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: import-spin .8s linear infinite;
+}
+.import-bar { position: relative; height: 10px; background: var(--surface); }
+.import-bar .progress-fill {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+}
+.import-bar .progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent);
+  animation: import-shine 1.6s ease-in-out infinite;
+}
+.import-bar.indeterminate .progress-fill {
+  width: 35%;
+  animation: import-slide 1.5s ease-in-out infinite;
+}
+.import-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--s3);
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.import-steps[hidden] { display: none; }
+.import-steps li { display: flex; align-items: center; gap: 5px; }
+.import-steps li::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.import-steps li.active { color: var(--accent-text); font-weight: 700; }
+.import-steps li.active::before { background: var(--brand); box-shadow: 0 0 0 3px var(--accent-ring); }
+.import-steps li.done { color: var(--ok-text); }
+.import-steps li.done::before { background: var(--ok); }
+.import-meta { margin-top: var(--s2); }
+.import-status.is-done { border-color: var(--ok); background: var(--ok-soft); }
+.import-status.is-done .import-spinner,
+.import-status.is-failed .import-spinner { display: none; }
+.import-status.is-done .progress-fill { background: var(--ok); }
+.import-status.is-done .progress-fill::after,
+.import-status.is-failed .progress-fill::after { display: none; }
+.import-status.is-failed { border-color: var(--border-strong); background: var(--surface-2); }
+.import-status.is-failed .import-bar { display: none; }
+.import-status.is-failed .import-meta { color: var(--text); margin-top: 0; }
+
+/* Fills from the reader's side: the fill already starts on the right in Arabic. */
+[dir="rtl"] .progress.import-bar { transform: none; }
+[dir="rtl"] .import-bar .progress-fill::after { animation-direction: reverse; }
+[dir="rtl"] .import-bar.indeterminate .progress-fill { animation-name: import-slide-rtl; }
+
+@keyframes import-slide-rtl { from { transform: translateX(110%); } to { transform: translateX(-300%); } }
+@keyframes import-spin { to { transform: rotate(360deg); } }
+@keyframes import-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes import-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) {
+  .import-spinner, .import-bar .progress-fill, .import-bar .progress-fill::after { animation: none; }
+}
+
 .progress-pct { font-size: 11.5px; color: var(--muted); margin-top: 5px; direction: ltr; }
 
 .cell-progress { min-width: 108px; }

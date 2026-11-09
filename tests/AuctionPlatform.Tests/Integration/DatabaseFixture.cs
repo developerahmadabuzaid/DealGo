@@ -180,6 +180,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
         services.AddSingleton<IM5aznAccountProvider, M5aznAccountProvider>();
         services.AddScoped<IM5aznFulfilmentService, M5aznFulfilmentService>();
+        services.AddSingleton<IM5aznImportQueue, AuctionPlatform.Api.BackgroundServices.M5aznImportQueue>();
         services.AddScoped<IM5aznCatalogService, M5aznCatalogService>();
 
         return services.BuildServiceProvider().CreateAsyncScope();

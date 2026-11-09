@@ -63,7 +63,16 @@ public sealed record M5aznProductProfitRequest(decimal? ProfitPercentage);
 public interface IM5aznCatalogService
 {
     /// <summary>Reads the seller's list (read-only) and creates, updates or hides the imported products.</summary>
-    Task<M5aznImportSummary> ImportAsync(CancellationToken ct = default);
+    Task<M5aznImportSummary> ImportAsync(CancellationToken ct = default, M5aznImportTrigger trigger = M5aznImportTrigger.Schedule);
+
+    /// <summary>Starts an import in the background and answers at once. Refused while M5azn is off.</summary>
+    Task<M5aznImportStatus> RequestImportAsync(CancellationToken ct = default);
+
+    /// <summary>Runs the import <see cref="RequestImportAsync"/> asked for. Called by the background worker.</summary>
+    Task RunRequestedImportAsync(CancellationToken ct = default);
+
+    /// <summary>How the current or the latest import went.</summary>
+    Task<M5aznImportStatus> GetImportStatusAsync(CancellationToken ct = default);
 
     Task<PagedResult<M5aznImportedProductDto>> GetImportedProductsAsync(M5aznProductQuery query, CancellationToken ct = default);
 
@@ -91,6 +100,21 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
     private const int MaxProblems = 12;
     private const int MaxCategoryCalls = 150;
 
+    private const string StatusKey = "m5azn:import:status";
+
+    /// <summary>Renewed at every step, so a run that died with its server stops showing as running.</summary>
+    private static readonly TimeSpan RunningStatusLifetime = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan FinishedStatusLifetime = TimeSpan.FromHours(1);
+
+    // Where each step ends on the progress bar. Reading the list is most of an import's time.
+    private const int ListEndsAt = 60;
+    private const int DetailsEndAt = 75;
+    private const int CategoriesEndAt = 88;
+    private const int SavingAt = 92;
+
+    /// <summary>The run this instance is doing; the service is made anew for each import.</summary>
+    private M5aznImportStatus _run = M5aznImportStatus.Idle;
+
     /// <summary>Pictures of M5azn's categories by name, for the store categories an import makes.</summary>
     private Dictionary<string, string> _categoryImages = new(StringComparer.OrdinalIgnoreCase);
 
@@ -101,6 +125,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
     private readonly ICacheService _cache;
     private readonly IDateTimeProvider _clock;
     private readonly IDistributedLockService _locks;
+    private readonly IM5aznImportQueue _queue;
     private readonly M5aznOptions _options;
     private readonly ILogger<M5aznCatalogService> _logger;
 
@@ -112,6 +137,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         ICacheService cache,
         IDateTimeProvider clock,
         IDistributedLockService locks,
+        IM5aznImportQueue queue,
         IOptions<M5aznOptions> options,
         ILogger<M5aznCatalogService> logger)
     {
@@ -122,13 +148,53 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         _cache = cache;
         _clock = clock;
         _locks = locks;
+        _queue = queue;
         _options = options.Value;
         _logger = logger;
     }
 
     // ================================================================ import
 
-    public async Task<M5aznImportSummary> ImportAsync(CancellationToken ct = default)
+    public async Task<M5aznImportStatus> RequestImportAsync(CancellationToken ct = default)
+    {
+        await RequireActiveAccountAsync(ct);
+
+        var current = await GetImportStatusAsync(ct);
+        if (current.Running) return current with { AlreadyRunning = true };
+
+        // Published before the request is queued, so the worker's own progress is never overwritten.
+        var now = _clock.UtcNow;
+        var starting = new M5aznImportStatus(true, M5aznImportTrigger.Button, M5aznImportPhase.Starting, 0, 0, 0, 0, now, null, null, null);
+        await _cache.SetAsync(StatusKey, starting, RunningStatusLifetime, ct);
+
+        return _queue.TryRequest() ? starting : starting with { AlreadyRunning = true };
+    }
+
+    public async Task RunRequestedImportAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await ImportAsync(ct, M5aznImportTrigger.Button);
+        }
+        finally
+        {
+            // Nothing ran (M5azn was switched off, or another server was importing): the page must
+            // not go on showing an import that is about to start.
+            var status = await _cache.GetAsync<M5aznImportStatus>(StatusKey, CancellationToken.None);
+            if (status?.Phase == M5aznImportPhase.Starting) await _cache.RemoveAsync(StatusKey, CancellationToken.None);
+        }
+    }
+
+    public async Task<M5aznImportStatus> GetImportStatusAsync(CancellationToken ct = default)
+    {
+        var status = await _cache.GetAsync<M5aznImportStatus>(StatusKey, ct);
+        if (status is null) return M5aznImportStatus.Idle;
+
+        var end = status.FinishedAt ?? _clock.UtcNow;
+        return status with { ElapsedSeconds = status.StartedAt is { } start ? Math.Max(0, (int)(end - start).TotalSeconds) : 0 };
+    }
+
+    private async Task<M5aznAccount> RequireActiveAccountAsync(CancellationToken ct)
     {
         var account = await _account.RefreshAsync(ct: ct);
         if (!account.IsActive || !_client.IsEnabled)
@@ -136,6 +202,26 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             throw new DomainException(ErrorCodes.ServiceUnavailable,
                 "M5azn is switched off, or its seller account is missing. Set both on the M5azn page.");
         }
+
+        return account;
+    }
+
+    /// <summary>
+    /// Publishes where the import is. Never with the import's own token: a stopping import must
+    /// still be able to say so.
+    /// </summary>
+    private async Task ReportAsync(M5aznImportPhase phase, int? percent, int? found = null, int stepDone = 0, int stepTotal = 0)
+    {
+        _run = _run with { Phase = phase, Percent = percent, Found = found ?? _run.Found, StepDone = stepDone, StepTotal = stepTotal };
+        await _cache.SetAsync(StatusKey, _run, RunningStatusLifetime, CancellationToken.None);
+    }
+
+    private static int Between(int from, int to, int done, int total) =>
+        from + (to - from) * Math.Clamp(done, 0, total) / Math.Max(total, 1);
+
+    public async Task<M5aznImportSummary> ImportAsync(CancellationToken ct = default, M5aznImportTrigger trigger = M5aznImportTrigger.Schedule)
+    {
+        var account = await RequireActiveAccountAsync(ct);
 
         // One import at a time, across servers: the button and the hourly sync otherwise change the
         // same products at once, and one of them is refused.
@@ -145,6 +231,49 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             // Not a failure: the products are being refreshed, which is what was asked for.
             return new M5aznImportSummary(_clock.UtcNow, 0, 0, 0, 0, 0, 0, [], AlreadyRunning: true);
         }
+
+        _run = new M5aznImportStatus(true, trigger, M5aznImportPhase.ReadingList, null, 0, 0, 0, _clock.UtcNow, null, null, null);
+        await ReportAsync(M5aznImportPhase.ReadingList, null);
+
+        try
+        {
+            var summary = await RunImportAsync(account, ct);
+            await FinishRunAsync(M5aznImportPhase.Finished, summary, null);
+            return summary;
+        }
+        catch (Exception ex)
+        {
+            await FinishRunAsync(M5aznImportPhase.Failed, null, ex switch
+            {
+                DomainException => ex.Message,
+                OperationCanceledException => "The import stopped because the server restarted. It runs again on its own.",
+                _ => "The import failed. The server log has the details."
+            });
+            throw;
+        }
+    }
+
+    private async Task FinishRunAsync(M5aznImportPhase phase, M5aznImportSummary? summary, string? error)
+    {
+        _run = _run with
+        {
+            Running = false,
+            Phase = phase,
+            Percent = phase == M5aznImportPhase.Finished ? 100 : _run.Percent,
+            StepDone = 0,
+            StepTotal = 0,
+            FinishedAt = _clock.UtcNow,
+            Summary = summary,
+            Error = error
+        };
+        await _cache.SetAsync(StatusKey, _run, FinishedStatusLifetime, CancellationToken.None);
+    }
+
+    private async Task<M5aznImportSummary> RunImportAsync(M5aznAccount account, CancellationToken ct)
+    {
+        // What the last import left is the best guess at how long the list is; the first import has none.
+        var expected = await _db.StoreProducts.AsNoTracking()
+            .CountAsync(p => p.Source == StoreProductSource.M5azn && p.M5aznProductId != null && p.M5aznRemovedAt == null, ct);
 
         var problems = new List<string>();
         void Problem(string text)
@@ -215,6 +344,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
                 if (result.Problem is not null) Problem(result.Problem);
                 listed += result.Products.Count;
                 foreach (var product in result.Products) found.TryAdd(product.ProductId, product);
+                await ReportAsync(M5aznImportPhase.ReadingList,
+                    expected > 0 ? Between(0, ListEndsAt - 2, found.Count, expected) : null, found.Count);
                 if (!result.HasMore || result.Products.Count == 0) break;
 
                 // Products past the last page read are not gone, so nothing may be hidden for
@@ -241,15 +372,20 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
                 .ToListAsync(ct))
             .ToDictionary(p => p.Id);
 
+        bool NeedsDetails(long id, M5aznCatalogProduct item) =>
+            !(stored.TryGetValue(id, out var known) && known.Pictures >= 2 && known.HasDescription)
+            && !(item.Images.Count >= 2 && item.Description is not null && item.Price is not null && item.Sku is not null);
+
         var detailed = new HashSet<long>();
         var detailCalls = 0;
+        var detailsToRead = Math.Min(MaxDetailCalls, found.Count(p => NeedsDetails(p.Key, p.Value)));
         foreach (var id in found.Keys.ToList())
         {
             var item = found[id];
-            var complete = stored.TryGetValue(id, out var known) && known.Pictures >= 2 && known.HasDescription;
-            var listIsEnough = item.Images.Count >= 2 && item.Description is not null && item.Price is not null && item.Sku is not null;
-            if (complete || listIsEnough) continue;
+            if (!NeedsDetails(id, item)) continue;
             if (detailCalls >= MaxDetailCalls) break;
+            await ReportAsync(M5aznImportPhase.ReadingDetails,
+                Between(ListEndsAt, DetailsEndAt, detailCalls, detailsToRead), null, detailCalls, detailsToRead);
 
             try
             {
@@ -284,6 +420,7 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
 
         // ---- apply; once more from fresh data if a product was changed meanwhile (staff editing
         // it, say): what M5azn said is still in hand, so it is not asked again.
+        await ReportAsync(M5aznImportPhase.Saving, SavingAt);
         var now = _clock.UtcNow;
         var problemsBefore = problems.Count;
         (int Created, int Updated, int Unchanged, int Hidden, int Skipped) counts;
@@ -611,6 +748,8 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
             return;
         }
 
+        await ReportAsync(M5aznImportPhase.Categories, DetailsEndAt);
+
         M5aznCategoryList list;
         try
         {
@@ -673,8 +812,12 @@ public sealed class M5aznCatalogService : IM5aznCatalogService
         if (missing.Count == 0) return;
 
         var calls = 0;
+        var callsExpected = Math.Min(MaxCategoryCalls, missing.Count);
         async Task PaceAsync()
         {
+            await ReportAsync(M5aznImportPhase.Categories,
+                Between(DetailsEndAt, CategoriesEndAt, calls, callsExpected), null, Math.Min(calls, callsExpected), callsExpected);
+
             // Paced: M5azn answers 429 when questions come too fast.
             if (calls++ > 0 && _options.CatalogRequestDelayMs > 0)
             {

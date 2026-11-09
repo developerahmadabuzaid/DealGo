@@ -355,6 +355,12 @@ const AR = {
   'M5azn holds this stock. It refreshes every hour.': 'الكمية تأتي من مخزن وتتحدث كل ساعة.',
   'An import is already running. The products will update when it finishes.':
     'الاستيراد يعمل الآن، وستتحدث المنتجات عند انتهائه.',
+  'Importing…': 'جارٍ الاستيراد…', 'Importing products from M5azn': 'جارٍ استيراد المنتجات من مخزن',
+  'Import finished': 'اكتمل الاستيراد', 'The import did not finish': 'لم يكتمل الاستيراد',
+  'Reading the list': 'قراءة القائمة', 'Product details': 'تفاصيل المنتجات', 'Categories': 'الأقسام',
+  'Saving': 'الحفظ', 'products found': 'منتج تم العثور عليه',
+  'Started from the dashboard': 'بدأ من لوحة التحكم', 'Automatic hourly import': 'استيراد تلقائي كل ساعة',
+  'Time': 'الوقت',
   'Source': 'المصدر', 'Any source': 'كل المصادر', 'Added by admin': 'أضافه المشرف',
   'From M5azn': 'من مخزن', 'Sort': 'الترتيب', 'Newest first': 'الأحدث أولاً', 'Oldest first': 'الأقدم أولاً',
   'Name (A-Z)': 'الاسم (أ-ي)', 'Price: low to high': 'السعر: من الأقل', 'Price: high to low': 'السعر: من الأعلى',
@@ -4159,12 +4165,13 @@ async function viewM5azn() {
   const productParams = new URLSearchParams({ page: pq.page, pageSize: 20 });
   if (pq.search) productParams.set('search', pq.search);
 
-  const [o, data, products, settings] = await Promise.all([
+  let [o, data, products, settings, importStatus] = await Promise.all([
     api('/admin/m5azn/overview'),
     api(`/admin/m5azn/shipments?${params}`),
     api(`/admin/m5azn/products?${productParams}`),
     // Only staff who may change store settings see the account; for the others this is null.
     api('/admin/m5azn/settings').catch(() => null),
+    api('/admin/m5azn/import/status').catch(() => null),
   ]);
 
   const text = (v) => document.createTextNode(v ?? '');
@@ -4179,22 +4186,116 @@ async function viewM5azn() {
   const status = h('select', {}, h('option', { value: '' }, 'Any status'),
     ...M5AZN_STATUSES.map((s) => h('option', { value: s, selected: s === q.status ? '' : null }, s)));
 
-  // Reads the seller's list from M5azn (nothing is ordered) and creates, updates or hides products.
-  const runImport = async (button) => {
-    button.disabled = true;
-    try {
-      const r = await api('/admin/m5azn/import', { method: 'POST' });
-      if (r.alreadyRunning) {
-        toast('An import is already running. The products will update when it finishes.', 'ok');
-        button.disabled = false;
-        return;
-      }
+  // The import runs on the server, started here or by the hourly run. Everything below only reads
+  // how it is going, so the bar is right when this page is closed and opened again.
+  const importTitle = h('strong', {});
+  const importFigure = h('span', { class: 'progress-figure' });
+  const importFill = h('div', { class: 'progress-fill' });
+  const importBar = h('div', {
+    class: 'progress import-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
+  }, importFill);
+  const importStepRow = h('ol', { class: 'import-steps' });
+  const importMeta = h('div', { class: 'hint import-meta' });
+  const importPanel = h('div', { class: 'import-status', hidden: '' },
+    h('div', { class: 'import-head' }, h('span', { class: 'import-spinner', 'aria-hidden': 'true' }), importTitle, importFigure),
+    importBar, importStepRow, importMeta);
+  const importButton = h('button', { class: 'btn sm', onclick: () => runImport() }, 'Import from M5azn');
+
+  const IMPORT_STEPS = [
+    ['ReadingList', 'Reading the list'],
+    ['ReadingDetails', 'Product details'],
+    ['Categories', 'Categories'],
+    ['Saving', 'Saving'],
+  ];
+
+  const paintImport = (s, justFinished) => {
+    const running = !!(s && s.running);
+    const failed = !!(s && s.phase === 'Failed');
+    importButton.disabled = running;
+    importButton.textContent = tr(running ? 'Importing…' : 'Import from M5azn');
+    importPanel.hidden = !(running || failed || justFinished);
+    if (importPanel.hidden) return;
+
+    importPanel.classList.toggle('is-done', !!justFinished && !failed);
+    importPanel.classList.toggle('is-failed', failed);
+
+    const unknown = running && s.percent == null;
+    const percent = justFinished && !failed ? 100 : (s.percent ?? 0);
+    importBar.classList.toggle('indeterminate', unknown);
+    importFill.style.width = unknown ? '' : `${percent}%`;
+    if (unknown) importBar.removeAttribute('aria-valuenow'); else importBar.setAttribute('aria-valuenow', String(percent));
+    importFigure.textContent = unknown || failed ? '' : `${percent}%`;
+
+    importTitle.textContent = tr(failed ? 'The import did not finish' : running ? 'Importing products from M5azn' : 'Import finished');
+    importBar.setAttribute('aria-label', importTitle.textContent);
+
+    const at = IMPORT_STEPS.findIndex(([phase]) => phase === s.phase);
+    importStepRow.hidden = !running;
+    importStepRow.replaceChildren(...IMPORT_STEPS.map(([, label], i) =>
+      h('li', { class: i < at ? 'done' : i === at ? 'active' : '' }, label)));
+
+    const elapsed = `${Math.floor(s.elapsedSeconds / 60)}:${String(s.elapsedSeconds % 60).padStart(2, '0')}`;
+    importMeta.replaceChildren(...(failed
+      ? [text(s.error)]
+      : [
+          text([
+            s.found ? `${num(s.found)} ${tr('products found')}` : null,
+            s.stepTotal ? `${num(s.stepDone)} / ${num(s.stepTotal)}` : null,
+            tr(s.trigger === 'Button' ? 'Started from the dashboard' : 'Automatic hourly import'),
+            `${tr('Time')} ${elapsed}`,
+          ].filter(Boolean).join(' · ')),
+        ]));
+  };
+
+  let importRunning = false;
+  let importTimer = null;
+  let importHideTimer = null;
+  const IMPORT_POLL_RUNNING_MS = 2000;
+  const IMPORT_POLL_IDLE_MS = 20000;
+  const importPollId = (state.m5aznImportPoll = (state.m5aznImportPoll || 0) + 1);
+  const isCurrentImportPoll = () => importPollId === state.m5aznImportPoll;
+
+  const applyImport = (s) => {
+    const finished = importRunning && !s.running;
+    importRunning = !!s.running;
+    paintImport(s, finished);
+    if (!finished) return;
+
+    if (s.phase === 'Failed') {
+      toast(s.error || 'The import did not finish', 'err');
+      return;
+    }
+    const r = s.summary;
+    if (r) {
+      const problem = r.problems && r.problems.length ? r.problems[0] : null;
       const line = `${r.found} · +${r.created} · ↻${r.updated} · ${r.hidden} ⨯ · ${r.skipped} !`;
-      toast(r.problems && r.problems.length ? `${line} — ${r.problems[0]}` : line, r.problems && r.problems.length ? 'err' : 'ok');
-      render();
+      toast(problem ? `${line} — ${problem}` : line, problem ? 'err' : 'ok');
+    }
+    refreshImported();
+    clearTimeout(importHideTimer);
+    importHideTimer = setTimeout(() => { if (!importRunning) paintImport(s, false); }, 5000);
+  };
+
+  const watchImport = async () => {
+    if (!isCurrentImportPoll() || !importPanel.isConnected) return;
+    const s = await api('/admin/m5azn/import/status').catch(() => null);
+    if (!isCurrentImportPoll()) return;
+    if (s) applyImport(s);
+    importTimer = setTimeout(watchImport, importRunning ? IMPORT_POLL_RUNNING_MS : IMPORT_POLL_IDLE_MS);
+  };
+
+  // Reads the seller's list from M5azn (nothing is ordered) and creates, updates or hides products.
+  const runImport = async () => {
+    importButton.disabled = true;
+    try {
+      const s = await api('/admin/m5azn/import', { method: 'POST' });
+      if (s.alreadyRunning) toast('An import is already running. The products will update when it finishes.', 'ok');
+      applyImport(s);
+      clearTimeout(importTimer);
+      importTimer = setTimeout(watchImport, IMPORT_POLL_RUNNING_MS);
     } catch (e) {
       toast(e.message, 'err');
-      button.disabled = false;
+      importButton.disabled = importRunning;
     }
   };
 
@@ -4228,10 +4329,10 @@ async function viewM5azn() {
   const productsCard = () => h('div', { class: 'card' },
     h('div', { class: 'toolbar', style: 'justify-content:space-between' },
       h('h3', {}, 'Products from M5azn'),
-      o.enabled && o.configured
-        ? h('button', { class: 'btn sm', onclick: (e) => runImport(e.currentTarget) }, 'Import from M5azn') : null),
+      o.enabled && o.configured ? importButton : null),
     h('p', { class: 'hint' },
       'Imported automatically from your M5azn seller account every hour. Products you add in the dashboard are never shown here and never go to M5azn.'),
+    importPanel,
     h('div', { class: 'hint' }, 'Last import', ': ',
       o.lastImportAt ? when(o.lastImportAt) : 'Never imported yet.',
       o.lastImportSummary ? h('div', { class: 'mono', style: 'white-space:pre-wrap;margin-top:4px' }, text(o.lastImportSummary)) : null),
@@ -4324,17 +4425,41 @@ async function viewM5azn() {
         settings.hasPassword ? h('button', { class: 'btn ghost', onclick: check }, 'Check sign-in') : null));
   };
 
+  const kpisRow = () => h('div', { class: 'kpi-grid cols-5' },
+    kpi('Waiting for approval', num(c.AwaitingApproval || 0), false, { icon: 'clock' }),
+    kpi('On the way', num((c.Submitted || 0) + (c.Processing || 0) + (c.Shipped || 0)), false, { icon: 'box' }),
+    kpi('Delivered', num(c.Delivered || 0), false, { icon: 'check' }),
+    kpi('Failed', num(c.Failed || 0), false, { icon: 'alert' }),
+    kpi('Imported products', num(o.importedProducts), false, { icon: 'tag' }));
+
+  let productsEl = productsCard();
+  let kpisEl = kpisRow();
+
+  // Only the products and their count: the import can end at any moment, and redrawing the whole
+  // page then would wipe settings being typed. Left alone while a price is being typed in the table.
+  async function refreshImported() {
+    if (productsEl.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+    try {
+      [o, products] = await Promise.all([api('/admin/m5azn/overview'), api(`/admin/m5azn/products?${productParams}`)]);
+    } catch { return; }
+    if (!isCurrentImportPoll()) return;
+    const nextProducts = productsCard();
+    const nextKpis = kpisRow();
+    productsEl.replaceWith(nextProducts);
+    kpisEl.replaceWith(nextKpis);
+    productsEl = nextProducts;
+    kpisEl = nextKpis;
+  }
+
+  applyImport(importStatus || { running: false });
+  importTimer = setTimeout(watchImport, importRunning ? IMPORT_POLL_RUNNING_MS : IMPORT_POLL_IDLE_MS);
+
   return h('div', {},
     pageHead('M5azn', 'Store products M5azn packs and delivers from its warehouse.'),
     h('div', { class: 'card' }, h('div', { class: o.enabled && o.configured ? 'hint' : 'err-text' }, stateLine)),
     settingsCard(),
-    productsCard(),
-    h('div', { class: 'kpi-grid cols-5' },
-      kpi('Waiting for approval', num(c.AwaitingApproval || 0), false, { icon: 'clock' }),
-      kpi('On the way', num((c.Submitted || 0) + (c.Processing || 0) + (c.Shipped || 0)), false, { icon: 'box' }),
-      kpi('Delivered', num(c.Delivered || 0), false, { icon: 'check' }),
-      kpi('Failed', num(c.Failed || 0), false, { icon: 'alert' }),
-      kpi('Imported products', num(o.importedProducts), false, { icon: 'tag' })),
+    productsEl,
+    kpisEl,
     h('div', { class: 'card' },
       h('h3', {}, 'Shipments'),
       h('div', { class: 'toolbar' }, search, status,

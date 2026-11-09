@@ -117,6 +117,10 @@ Environment variables (or user secrets in development):
    added show as *مضاف مسبقاً*.
 2. On **Store → M5azn**, press **Import from M5azn**. It only reads your product list (nothing is
    ordered) and says what it did: found, new, updated, hidden, skipped, and any problem in words.
+   The import runs on the server: a progress bar shows how it is going and the button stays
+   disabled until it ends, also for the hourly run and when the page is closed and opened again.
+   Closing the page does not stop it. Until a first import has finished the list's length is
+   unknown, so during that step the bar moves without a percentage.
 3. The products appear in the store at once, under M5azn's categories, priced at M5azn's price
    plus the profit percentage. After that the import runs every hour on its own.
 
@@ -300,6 +304,7 @@ When the real answers are known, `M5aznClient` (`src/AuctionPlatform.Infrastruct
 | `Domain/Entities/M5aznSettings.cs` | The dashboard's settings row. `StoreProduct.M5aznCostPrice` keeps M5azn's price. Migration `M5aznSettingsAndProfit`. |
 | `StoreProduct.Source`, `DeliveryTime`, `M5aznSyncedAt`, `M5aznRemovedAt` | Imported or added in the dashboard, and the import's bookkeeping. Migration `M5aznProductImport`. |
 | `Application/M5azn/M5aznCatalogService.cs` | The import, the imported products list, re-pricing. |
+| `Application/M5azn/M5aznImportProgress.cs`, `Api/BackgroundServices/M5aznImportWorker.cs` | The import's progress, read by `GET /admin/m5azn/import/status`, and the worker that runs an import asked for with the button. |
 | `Application/M5azn/` | `IM5aznClient`, `M5aznFulfilmentService` (pick up, send, follow, stock, prices, settings, admin and customer reads), `M5aznStatusMap`, `M5aznAccount` (the settings in effect and the pricing rule). |
 | `Infrastructure/Services/M5aznAccountProvider.cs`, `AesSecretProtector.cs` | Which settings are in effect, and the password's encryption. |
 | `Infrastructure/Services/M5aznClient.cs` | The typed `HttpClient`. |
