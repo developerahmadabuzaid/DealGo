@@ -204,7 +204,7 @@ class EndedAuctionCard extends StatelessWidget {
                                       winner == null
                                           ? t.noWinner
                                           : Fmt.name(winner),
-                                      maxLines: 1,
+                                      maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: theme.textTheme.bodySmall
                                           ?.copyWith(
@@ -759,7 +759,7 @@ class _WinnerBanner extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   bid.isMe ? t.you : Fmt.name(bid.displayName),
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
@@ -850,7 +850,7 @@ class _BidRow extends StatelessWidget {
               children: [
                 Text(
                   mine ? t.you : Fmt.name(bid.displayName),
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,

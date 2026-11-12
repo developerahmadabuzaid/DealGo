@@ -561,7 +561,7 @@ class _WinnerCard extends StatelessWidget {
                             const SizedBox(height: 2),
                             Text(
                               entry.isMe ? t.you : Fmt.name(entry.displayName),
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodySmall?.copyWith(
                                 fontWeight: FontWeight.w800,
@@ -634,7 +634,7 @@ class _StandingRow extends StatelessWidget {
                     Flexible(
                       child: Text(
                         Fmt.name(entry.displayName),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w700,

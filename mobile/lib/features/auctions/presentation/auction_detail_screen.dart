@@ -44,6 +44,11 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
   bool _arenaShown = false;
   bool _arenaOpen = false;
 
+  /// Once this page has seen that the user is in the auction, it stays that way. Joining cannot be
+  /// undone, and a single answer that came back signed out (a token refresh refused at the busy
+  /// moment the auction starts) used to swap the bid button for the join screen.
+  bool _knownJoined = false;
+
   Future<void> _openArena(String title) async {
     if (_arenaOpen || !mounted) return;
     _arenaOpen = true;
@@ -63,8 +68,10 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
   void initState() {
     super.initState();
     // Repaints the countdown once a second; the value itself comes from the server's end time.
+    // Not while the bidding screen covers it: repainting the whole page underneath every second
+    // took time from the screen the user is bidding on.
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (mounted && !_arenaOpen) setState(() {});
     });
   }
 
@@ -126,7 +133,11 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
       data: (detail) {
         final snapshot = live.snapshot;
         final isLive = snapshot?.isLive ?? detail.isLive;
-        final canEnterArena = isLive && snapshot != null && detail.hasJoined;
+        // The live state names the user's participant id when they are in the auction, so either
+        // answer is enough.
+        final joined = _knownJoined =
+            _knownJoined || detail.hasJoined || snapshot?.myParticipantId != null;
+        final canEnterArena = isLive && snapshot != null && joined;
 
         if (canEnterArena && !_arenaShown) {
           _arenaShown = true;
@@ -246,7 +257,7 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
               ],
             ),
           ),
-          bottomNavigationBar: isLive && snapshot != null && detail.hasJoined
+          bottomNavigationBar: canEnterArena
               ? BidBar(
                   state: live,
                   snapshot: snapshot,

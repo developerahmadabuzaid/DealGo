@@ -55,9 +55,14 @@ public sealed class BidService : IBidService
             throw new DomainException(ErrorCodes.ValidationFailed, "An idempotency key is required.");
         }
 
-        var participant = await _db.AuctionParticipants
+        // The bidder's name comes with the participant row: it is what the others are shown, and
+        // asking for it separately was one more round trip on every bid.
+        var row = await _db.AuctionParticipants
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.AuctionId == auctionId && p.UserId == userId, ct);
+            .Where(p => p.AuctionId == auctionId && p.UserId == userId)
+            .Select(p => new { Participant = p, Name = p.User != null ? p.User.FullName : null })
+            .FirstOrDefaultAsync(ct);
+        var participant = row?.Participant;
 
         if (participant is null)
         {
@@ -100,7 +105,7 @@ public sealed class BidService : IBidService
 
         // Everything below happens strictly after COMMIT. SignalR only ever reports facts that
         // are already durable in PostgreSQL.
-        await PublishAsync(outcome, ct);
+        await PublishAsync(outcome, DisplayName(row!.Name), ct);
 
         if (outcome.AuctionFinished)
         {
@@ -119,7 +124,23 @@ public sealed class BidService : IBidService
             }
         }
 
-        return await BuildResultAsync(outcome.Bid, wasDuplicate: false, ct);
+        // Built from what the transaction already holds: reading the auction and the participant
+        // back again only made the bidder wait longer for the button.
+        var bid = outcome.Bid;
+        return new BidResultDto(
+            bid.Id,
+            bid.AuctionId,
+            bid.SequenceNumber,
+            bid.PreviousPrice,
+            bid.NewPrice,
+            outcome.TargetPrice,
+            bid.ReachedTarget,
+            outcome.Status == AuctionStatus.FinalPhase || bid.NewPrice >= outcome.FinalPhasePrice,
+            outcome.Status,
+            await ComputeRankAsync(auctionId, outcome.Participant, ct),
+            outcome.Participant.HighestPrice,
+            bid.ServerTimestamp,
+            false);
     }
 
     private async Task EnforceRateLimitAsync(Guid auctionId, Guid userId, CancellationToken ct)
@@ -311,16 +332,16 @@ public sealed class BidService : IBidService
             reachedTarget,
             auction.FinalPhasePrice,
             auction.RemainingSeconds,
-            now);
+            now,
+            participant);
     }
 
-    private async Task PublishAsync(BidOutcome outcome, CancellationToken ct)
+    private async Task PublishAsync(BidOutcome outcome, string displayName, CancellationToken ct)
     {
         try
         {
             var bid = outcome.Bid;
             var progress = AuctionRules.Progress(outcome.StartingPrice, bid.NewPrice, outcome.TargetPrice);
-            var displayName = await GetDisplayNameAsync(bid.UserId, ct);
 
             await _realtime.BidPlacedAsync(bid.AuctionId, new BidBroadcast(
                 bid.Id, bid.SequenceNumber, bid.ParticipantId, displayName,
@@ -353,28 +374,14 @@ public sealed class BidService : IBidService
         }
     }
 
-    private async Task<string> GetDisplayNameAsync(Guid userId, CancellationToken ct)
-    {
-        var name = await _db.Users
-            .AsNoTracking()
-            .Where(u => u.Id == userId)
-            .Select(u => u.FullName)
-            .FirstOrDefaultAsync(ct);
-
-        return MaskName(name);
-    }
-
-    /// <summary>Leaderboards are public, so names are partially masked.</summary>
-    internal static string MaskName(string? fullName)
+    /// <summary>
+    /// The name other participants see: the person's full name, as they entered it. It used to be
+    /// cut to "Ahmad A."; the business wants the whole name shown in auctions.
+    /// </summary>
+    internal static string DisplayName(string? fullName)
     {
         if (string.IsNullOrWhiteSpace(fullName)) return "Participant";
-        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var first = parts[0];
-        if (parts.Length == 1)
-        {
-            return first.Length <= 2 ? first : first[..2] + new string('*', Math.Min(3, first.Length - 2));
-        }
-        return $"{first} {parts[^1][0]}.";
+        return string.Join(' ', fullName.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     private async Task<IReadOnlyList<LeaderboardEntryDto>> GetLeaderboardAsync(
@@ -394,7 +401,7 @@ public sealed class BidService : IBidService
             .ToListAsync(ct);
 
         return rows.Select((r, i) => new LeaderboardEntryDto(
-            i + 1, r.Id, r.UserId, MaskName(r.Name), r.HighestPrice,
+            i + 1, r.Id, r.UserId, DisplayName(r.Name), r.HighestPrice,
             r.HighestPriceAt, r.BidCount, meUserId.HasValue && r.UserId == meUserId.Value)).ToList();
     }
 
@@ -468,5 +475,6 @@ public sealed class BidService : IBidService
         bool AuctionFinished,
         decimal FinalPhasePrice,
         int? RemainingSeconds,
-        DateTime Now);
+        DateTime Now,
+        AuctionParticipant Participant);
 }

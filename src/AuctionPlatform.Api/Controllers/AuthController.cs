@@ -31,6 +31,7 @@ public sealed class AuthController : ApiControllerBase
     /// <summary>Exchanges a refresh token for a new pair. The presented token is consumed.</summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [EnableRateLimiting("refresh")]
     public async Task<ActionResult<AuthResultDto>> Refresh(RefreshRequest request, CancellationToken ct) =>
         Ok(await _auth.RefreshAsync(request, ct));
 

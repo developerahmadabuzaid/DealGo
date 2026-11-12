@@ -223,7 +223,7 @@ class _BidderRow extends StatelessWidget {
                     Flexible(
                       child: Text(
                         Fmt.name(entry.displayName),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w700,

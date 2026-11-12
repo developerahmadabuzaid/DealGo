@@ -148,7 +148,7 @@ public sealed class AuctionService : IAuctionService
             a.Status, a.ScheduledStartAt, a.ActualStartedAt,
             RemainingSeconds(a.ActualStartedAt, a.DurationSeconds, a.Status, now),
             a.CoverImageUrl, a.IsFeatured,
-            a.WinnerName is null ? null : BidService.MaskName(a.WinnerName),
+            a.WinnerName is null ? null : BidService.DisplayName(a.WinnerName),
             a.FinishedAt,
             a.HasJoined,
             a.Prizes
@@ -289,7 +289,7 @@ public sealed class AuctionService : IAuctionService
             .ToListAsync(ct);
 
         return rows.Select((r, i) => new LeaderboardEntryDto(
-            i + 1, r.Id, r.UserId, BidService.MaskName(r.Name), r.HighestPrice,
+            i + 1, r.Id, r.UserId, BidService.DisplayName(r.Name), r.HighestPrice,
             r.HighestPriceAt, r.BidCount, userId.HasValue && r.UserId == userId.Value)).ToList();
     }
 
@@ -312,7 +312,7 @@ public sealed class AuctionService : IAuctionService
             .ToListAsync(ct);
 
         return rows.Select(r => new BidHistoryEntryDto(
-            r.SequenceNumber, r.NewPrice, BidService.MaskName(r.Name), r.ServerTimestamp,
+            r.SequenceNumber, r.NewPrice, BidService.DisplayName(r.Name), r.ServerTimestamp,
             userId.HasValue && r.UserId == userId.Value)).ToList();
     }
 
@@ -345,7 +345,7 @@ public sealed class AuctionService : IAuctionService
             .ToListAsync(ct);
 
         return rows.Select(r => new WinnerDto(
-            r.Id, r.Rank, r.UserId, BidService.MaskName(r.Name), r.HighestPrice, r.HighestPriceAt,
+            r.Id, r.Rank, r.UserId, BidService.DisplayName(r.Name), r.HighestPrice, r.HighestPriceAt,
             r.PrizeId, r.PrizeName, r.PrizeImage, r.PrizeValue, r.Currency,
             r.PrizeClaimId, r.ClaimStatus, r.PaymentAmount ?? r.PrizeValue)).ToList();
     }

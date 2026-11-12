@@ -175,7 +175,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
 
             winnerDtos.Add(new WinnerDto(
                 winner.Id, rank, participant.UserId,
-                BidService.MaskName(null), participant.HighestPrice, participant.HighestPriceAt,
+                BidService.DisplayName(null), participant.HighestPrice, participant.HighestPriceAt,
                 prize.Id, prize.ProductNameSnapshot, prize.ProductImageSnapshot,
                 prize.OriginalPrice, auction.Currency, claim.Id, claim.Status, claim.PaymentAmount));
         }
@@ -214,7 +214,7 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             .ToDictionaryAsync(u => u.Id, u => u.FullName, ct);
 
         return winnerDtos
-            .Select(w => w with { DisplayName = BidService.MaskName(names.GetValueOrDefault(w.UserId)) })
+            .Select(w => w with { DisplayName = BidService.DisplayName(names.GetValueOrDefault(w.UserId)) })
             .ToList();
     }
 

@@ -254,6 +254,20 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
+    // Renewing a session is not a guess at a password: the refresh token is long and random, and
+    // used once. It gets its own, wider bucket. In the "auth" one it shared 20 a minute per address
+    // with sign-in, and phones behind one mobile-carrier address all renew around an auction's
+    // start. The refused renewals left those people signed out for a moment, told they had not
+    // joined, and without a bid button.
+    options.AddPolicy("refresh", context => RateLimitPartition.GetFixedWindowLimiter(
+        PartitionKey(context),
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 300,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         RateLimitPartition.GetFixedWindowLimiter(
             PartitionKey(context),
