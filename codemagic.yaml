@@ -25,6 +25,12 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.dealgosa.app
+      vars:
+        # The upload names DealGo's App Store Connect record (App Information → Apple ID) instead
+        # of looking it up from the bundle ID. That lookup failed with altool error 19 ("Cannot
+        # determine the Apple ID from Bundle ID") while the account moved to an organization.
+        # It changes nothing about signing; remove it if it is ever not wanted.
+        APP_STORE_CONNECT_ALTOOL_ADDITIONAL_ARGUMENTS: "--apple-id 6828769870"
 
     # No "triggering" section: builds start only from the Codemagic dashboard, so a push never
     # sends a build to Apple by surprise.
