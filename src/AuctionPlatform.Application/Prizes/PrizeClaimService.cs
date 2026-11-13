@@ -30,7 +30,9 @@ public sealed record PrizeClaimDto(
     decimal PrizeOriginalPrice,
     string? PrizeDescription,
     // Where the prize goes, once the winner has said.
-    ShippingAddressDto? ShippingAddress = null);
+    ShippingAddressDto? ShippingAddress = null,
+    // The entry fee already taken off PaymentAmount.
+    decimal EntryFeeDeducted = 0);
 
 public sealed record MyWinDto(
     Guid AuctionId,
@@ -140,7 +142,8 @@ public sealed class PrizeClaimService : IPrizeClaimService
                 c.ShippingAddress.Country, c.ShippingAddress.City, c.ShippingAddress.District,
                 c.ShippingAddress.Street, c.ShippingAddress.BuildingNumber, c.ShippingAddress.Notes,
                 c.ShippingAddress.ShortAddress, c.ShippingAddress.Latitude, c.ShippingAddress.Longitude,
-                c.ShippingAddress.IsDefault));
+                c.ShippingAddress.IsDefault),
+            c.EntryFeeDeducted);
 
     public async Task<PrizeClaimDto> GetClaimAsync(Guid userId, Guid claimId, CancellationToken ct = default)
     {
@@ -195,8 +198,9 @@ public sealed class PrizeClaimService : IPrizeClaimService
             await ShippingAddressService.EnsureUsableAsync(_db, userId, addressId, ct);
         }
 
-        // Prize payments come from the Main wallet only; store credit is not cash.
-        var payment = await _wallets.DebitAsync(new WalletMovement
+        // Prize payments come from the Main wallet only; store credit is not cash. Nothing to take
+        // when the entry fee already covered the whole price.
+        var payment = claim.PaymentAmount <= 0 ? null : await _wallets.DebitAsync(new WalletMovement
         {
             UserId = userId,
             WalletType = WalletType.Main,
@@ -235,7 +239,7 @@ public sealed class PrizeClaimService : IPrizeClaimService
 
         _logger.LogInformation(
             "Prize claim {ClaimId} paid by {UserId} ({Amount} {Currency}); wallet now {Balance}.",
-            claimId, userId, claim.PaymentAmount, claim.Currency, payment.BalanceAfter);
+            claimId, userId, claim.PaymentAmount, claim.Currency, payment?.BalanceAfter);
 
         return await GetClaimAsync(userId, claimId, ct);
     }

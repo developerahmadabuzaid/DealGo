@@ -1240,6 +1240,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<decimal>("EntryFeeDeducted")
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<DateTime?>("ExpiredAt")
                         .HasColumnType("timestamp with time zone");
 

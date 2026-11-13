@@ -49,7 +49,14 @@ public class PrizeClaim : Entity
 
     public PrizeClaimStatus Status { get; set; } = PrizeClaimStatus.Pending;
 
+    /// <summary>What the winner pays: the prize price less <see cref="EntryFeeDeducted"/>.</summary>
     public decimal PaymentAmount { get; set; }
+
+    /// <summary>
+    /// The entry fee the winner paid to join, taken off the prize price. Zero when the auction
+    /// gives its winners the entry fee back instead, so nobody benefits twice.
+    /// </summary>
+    public decimal EntryFeeDeducted { get; set; }
     public string Currency { get; set; } = Money.DefaultCurrency;
 
     public Guid? PaymentId { get; set; }

@@ -163,6 +163,35 @@ public class PrizeClaimExpiryTests
     }
 
     [Fact]
+    public async Task The_entry_fee_comes_off_the_device_price_unless_the_auction_returns_it()
+    {
+        var (deducted, deductedWinners) = await FinishedAuctionAsync();
+        var (returned, returnedWinners) = await FinishedAuctionAsync(refundWinners: true);
+
+        await using var scope = _fixture.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var a = await db.PrizeClaims.AsNoTracking().SingleAsync(c => c.AuctionId == deducted && c.UserId == deductedWinners[0]);
+        var b = await db.PrizeClaims.AsNoTracking().SingleAsync(c => c.AuctionId == returned && c.UserId == returnedWinners[0]);
+
+        a.EntryFeeDeducted.Should().Be(EntryFee);
+        b.EntryFeeDeducted.Should().Be(0m);
+        a.PaymentAmount.Should().Be(b.PaymentAmount - EntryFee, "the same device and closing price, less the fee");
+
+        // What the winner is charged is the lower amount.
+        var main = await db.Wallets.AsNoTracking()
+            .Where(w => w.UserId == deductedWinners[0] && w.WalletType == WalletType.Main).Select(w => w.Balance).SingleAsync();
+        await scope.ServiceProvider.GetRequiredService<IPrizeClaimService>()
+            .PayAsync(deductedWinners[0], a.Id, new PayPrizeRequest($"pay-{Guid.NewGuid():N}", null));
+        var after = await db.Wallets.AsNoTracking()
+            .Where(w => w.UserId == deductedWinners[0] && w.WalletType == WalletType.Main).Select(w => w.Balance).SingleAsync();
+        (main - after).Should().Be(a.PaymentAmount);
+
+        var shown = await scope.ServiceProvider.GetRequiredService<IPrizeClaimService>().GetClaimAsync(deductedWinners[0], a.Id);
+        shown.EntryFeeDeducted.Should().Be(EntryFee);
+    }
+
+    [Fact]
     public async Task A_winner_whose_fee_was_already_returned_is_not_paid_twice()
     {
         // This auction gives every winner their entry fee back when it closes.

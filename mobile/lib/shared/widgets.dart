@@ -859,6 +859,7 @@ class PrizePriceBox extends StatelessWidget {
     required this.discount,
     required this.currency,
     this.exact = true,
+    this.entryFeeDeducted = 0,
   });
 
   final double? fullPrice;
@@ -866,6 +867,9 @@ class PrizePriceBox extends StatelessWidget {
   final double discount;
   final String currency;
   final bool exact;
+
+  /// The entry fee already taken off [price], shown so the winner sees where it went.
+  final double entryFeeDeducted;
 
   @override
   Widget build(BuildContext context) {
@@ -903,6 +907,17 @@ class PrizePriceBox extends StatelessWidget {
               fontFeatures: AppTheme.numeric,
             ),
           ),
+          if (entryFeeDeducted > 0) ...[
+            const SizedBox(height: 2),
+            Text(
+              t.entryFeeDeducted(Fmt.money(entryFeeDeducted, currency, locale: locale)),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: green,
+                fontWeight: FontWeight.w600,
+                fontFeatures: AppTheme.numeric,
+              ),
+            ),
+          ],
           if (discount > 0) ...[
             const SizedBox(height: AppTheme.space2),
             StatusPill(

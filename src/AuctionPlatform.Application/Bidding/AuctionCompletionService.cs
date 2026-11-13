@@ -152,6 +152,17 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             // Winning grants the right to the prize, not the prize itself: the winner still owes
             // the discounted prize price, tracked as a claim. First place pays the closing price;
             // the other places pay their device's price at the auction's target rate.
+            var prizePrice = AuctionRules.PrizePaymentAmount(
+                rank, prize.OriginalPrice, auction.CurrentPrice, auction.OriginalPrice,
+                auction.TargetPercentage);
+
+            // The entry fee the winner paid comes off that price, never below zero. Not for an
+            // auction that hands its winners the entry fee back: that would count it twice.
+            var feeDeducted = auction.RefundWinnerEntryFee
+                              || !string.Equals(participant.Currency, auction.Currency, StringComparison.OrdinalIgnoreCase)
+                ? 0m
+                : Math.Min(Math.Max(participant.EntryFeePaid, 0m), prizePrice);
+
             var claim = new PrizeClaim
             {
                 WinnerId = winner.Id,
@@ -159,9 +170,8 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 AuctionId = auctionId,
                 PrizeId = prize.Id,
                 Status = PrizeClaimStatus.PaymentRequired,
-                PaymentAmount = AuctionRules.PrizePaymentAmount(
-                    rank, prize.OriginalPrice, auction.CurrentPrice, auction.OriginalPrice,
-                    auction.TargetPercentage),
+                PaymentAmount = prizePrice - feeDeducted,
+                EntryFeeDeducted = feeDeducted,
                 Currency = auction.Currency,
                 CreatedAt = now,
                 PaymentRequiredAt = now,

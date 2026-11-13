@@ -131,6 +131,7 @@ class _ClaimCard extends StatelessWidget {
                   discount: claim.discount,
                   currency: claim.currency,
                   exact: true,
+                  entryFeeDeducted: claim.entryFeeDeducted,
                 ),
                 const SizedBox(height: AppTheme.space3),
                 Row(

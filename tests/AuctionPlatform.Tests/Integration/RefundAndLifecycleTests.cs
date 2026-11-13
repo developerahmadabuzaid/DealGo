@@ -92,14 +92,16 @@ public class AuctionCompletionTests
             c.PaymentDeadlineAt != null && c.PaymentDeadlineAt.Value - c.CreatedAt == TimeSpan.FromHours(24));
 
         // The auction closed at 2500 on a 5000 value, so every prize, not only the first, is
-        // owed at half its price.
+        // owed at half its price, less the 20 the winner paid to join.
+        const decimal entryFee = 20m;
         var prizePrices = await db2.AuctionPrizes.AsNoTracking()
             .Where(p => p.AuctionId == auctionId)
             .ToDictionaryAsync(p => p.Id, p => p.OriginalPrice);
 
         foreach (var claim in claims)
         {
-            claim.PaymentAmount.Should().Be(Money.Round(prizePrices[claim.PrizeId] / 2));
+            claim.PaymentAmount.Should().Be(Money.Round(prizePrices[claim.PrizeId] / 2) - entryFee);
+            claim.EntryFeeDeducted.Should().Be(entryFee);
         }
 
         // The winners list the app reads says the same: the discounted amount to pay, beside the
@@ -109,7 +111,7 @@ public class AuctionCompletionTests
         foreach (var w in listed)
         {
             w.PrizeValue.Should().Be(prizePrices[w.PrizeId]);
-            w.PaymentAmount.Should().Be(Money.Round(prizePrices[w.PrizeId] / 2));
+            w.PaymentAmount.Should().Be(Money.Round(prizePrices[w.PrizeId] / 2) - entryFee);
         }
 
         foreach (var winner in winners)

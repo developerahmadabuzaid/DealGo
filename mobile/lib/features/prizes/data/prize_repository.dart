@@ -20,6 +20,7 @@ class PrizeClaim {
     this.prizeOriginalPrice = 0,
     this.prizeDescription,
     this.shippingAddress,
+    this.entryFeeDeducted = 0,
   });
 
   final String id;
@@ -40,13 +41,20 @@ class PrizeClaim {
   /// Where the prize is to be delivered, once the winner has chosen.
   final ShippingAddress? shippingAddress;
 
+  /// The entry fee the server already took off [paymentAmount].
+  final double entryFeeDeducted;
+
   /// Paid for, and either still waiting for an address or not yet sent out.
   bool get awaitsDelivery => status == 'Paid' || status == 'Claimed';
 
-  /// The discount the winner got, 0..1. Zero when the server sent no full price to compare with.
-  double get discount => prizeOriginalPrice > paymentAmount && prizeOriginalPrice > 0
-      ? 1 - paymentAmount / prizeOriginalPrice
-      : 0;
+  /// The auction's discount, 0..1, before the entry fee comes off: the fee is shown on its own.
+  /// Zero when the server sent no full price to compare with.
+  double get discount {
+    final beforeFee = paymentAmount + entryFeeDeducted;
+    return prizeOriginalPrice > beforeFee && prizeOriginalPrice > 0
+        ? 1 - beforeFee / prizeOriginalPrice
+        : 0;
+  }
 
   /// Still to be paid, and still within the time to pay. Past it the server refuses the payment
   /// and returns the entry fee as shopping credit instead.
@@ -77,6 +85,7 @@ class PrizeClaim {
             : DateTime.parse(j['paymentDeadlineAt'] as String).toUtc(),
         prizeOriginalPrice: _num(j['prizeOriginalPrice']),
         prizeDescription: j['prizeDescription'] as String?,
+        entryFeeDeducted: _num(j['entryFeeDeducted']),
         shippingAddress: j['shippingAddress'] == null
             ? null
             : ShippingAddress.fromJson(j['shippingAddress'] as Map<String, dynamic>),

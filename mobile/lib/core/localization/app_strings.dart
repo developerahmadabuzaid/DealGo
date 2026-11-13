@@ -210,6 +210,9 @@ class AppStrings {
         'وستحصل عليه بسعر لا يزيد عن $amount',
         'You get it for at most $amount',
       );
+  String entryFeeDeducted(String amount) =>
+      _t('بعد خصم رسوم الاشتراك $amount', 'after taking off your $amount entry fee');
+
   String afterDiscount(String percent) => _t('بعد خصم $percent', 'after a $percent discount');
   String get discountAppliesToAll => _t(
         'نسبة الخصم تُطبّق على جميع الأجهزة.',
