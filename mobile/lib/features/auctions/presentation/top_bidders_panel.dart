@@ -17,15 +17,11 @@ class TopBiddersPanel extends StatefulWidget {
     super.key,
     required this.entries,
     required this.currency,
-    required this.participantCount,
     this.dense = false,
   });
 
   final List<LeaderboardEntry> entries;
   final String currency;
-
-  /// Everyone in the auction, including those who have not bid.
-  final int participantCount;
 
   /// Tighter rows and no subtitle, for the live bidding screen, where the list shares a phone
   /// screen with the price panel and the bid bar.
@@ -84,11 +80,8 @@ class _TopBiddersPanelState extends State<TopBiddersPanel> {
                 ],
               ),
             ),
-            StatusPill(
-              t.participantsCount(widget.participantCount),
-              color: theme.colorScheme.onSurfaceVariant,
-              icon: Icons.groups_rounded,
-            ),
+            // How many people are in the auction is not shown here on purpose: the business
+            // keeps it to itself once bidding has started.
           ],
         ),
         SizedBox(height: widget.dense ? AppTheme.space2 : AppTheme.space3),

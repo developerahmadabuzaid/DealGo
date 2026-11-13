@@ -416,6 +416,7 @@ const AR = {
   // notifications
   'Notifications': 'الإشعارات', 'Send notification': 'إرسال إشعار', 'Title': 'العنوان',
   'Message': 'نص الرسالة', 'Opens': 'عند الضغط يفتح', 'Preview': 'معاينة',
+  'Automatic messages': 'الرسائل التلقائية',
   'Bank transfers waiting to be made. The money has already left the user’s wallet.':
     'تحويلات بنكية بانتظار التنفيذ. المبلغ خُصم من محفظة المستخدم عند الطلب.',
   'To pay': 'بانتظار الدفع', 'Paid': 'مدفوعة', 'Refused': 'مرفوضة', 'All': 'الكل',
@@ -1072,7 +1073,10 @@ const NAV = [
   },
   {
     group: 'Notifications',
-    items: [{ id: 'notifications', label: 'Send notification', icon: 'bell' }],
+    items: [
+      { id: 'notifications', label: 'Send notification', icon: 'bell' },
+      { id: 'notifications-auto', label: 'Automatic messages', icon: 'sliders' },
+    ],
   },
   {
     group: 'System',
@@ -1175,6 +1179,7 @@ function routeView(route) {
     'app-ads': viewAppAds,
     'support': viewSupport,
     'notifications': viewNotifications,
+    'notifications-auto': viewAutomaticMessages,
     'users': viewUsers,
     'audit': viewAudit,
   };
@@ -4625,21 +4630,44 @@ async function viewSupport() {
 // ---------------------------------------------------------------- notifications
 
 /*
- * A message to every user: a push on their phone and an entry in the app's notification list.
- * The server sends it in the background, so this page returns as soon as it is queued.
+ * Messages from staff: written here, sent now or at a chosen time, to every user or to the people
+ * in one auction, as a push on their phone and an entry in the app's notification list. The
+ * server sends them in the background, so this page returns as soon as a message is queued.
  *
- * New auctions and auction starts are announced by the server on its own; this page is for
- * anything else staff want to say.
+ * What the system sends by itself (a new auction, an auction starting, a prize won...) is worded
+ * on the Automatic messages page.
  */
+const NOTIFY_STATUS_AR = {
+  Scheduled: 'مجدول', Sending: 'جارٍ الإرسال', Sent: 'تم الإرسال', Cancelled: 'ملغي', Failed: 'فشل',
+};
+
+function notifyStatusBadge(status) {
+  const cls = { Scheduled: 'badge warn', Sending: 'badge info', Sent: 'badge live', Cancelled: 'badge', Failed: 'badge danger' }[status] || 'badge';
+  return h('span', { class: cls }, NOTIFY_STATUS_AR[status] || status);
+}
+
+/** A Date as the value of a datetime-local input, in the browser's own time. */
+function toLocalInput(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 async function viewNotifications() {
-  const [audience, upcoming, live] = await Promise.all([
+  const sq = state.cache.scheduled || (state.cache.scheduled = { page: 1 });
+  const [audience, upcoming, live, scheduled] = await Promise.all([
     api('/admin/notifications/audience'),
     api('/admin/auctions?group=upcoming&pageSize=50').catch(() => ({ items: [] })),
     api('/admin/auctions?group=live&pageSize=50').catch(() => ({ items: [] })),
+    api(`/admin/notifications/scheduled?page=${sq.page}&pageSize=10`)
+      .catch(() => ({ items: [], page: 1, totalPages: 1, totalCount: 0 })),
   ]);
 
   const TITLE_MAX = 100;
   const BODY_MAX = 1000;
+  const text = (v) => document.createTextNode(v ?? '');
+
+  // The scheduled message being changed, when the form is in edit mode.
+  let editing = null;
 
   const title = h('input', { maxlength: String(TITLE_MAX), placeholder: 'مثال: عروض نهاية الأسبوع' });
   const body = h('textarea', { rows: '4', maxlength: String(BODY_MAX), placeholder: 'اكتب نص الإشعار كما سيظهر للمستخدم' });
@@ -4653,48 +4681,117 @@ async function viewNotifications() {
     h('option', { value: '' }, 'قائمة الإشعارات في التطبيق'),
     ...auctions.map((a) => {
       const option = h('option', { value: a.id });
-      option.append(document.createTextNode(`مزاد: ${a.title}`));
+      option.append(text(`مزاد: ${a.title}`));
       return option;
     }));
+
+  const audienceSelect = h('select', {},
+    h('option', { value: 'Everyone' }, `جميع المستخدمين (${audience.users})`),
+    h('option', { value: 'AuctionParticipants' }, 'المشتركون في المزاد المختار فقط'));
+
+  // Now or later.
+  const whenNow = h('input', { type: 'radio', name: 'notify-when', value: 'now', checked: '' });
+  const whenLater = h('input', { type: 'radio', name: 'notify-when', value: 'later' });
+  const inAnHour = new Date(Date.now() + 60 * 60 * 1000);
+  inAnHour.setMinutes(0, 0, 0);
+  const sendAt = h('input', { type: 'datetime-local', value: toLocalInput(inAnHour), min: toLocalInput(new Date()) });
+  const sendAtField = h('div', { class: 'field', hidden: '' }, h('label', {}, 'وقت الإرسال'), sendAt,
+    h('div', { class: 'hint' }, 'بتوقيت جهازك. يُرسل خلال نصف دقيقة من الموعد.'));
 
   // Raw text nodes: what staff type is data and must never pass through the translator.
   const previewTitle = h('strong', {});
   const previewBody = h('div', { class: 'push-preview-body' });
+  const previewWhen = h('span', {});
+  const editBanner = h('div', { class: 'notify-edit-banner', hidden: '' });
+
+  const later = () => editing !== null || whenLater.checked;
+
+  const send = h('button', { class: 'btn' });
+  const cancelEdit = h('button', { class: 'btn ghost', hidden: '' }, 'إلغاء التعديل');
 
   const refresh = () => {
     titleCount.textContent = `${title.value.length} / ${TITLE_MAX}`;
     bodyCount.textContent = `${body.value.length} / ${BODY_MAX}`;
-    previewTitle.replaceChildren(document.createTextNode(title.value.trim() || 'العنوان'));
-    previewBody.replaceChildren(document.createTextNode(body.value.trim() || 'نص الرسالة'));
-  };
-  title.addEventListener('input', refresh);
-  body.addEventListener('input', refresh);
-  refresh();
+    previewTitle.replaceChildren(text(title.value.trim() || 'العنوان'));
+    previewBody.replaceChildren(text(body.value.trim() || 'نص الرسالة'));
+    sendAtField.style.display = later() ? '' : 'none';
+    previewWhen.textContent = later() && sendAt.value
+      ? `DealGo · ${new Date(sendAt.value).toLocaleString()}`
+      : 'DealGo · الآن';
 
-  const send = h('button', { class: 'btn' }, icon('bell'), h('span', {}, 'Send notification'));
+    send.replaceChildren(icon(later() ? 'clock' : 'bell'),
+      h('span', {}, editing ? 'حفظ التعديلات' : later() ? 'جدولة الإشعار' : 'إرسال الآن'));
+    // style, not the hidden attribute: a .btn sets its own display, which beats [hidden].
+    cancelEdit.style.display = editing === null ? 'none' : '';
+    editBanner.style.display = editing === null ? 'none' : '';
+    whenNow.disabled = editing !== null;
+  };
+  [title, body, sendAt].forEach((el) => el.addEventListener('input', refresh));
+  [auction, audienceSelect, whenNow, whenLater].forEach((el) => el.addEventListener('change', refresh));
+
+  const resetForm = () => {
+    editing = null;
+    title.value = '';
+    body.value = '';
+    auction.value = '';
+    audienceSelect.value = 'Everyone';
+    whenNow.checked = true;
+    refresh();
+  };
+
+  const payload = () => ({
+    title: title.value,
+    body: body.value,
+    auctionId: auction.value || null,
+    audience: audienceSelect.value,
+  });
 
   send.addEventListener('click', () => {
     if (!title.value.trim()) { title.focus(); toast('اكتب عنوان الإشعار.', 'err'); return; }
     if (!body.value.trim()) { body.focus(); toast('اكتب نص الإشعار.', 'err'); return; }
+    if (audienceSelect.value === 'AuctionParticipants' && !auction.value) {
+      auction.focus(); toast('اختر المزاد الذي سيصل الإشعار للمشتركين فيه.', 'err'); return;
+    }
 
+    if (later()) {
+      const at = new Date(sendAt.value);
+      if (!sendAt.value || Number.isNaN(at.getTime())) { sendAt.focus(); toast('اختر وقت الإرسال.', 'err'); return; }
+      if (at.getTime() < Date.now() + 60 * 1000) { sendAt.focus(); toast('اختر وقتاً بعد دقيقة على الأقل من الآن.', 'err'); return; }
+
+      (async () => {
+        send.disabled = true;
+        try {
+          const json = JSON.stringify({ ...payload(), sendAt: at.toISOString() });
+          if (editing) {
+            await api(`/admin/notifications/scheduled/${editing.id}`, { method: 'PUT', body: json });
+            toast('تم حفظ التعديلات.', 'ok');
+          } else {
+            await api('/admin/notifications/scheduled', { method: 'POST', body: json });
+            toast(`تمت جدولة الإشعار: ${at.toLocaleString()}`, 'ok');
+          }
+          resetForm();
+          sq.page = 1;
+          await reloadScheduled();
+        } catch (e) {
+          toast(e.message, 'err');
+        } finally {
+          send.disabled = false;
+        }
+      })();
+      return;
+    }
+
+    const who = audienceSelect.value === 'AuctionParticipants'
+      ? 'المشتركين في المزاد المختار'
+      : `${audience.users} مستخدم`;
     confirmDialog(
-      'إرسال الإشعار للجميع؟',
-      `سيصل الإشعار إلى ${audience.users} مستخدم فوراً، ولا يمكن التراجع عنه بعد الإرسال.`,
+      'إرسال الإشعار الآن؟',
+      `سيصل الإشعار إلى ${who} فوراً، ولا يمكن التراجع عنه بعد الإرسال.`,
       async () => {
         send.disabled = true;
         try {
-          const sent = await api('/admin/notifications/broadcast', {
-            method: 'POST',
-            body: JSON.stringify({
-              title: title.value,
-              body: body.value,
-              auctionId: auction.value || null,
-            }),
-          });
-          title.value = '';
-          body.value = '';
-          auction.value = '';
-          refresh();
+          const sent = await api('/admin/notifications/broadcast', { method: 'POST', body: JSON.stringify(payload()) });
+          resetForm();
           toast(`جارٍ إرسال الإشعار إلى ${sent.users} مستخدم.`, 'ok');
         } catch (e) {
           toast(e.message, 'err');
@@ -4703,26 +4800,280 @@ async function viewNotifications() {
         }
       });
   });
+  cancelEdit.addEventListener('click', resetForm);
+
+  const composer = h('div', { class: 'card' },
+    editBanner,
+    h('div', { class: 'hint', style: 'margin-bottom:12px' },
+      `يصل إلى ${audience.users} مستخدم فعّلوا الإشعارات، على ${audience.phones} جهاز.`),
+    h('div', { class: 'field' }, h('label', {}, 'Title'), title, titleCount),
+    h('div', { class: 'field' }, h('label', {}, 'Message'), body, bodyCount),
+    h('div', { class: 'grid-2' },
+      h('div', { class: 'field' }, h('label', {}, 'Opens'), auction,
+        h('div', { class: 'hint' }, 'اختر مزاداً ليفتح عند الضغط على الإشعار، أو اتركه لفتح قائمة الإشعارات.')),
+      h('div', { class: 'field' }, h('label', {}, 'المستلمون'), audienceSelect,
+        h('div', { class: 'hint' }, 'المشتركون: من انضموا للمزاد المختار في خانة «عند الضغط يفتح».'))),
+    h('div', { class: 'field' }, h('label', {}, 'موعد الإرسال'),
+      h('div', { class: 'notify-when' },
+        h('label', { class: 'notify-choice' }, whenNow, h('span', {}, 'الآن')),
+        h('label', { class: 'notify-choice' }, whenLater, h('span', {}, 'في وقت محدد')))),
+    sendAtField,
+    h('div', { style: 'display:flex;gap:8px;margin-top:12px' }, send, cancelEdit));
+
+  const startEdit = (s) => {
+    editing = s;
+    title.value = s.title;
+    body.value = s.body;
+    auction.value = s.auctionId || '';
+    // An auction no longer in the list (it ended) is kept as the target.
+    if (s.auctionId && auction.value !== s.auctionId) {
+      const option = h('option', { value: s.auctionId });
+      option.append(text(`مزاد: ${s.auctionTitle || shortId(s.auctionId)}`));
+      auction.append(option);
+      auction.value = s.auctionId;
+    }
+    audienceSelect.value = s.audience;
+    whenLater.checked = true;
+    sendAt.value = toLocalInput(new Date(s.sendAt));
+    editBanner.replaceChildren(icon('info'), h('span', {}, 'تعديل رسالة مجدولة: '), h('strong', {}, text(s.title)));
+    refresh();
+    title.focus();
+    composer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // ---- the scheduled list, redrawn in place so a half-written message is never lost
+  let list = scheduled;
+  const listBox = h('div', {});
+
+  const cancelScheduled = (s) => confirmDialog(
+    'إلغاء الرسالة المجدولة؟',
+    'لن تُرسل هذه الرسالة. يمكنك جدولة رسالة جديدة في أي وقت.',
+    async () => {
+      try {
+        await api(`/admin/notifications/scheduled/${s.id}/cancel`, { method: 'POST' });
+        if (editing && editing.id === s.id) resetForm();
+        toast('تم إلغاء الرسالة.', 'ok');
+        await reloadScheduled();
+      } catch (e) { toast(e.message, 'err'); }
+    }, { danger: true });
+
+  const drawScheduled = () => {
+    if (!list.items.length) {
+      listBox.replaceChildren(h('div', { class: 'empty' },
+        'لا توجد رسائل مجدولة بعد. اختر «في وقت محدد» في النموذج أعلاه لجدولة رسالة.'));
+      return;
+    }
+    listBox.replaceChildren(pagedTable({
+      columns: [
+        { label: 'الرسالة', render: (s) => h('div', { class: 'notify-cell' },
+            h('strong', {}, text(s.title)),
+            h('div', { class: 'hint notify-clip' }, text(s.body))) },
+        { label: 'المستلمون', render: (s) => h('div', {},
+            s.audience === 'AuctionParticipants' ? 'المشتركون في مزاد' : 'جميع المستخدمين',
+            s.auctionTitle ? h('div', { class: 'hint' }, text(s.auctionTitle)) : null) },
+        { label: 'الموعد', render: (s) => h('div', {}, when(s.sendAt),
+            s.sentAt ? h('div', { class: 'hint' }, 'أُرسل ', when(s.sentAt)) : null) },
+        { label: 'الحالة', render: (s) => h('div', {}, notifyStatusBadge(s.status),
+            s.recipients != null ? h('div', { class: 'hint' }, `${num(s.recipients)} مستخدم`) : null,
+            s.error ? h('div', { class: 'err-text' }, text(s.error)) : null) },
+        { label: '', render: (s) => (s.status === 'Scheduled'
+            ? h('div', { class: 'toolbar', style: 'flex-wrap:nowrap' },
+                h('button', { class: 'btn ghost sm', onclick: () => startEdit(s) }, 'تعديل'),
+                h('button', { class: 'btn ghost sm', onclick: () => cancelScheduled(s) }, 'إلغاء'))
+            : null) },
+      ],
+      rows: list.items,
+      page: list.page,
+      totalPages: list.totalPages,
+      totalCount: list.totalCount,
+      onPage: async (pg) => { sq.page = pg; await reloadScheduled(); },
+    }));
+  };
+
+  async function reloadScheduled() {
+    try {
+      list = await api(`/admin/notifications/scheduled?page=${sq.page}&pageSize=10`);
+      drawScheduled();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+  drawScheduled();
+  refresh();
 
   return h('div', {},
-    pageHead('Send notification', 'رسالة تصل لجميع المستخدمين كإشعار على الجوال وفي قائمة الإشعارات داخل التطبيق.'),
+    pageHead('Send notification', 'رسالة تصل كإشعار على الجوال وفي قائمة الإشعارات داخل التطبيق، الآن أو في وقت تحدده.',
+      h('button', { class: 'btn ghost', onclick: () => { state.route = 'notifications-auto'; render(); } },
+        icon('sliders'), h('span', {}, 'Automatic messages'))),
     h('div', { class: 'notify-layout' },
-      h('div', { class: 'card' },
-        h('div', { class: 'hint', style: 'margin-bottom:12px' },
-          `يصل إلى ${audience.users} مستخدم فعّلوا الإشعارات، على ${audience.phones} جهاز.`),
-        h('div', { class: 'field' }, h('label', {}, 'Title'), title, titleCount),
-        h('div', { class: 'field' }, h('label', {}, 'Message'), body, bodyCount),
-        h('div', { class: 'field' }, h('label', {}, 'Opens'), auction,
-          h('div', { class: 'hint' }, 'اختر مزاداً ليفتح عند الضغط على الإشعار، أو اتركه لفتح قائمة الإشعارات.')),
-        h('div', { style: 'display:flex;gap:8px;margin-top:12px' }, send)),
+      composer,
       h('div', { class: 'card' },
         h('h3', {}, 'Preview'),
         h('div', { class: 'push-preview' },
-          h('div', { class: 'push-preview-app' }, h('span', {}, 'DealGo · الآن')),
+          h('div', { class: 'push-preview-app' }, previewWhen),
           previewTitle,
           previewBody),
         h('div', { class: 'hint', style: 'margin-top:16px;line-height:1.7' },
-          'يرسل النظام إشعارات تلقائية أيضاً: عند نشر مزاد جديد يصل إشعار لجميع المستخدمين، وعند بدء المزاد يصل إشعار للمشتركين فيه باسم المزاد.'))));
+          'يرسل النظام إشعارات تلقائية أيضاً، مثل نشر مزاد جديد وبدء المزاد والفوز. يمكنك تعديل نصوصها أو إيقافها من صفحة «الرسائل التلقائية».'))),
+    h('div', { class: 'card' },
+      h('div', { class: 'toolbar', style: 'justify-content:space-between' },
+        h('h3', {}, 'الرسائل المجدولة'),
+        h('button', { class: 'btn ghost sm', onclick: () => reloadScheduled() }, 'تحديث')),
+      listBox));
+}
+
+/*
+ * The messages the system sends by itself. Each can be reworded in Arabic and English, switched
+ * off, or put back to the built-in wording. A field left empty uses the built-in text. Words in
+ * braces ({auction}, {amount}...) are filled in for each recipient.
+ */
+async function viewAutomaticMessages() {
+  const messages = await api('/admin/notifications/automatic');
+  const text = (v) => document.createTextNode(v ?? '');
+
+  const fill = (template, m) => {
+    let out = template || '';
+    for (const p of m.placeholders) out = out.split(`{${p.token}}`).join(p.example);
+    return out;
+  };
+
+  const card = (m, open = false) => {
+    // The field the placeholder buttons type into: the last one the person was in.
+    let lastField = null;
+
+    const field = (value, fallback, max, rows) => {
+      const input = rows
+        ? h('textarea', { rows: String(rows), maxlength: String(max), placeholder: fallback })
+        : h('input', { maxlength: String(max), placeholder: fallback });
+      input.value = value ?? '';
+      input.addEventListener('focus', () => { lastField = input; });
+      return input;
+    };
+
+    const f = {
+      enabled: h('input', { type: 'checkbox' }),
+      titleAr: field(m.arabic.title, m.arabic.defaultTitle, 100),
+      bodyAr: field(m.arabic.body, m.arabic.defaultBody, 1000, 3),
+      titleEn: field(m.english.title, m.english.defaultTitle, 100),
+      bodyEn: field(m.english.body, m.english.defaultBody, 1000, 3),
+    };
+    f.enabled.checked = m.enabled;
+    f.titleEn.setAttribute('dir', 'ltr');
+    f.bodyEn.setAttribute('dir', 'ltr');
+
+    const previewTitle = h('strong', {});
+    const previewBody = h('div', { class: 'push-preview-body' });
+
+    const chips = m.placeholders.length
+      ? h('div', { class: 'auto-chips' },
+          h('span', { class: 'hint' }, 'إدراج متغير:'),
+          ...m.placeholders.map((p) => h('button', {
+            class: 'auto-chip', type: 'button', title: `مثال: ${p.example}`,
+            onclick: () => {
+              const target = lastField || f.bodyAr;
+              const token = `{${p.token}}`;
+              const start = target.selectionStart ?? target.value.length;
+              const end = target.selectionEnd ?? target.value.length;
+              target.value = target.value.slice(0, start) + token + target.value.slice(end);
+              target.focus();
+              target.setSelectionRange(start + token.length, start + token.length);
+              draw();
+            },
+          }, h('span', { class: 'mono' }, `{${p.token}}`), ` ${p.label}`)))
+      : h('div', { class: 'hint' }, 'هذه الرسالة بلا متغيرات.');
+
+    const save = async (button) => {
+      button.disabled = true;
+      try {
+        const v = (input, fallback) => {
+          const value = input.value.trim();
+          return value && value !== fallback ? value : null;
+        };
+        const saved = await api(`/admin/notifications/automatic/${m.code}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            enabled: f.enabled.checked,
+            titleAr: v(f.titleAr, m.arabic.defaultTitle),
+            bodyAr: v(f.bodyAr, m.arabic.defaultBody),
+            titleEn: v(f.titleEn, m.english.defaultTitle),
+            bodyEn: v(f.bodyEn, m.english.defaultBody),
+          }),
+        });
+        toast(saved.enabled ? 'تم حفظ الرسالة.' : 'تم حفظ الرسالة، وهي متوقفة.', 'ok');
+        el.replaceWith(card(saved, true));
+      } catch (e) {
+        toast(e.message, 'err');
+        button.disabled = false;
+      }
+    };
+
+    const reset = () => confirmDialog('استعادة النص الأصلي؟',
+      'ستعود الرسالة إلى نصها الأصلي بالعربية والإنجليزية، وتُفعّل إن كانت متوقفة.',
+      async () => {
+        try {
+          const saved = await api(`/admin/notifications/automatic/${m.code}/reset`, { method: 'POST' });
+          toast('تمت استعادة النص الأصلي.', 'ok');
+          el.replaceWith(card(saved, true));
+        } catch (e) { toast(e.message, 'err'); }
+      });
+
+    const el = h('details', { class: 'card auto-msg', open: open ? '' : null },
+      h('summary', { class: 'auto-head' },
+        h('div', { class: 'auto-title' },
+          h('strong', {}, text(m.name)),
+          h('div', { class: 'hint' }, text(`${m.when} · إلى: ${m.recipients}`))),
+        h('div', { class: 'auto-state' },
+          !m.enabled ? h('span', { class: 'badge danger' }, 'متوقفة')
+            : m.customized ? h('span', { class: 'badge info' }, 'نص مخصص')
+              : h('span', { class: 'badge' }, 'النص الأصلي'),
+          icon('chevron', 'auto-chevron'))),
+      h('div', { class: 'auto-body' },
+        h('label', { class: 'auto-switch' }, f.enabled,
+          h('span', {}, 'إرسال هذه الرسالة تلقائياً')),
+        chips,
+        h('div', { class: 'grid-2' },
+          h('div', {},
+            h('div', { class: 'auto-lang' }, 'العربية'),
+            h('div', { class: 'field' }, h('label', {}, 'العنوان'), f.titleAr),
+            h('div', { class: 'field' }, h('label', {}, 'النص'), f.bodyAr)),
+          h('div', {},
+            h('div', { class: 'auto-lang' }, 'English'),
+            h('div', { class: 'field' }, h('label', {}, 'العنوان'), f.titleEn),
+            h('div', { class: 'field' }, h('label', {}, 'النص'), f.bodyEn))),
+        h('div', { class: 'hint' }, 'اترك أي خانة فارغة لاستخدام النص الأصلي الظاهر فيها باللون الباهت.'),
+        h('div', { class: 'push-preview' },
+          h('div', { class: 'push-preview-app' }, 'معاينة بالعربية · DealGo · الآن'),
+          previewTitle,
+          previewBody),
+        h('div', { class: 'toolbar', style: 'margin-top:12px' },
+          h('button', { class: 'btn', onclick: (e) => save(e.currentTarget) }, 'Save'),
+          m.customized ? h('button', { class: 'btn ghost', onclick: reset }, 'استعادة النص الأصلي') : null,
+          m.updatedAt ? h('span', { class: 'hint' }, 'آخر تعديل ', when(m.updatedAt)) : null)));
+
+    function draw() {
+      previewTitle.replaceChildren(text(fill(f.titleAr.value.trim() || m.arabic.defaultTitle, m)));
+      previewBody.replaceChildren(text(fill(f.bodyAr.value.trim() || m.arabic.defaultBody, m)));
+      el.classList.toggle('is-off', !f.enabled.checked);
+    }
+    [f.titleAr, f.bodyAr, f.titleEn, f.bodyEn].forEach((input) => input.addEventListener('input', draw));
+    f.enabled.addEventListener('change', draw);
+    draw();
+    return el;
+  };
+
+  // Grouped as the business thinks of them: auctions, results, wallet, store.
+  const groups = [];
+  for (const m of messages) {
+    let g = groups.find((x) => x.name === m.group);
+    if (!g) groups.push(g = { name: m.group, items: [] });
+    g.items.push(m);
+  }
+
+  return h('div', {},
+    pageHead('Automatic messages', 'الإشعارات التي يرسلها النظام تلقائياً. عدّل نصها أو أوقفها، ويُطبق التعديل على الإشعارات القادمة.',
+      h('button', { class: 'btn ghost', onclick: () => { state.route = 'notifications'; render(); } },
+        icon('bell'), h('span', {}, 'Send notification'))),
+    ...groups.map((g) => h('section', { class: 'auto-group' },
+      h('h3', { class: 'auto-group-title' }, text(g.name)),
+      ...g.items.map((m) => card(m)))));
 }
 
 // ---------------------------------------------------------------- finance

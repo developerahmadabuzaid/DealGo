@@ -32,7 +32,7 @@ void main() {
       supportedLocales: AppStrings.supportedLocales,
       home: Scaffold(
         body: SingleChildScrollView(
-          child: TopBiddersPanel(entries: entries, currency: 'SAR', participantCount: 12),
+          child: TopBiddersPanel(entries: entries, currency: 'SAR'),
         ),
       ),
     ));

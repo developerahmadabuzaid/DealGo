@@ -295,7 +295,6 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen>
                   TopBiddersPanel(
                     entries: snapshot.leaderboard,
                     currency: snapshot.currency,
-                    participantCount: snapshot.participantCount,
                   ),
                 ],
 

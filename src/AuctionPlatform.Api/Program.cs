@@ -341,6 +341,7 @@ builder.Services.AddHostedService<M5aznImportWorker>();
 builder.Services.AddSingleton<NotificationBroadcastQueue>();
 builder.Services.AddSingleton<INotificationBroadcaster>(sp => sp.GetRequiredService<NotificationBroadcastQueue>());
 builder.Services.AddHostedService<NotificationBroadcastWorker>();
+builder.Services.AddHostedService<ScheduledNotificationWorker>();
 
 // ---------------------------------------------------------------- swagger
 

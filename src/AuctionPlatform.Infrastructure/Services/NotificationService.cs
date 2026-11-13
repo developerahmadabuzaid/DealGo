@@ -48,6 +48,14 @@ public sealed class NotificationService : INotificationService
 
         try
         {
+            // Staff may have reworded this message on the dashboard, or switched it off.
+            var automatic = AutomaticMessages.ForTitleKey(template.TitleKey);
+            var custom = automatic is null
+                ? null
+                : await _db.NotificationMessageSettings.AsNoTracking()
+                    .FirstOrDefaultAsync(m => m.Code == automatic.Code, ct);
+            if (custom is { Enabled: false }) return;
+
             var recipients = await _db.Users
                 .AsNoTracking()
                 .Where(u => userIds.Contains(u.Id) && u.NotificationsEnabled)
@@ -71,8 +79,10 @@ public sealed class NotificationService : INotificationService
                     Type = template.Type,
                     TitleKey = template.TitleKey,
                     BodyKey = template.BodyKey,
-                    Title = _localization.Translate(template.TitleKey, recipient.Language, titleArgs),
-                    Body = _localization.Translate(template.BodyKey, recipient.Language, args),
+                    Title = Text(automatic, custom, recipient.Language, title: true, args)
+                        ?? _localization.Translate(template.TitleKey, recipient.Language, titleArgs),
+                    Body = Text(automatic, custom, recipient.Language, title: false, args)
+                        ?? _localization.Translate(template.BodyKey, recipient.Language, args),
                     Data = dataJson,
                     CreatedAt = now
                 });
@@ -88,6 +98,29 @@ public sealed class NotificationService : INotificationService
             _logger.LogError(ex, "Failed to deliver {Type} notification to {Count} users.",
                 template.Type, userIds.Count);
         }
+    }
+
+    /// <summary>
+    /// Staff's wording for this recipient's language, filled in with this notification's values;
+    /// null when they left it to the built-in text. The values the code passes are the body's,
+    /// and staff may use them in the title too.
+    /// </summary>
+    private static string? Text(
+        AutomaticMessageDefinition? automatic, NotificationMessageSetting? custom, string? language, bool title,
+        object[] values)
+    {
+        if (automatic is null || custom is null) return null;
+
+        var english = string.Equals(language, "en", StringComparison.OrdinalIgnoreCase);
+        var text = (english, title) switch
+        {
+            (true, true) => custom.TitleEn,
+            (true, false) => custom.BodyEn,
+            (false, true) => custom.TitleAr,
+            (false, false) => custom.BodyAr
+        };
+
+        return text is null ? null : AutomaticMessages.Fill(text, automatic, values);
     }
 
     public async Task<int> NotifyEveryoneAsync(NotificationTemplate template, CancellationToken ct = default)

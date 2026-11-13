@@ -295,7 +295,6 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen>
                 TopBiddersPanel(
                   entries: s.leaderboard,
                   currency: s.currency,
-                  participantCount: s.participantCount,
                   dense: true,
                 ),
               ],

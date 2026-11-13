@@ -67,5 +67,14 @@ public enum AuditActionType
     M5aznProductsImported = 35,
 
     /// <summary>Tawked refused a sign-in code because our SMS balance is empty; staff were told.</summary>
-    SmsBalanceEmpty = 36
+    SmsBalanceEmpty = 36,
+
+    /// <summary>Staff changed the wording of an automatic message, switched it on or off, or reset it.</summary>
+    NotificationMessageChanged = 37,
+
+    /// <summary>Staff scheduled a message, or changed one that was scheduled.</summary>
+    NotificationScheduled = 38,
+
+    /// <summary>Staff cancelled a scheduled message before it went out.</summary>
+    NotificationScheduleCancelled = 39
 }

@@ -53,6 +53,9 @@ public interface IApplicationDbContext
     DbSet<M5aznShipment> M5aznShipments { get; }
     DbSet<M5aznSettings> M5aznSettings { get; }
 
+    DbSet<NotificationMessageSetting> NotificationMessageSettings { get; }
+    DbSet<ScheduledNotification> ScheduledNotifications { get; }
+
     DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

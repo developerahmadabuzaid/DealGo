@@ -56,6 +56,9 @@ public class ApplicationDbContext
     public DbSet<M5aznShipment> M5aznShipments => Set<M5aznShipment>();
     public DbSet<M5aznSettings> M5aznSettings => Set<M5aznSettings>();
 
+    public DbSet<NotificationMessageSetting> NotificationMessageSettings => Set<NotificationMessageSetting>();
+    public DbSet<ScheduledNotification> ScheduledNotifications => Set<ScheduledNotification>();
+
     DbSet<ApplicationUser> IApplicationDbContext.Users => Set<ApplicationUser>();
 
     /// <summary>
