@@ -107,6 +107,7 @@ public sealed class StoreAdminService : IStoreAdminService
         if (query.MinPrice.HasValue) q = q.Where(p => p.Price >= query.MinPrice.Value);
         if (query.MaxPrice.HasValue) q = q.Where(p => p.Price <= query.MaxPrice.Value);
         if (query.FeaturedOnly == true) q = q.Where(p => p.IsFeatured);
+        if (query.ExclusiveOffers is { } exclusive) q = q.Where(p => p.IsExclusiveOffer == exclusive);
         if (query.InStockOnly == true) q = q.Where(p => p.StockQuantity - p.ReservedQuantity > 0);
         if (query.LowStockOnly == true)
             q = q.Where(p => p.StockQuantity > 0 && p.StockQuantity <= p.LowStockThreshold);
@@ -184,9 +185,14 @@ public sealed class StoreAdminService : IStoreAdminService
             IsFeatured = request.IsFeatured ?? false,
             RequiresShipping = request.RequiresShipping ?? true,
             ShippingFee = request.ShippingFee ?? 0m,
+            IsExclusiveOffer = request.IsExclusiveOffer ?? false,
+            OfferStartsAt = Utc(request.OfferStartsAt),
+            OfferEndsAt = Utc(request.OfferEndsAt),
+            OfferMaxPerUser = request.OfferMaxPerUser,
             CreatedAt = now,
             UpdatedAt = now
         };
+        ValidateOffer(product);
 
         _db.StoreProducts.Add(product);
         ApplyImages(product, request.Images);
@@ -252,6 +258,12 @@ public sealed class StoreAdminService : IStoreAdminService
         if (request.ShippingFee.HasValue) product.ShippingFee = request.ShippingFee.Value;
         if (request.LowStockThreshold.HasValue) product.LowStockThreshold = request.LowStockThreshold.Value;
 
+        if (request.IsExclusiveOffer.HasValue) product.IsExclusiveOffer = request.IsExclusiveOffer.Value;
+        if (request.OfferStartsAt.HasValue) product.OfferStartsAt = Utc(request.OfferStartsAt);
+        if (request.OfferEndsAt.HasValue) product.OfferEndsAt = Utc(request.OfferEndsAt);
+        if (request.OfferMaxPerUser.HasValue) product.OfferMaxPerUser = request.OfferMaxPerUser;
+        ValidateOffer(product);
+
         if (request.Images is not null)
         {
             _db.StoreProductImages.RemoveRange(product.Images);
@@ -268,6 +280,32 @@ public sealed class StoreAdminService : IStoreAdminService
 
         return StoreCatalogService.MapDetail(await LoadProductAsync(productId, ct));
     }
+
+    /// <summary>Most an exclusive offer may allow one customer.</summary>
+    public const int MaxOfferPerUser = 100;
+
+    /// <summary>An exclusive offer needs its whole term: when it starts, when it ends, and the limit.</summary>
+    private static void ValidateOffer(StoreProduct p)
+    {
+        if (!p.IsExclusiveOffer) return;
+
+        if (p.OfferStartsAt is null || p.OfferEndsAt is null)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "Set when the offer starts and when it ends.");
+        }
+        if (p.OfferEndsAt <= p.OfferStartsAt)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "The offer must end after it starts.");
+        }
+        if (p.OfferMaxPerUser is not (>= 1 and <= MaxOfferPerUser))
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed,
+                $"Set how many one customer may buy, between 1 and {MaxOfferPerUser}.");
+        }
+    }
+
+    private static DateTime? Utc(DateTime? value) => value is not { } v ? null
+        : v.Kind == DateTimeKind.Local ? v.ToUniversalTime() : DateTime.SpecifyKind(v, DateTimeKind.Utc);
 
     public async Task<StoreProductDetailDto> SetProductStatusAsync(
         Guid productId, StoreProductStatus status, CancellationToken ct = default)

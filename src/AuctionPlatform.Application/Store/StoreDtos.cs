@@ -21,6 +21,9 @@ public sealed record StoreCategoryDto(
 
 public sealed record StoreProductImageDto(Guid Id, string Url, string? ThumbnailUrl, bool IsPrimary, int DisplayOrder);
 
+/// <summary>The terms of an exclusive offer, for the countdown and the quantity limit.</summary>
+public sealed record ExclusiveOfferInfo(DateTime StartsAt, DateTime EndsAt, int MaxPerUser);
+
 public sealed record StoreProductListItemDto(
     Guid Id,
     string Name,
@@ -42,7 +45,10 @@ public sealed record StoreProductListItemDto(
     bool IsFeatured,
 
     /// <summary>Added by staff in the dashboard, or imported from M5azn.</summary>
-    StoreProductSource Source = StoreProductSource.Admin)
+    StoreProductSource Source = StoreProductSource.Admin,
+
+    /// <summary>Set when this product is an exclusive offer.</summary>
+    ExclusiveOfferInfo? Offer = null)
 {
     public bool IsOnOffer => StoreDiscount.Applies(Price, CompareAtPrice);
     public int DiscountPercentage => StoreDiscount.Percentage(Price, CompareAtPrice);
@@ -96,7 +102,10 @@ public sealed record StoreProductDetailDto(
     string? DeliveryTime = null,
 
     /// <summary>Admin, or M5azn for a product imported from the M5azn seller account.</summary>
-    StoreProductSource Source = StoreProductSource.Admin)
+    StoreProductSource Source = StoreProductSource.Admin,
+
+    /// <summary>Set when this product is an exclusive offer.</summary>
+    ExclusiveOfferInfo? Offer = null)
 {
     public bool IsOnOffer => StoreDiscount.Applies(Price, CompareAtPrice);
     public int DiscountPercentage => StoreDiscount.Percentage(Price, CompareAtPrice);
@@ -119,6 +128,12 @@ public sealed class StoreProductQuery : PagedQuery
 
     public bool? LowStockOnly { get; set; }
 
+    /// <summary>
+    /// True: only exclusive offers (in the store, only those running now). The store's own lists
+    /// always leave them out; the dashboard shows everything unless this is set.
+    /// </summary>
+    public bool? ExclusiveOffers { get; set; }
+
     /// <summary>Admin-only filter: products added in the dashboard, or imported from M5azn.</summary>
     public StoreProductSource? Source { get; set; }
 }
@@ -133,7 +148,10 @@ public sealed record StoreHomeDto(
     /// <summary>Items with a real discount, the biggest saving first.</summary>
     IReadOnlyList<StoreProductListItemDto> Offers,
     decimal ShoppingCreditBalance,
-    string Currency);
+    string Currency,
+
+    /// <summary>Exclusive offers running now: those still in stock first, the soonest to end first.</summary>
+    IReadOnlyList<StoreProductListItemDto>? ExclusiveOffers = null);
 
 public sealed record CreateStoreProductRequest(
     string Name,
@@ -151,7 +169,11 @@ public sealed record CreateStoreProductRequest(
     bool? RequiresShipping,
     decimal? ShippingFee,
     int? LowStockThreshold,
-    IReadOnlyList<StoreProductImageRequest>? Images);
+    IReadOnlyList<StoreProductImageRequest>? Images,
+    bool? IsExclusiveOffer = null,
+    DateTime? OfferStartsAt = null,
+    DateTime? OfferEndsAt = null,
+    int? OfferMaxPerUser = null);
 
 public sealed record StoreProductImageRequest(string Url, string? ThumbnailUrl, bool IsPrimary, int DisplayOrder);
 
@@ -168,7 +190,11 @@ public sealed record UpdateStoreProductRequest(
     bool? RequiresShipping,
     decimal? ShippingFee,
     int? LowStockThreshold,
-    IReadOnlyList<StoreProductImageRequest>? Images);
+    IReadOnlyList<StoreProductImageRequest>? Images,
+    bool? IsExclusiveOffer = null,
+    DateTime? OfferStartsAt = null,
+    DateTime? OfferEndsAt = null,
+    int? OfferMaxPerUser = null);
 
 /// <param name="ParentId">The main department to sit under; null makes a main department.</param>
 public sealed record CreateStoreCategoryRequest(

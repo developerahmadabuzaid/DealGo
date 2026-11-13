@@ -66,6 +66,20 @@ public class StoreProduct : AuditableEntity
     public int ViewCount { get; set; }
 
     /// <summary>
+    /// An exclusive offer ("عرض حصري"): a product of its own, shown only in the exclusive offers
+    /// section, sold only between <see cref="OfferStartsAt"/> and <see cref="OfferEndsAt"/>, and at
+    /// most <see cref="OfferMaxPerUser"/> to each customer across all their orders. Its stock is how
+    /// many are offered in all; its compare-at price is the price before the offer.
+    /// </summary>
+    public bool IsExclusiveOffer { get; set; }
+    public DateTime? OfferStartsAt { get; set; }
+    public DateTime? OfferEndsAt { get; set; }
+    public int? OfferMaxPerUser { get; set; }
+
+    public bool IsOfferLive(DateTime now) =>
+        IsExclusiveOffer && OfferStartsAt is { } s && OfferEndsAt is { } e && s <= now && now < e;
+
+    /// <summary>
     /// Admin: added in the dashboard and shipped by DealGo. M5azn: imported from the M5azn seller
     /// account (docs/M5AZN.md); only these are ever sent to M5azn.
     /// </summary>

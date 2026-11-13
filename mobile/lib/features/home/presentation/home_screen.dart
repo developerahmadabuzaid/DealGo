@@ -17,6 +17,7 @@ import '../../../shared/widgets.dart';
 import '../../auctions/data/auction_models.dart';
 import '../../auctions/presentation/ended_auction_screen.dart';
 import '../../store/data/store_repository.dart';
+import '../../store/presentation/exclusive_offers.dart';
 import '../data/ads_repository.dart';
 
 /// The front page: a photographic header carrying the search, the advertisements an
@@ -147,6 +148,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // or coming up stands in, so the row is never empty.
               if (featured.isNotEmpty)
                 SliverToBoxAdapter(child: _FeaturedAuctions(auctions: featured)),
+
+              // Exclusive offers running now, each with its own clock: high on the page, since
+              // they do not last.
+              if (home != null && home.exclusiveOffers.isNotEmpty)
+                SliverToBoxAdapter(child: ExclusiveOffersSection(products: home.exclusiveOffers)),
 
               SliverToBoxAdapter(
                 child: _CategoryTiles(categories: categories, loading: storeLoading),

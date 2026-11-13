@@ -2147,6 +2147,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .HasMaxLength(8000)
                         .HasColumnType("character varying(8000)");
 
+                    b.Property<bool>("IsExclusiveOffer")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsFeatured")
                         .HasColumnType("boolean");
 
@@ -2176,6 +2179,15 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime?>("OfferEndsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("OfferMaxPerUser")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("OfferStartsAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("PaymentMode")
                         .HasColumnType("integer");
@@ -2244,6 +2256,8 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.HasIndex("Source");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("IsExclusiveOffer", "OfferEndsAt");
 
                     b.HasIndex("Status", "CompareAtPrice");
 

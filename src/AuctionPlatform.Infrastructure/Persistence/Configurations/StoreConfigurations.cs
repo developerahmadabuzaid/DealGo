@@ -50,6 +50,7 @@ public sealed class StoreProductConfiguration : IEntityTypeConfiguration<StorePr
         // One DealGo product per imported M5azn product, so importing again updates instead of duplicating.
         b.HasIndex(p => p.M5aznProductId).IsUnique().HasFilter("\"Source\" = 1 AND \"M5aznProductId\" IS NOT NULL");
         b.HasIndex(p => p.Source);
+        b.HasIndex(p => new { p.IsExclusiveOffer, p.OfferEndsAt });
         b.HasIndex(p => p.Slug);
         b.HasIndex(p => p.Status);
         b.HasIndex(p => p.CategoryId);

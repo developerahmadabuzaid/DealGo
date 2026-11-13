@@ -35,6 +35,31 @@ class StoreCategory {
       );
 }
 
+/// The terms of an exclusive offer: when it runs, and how many one customer may buy.
+class ExclusiveOffer {
+  const ExclusiveOffer({required this.startsAt, required this.endsAt, required this.maxPerUser});
+
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final int maxPerUser;
+
+  bool get hasStarted => !DateTime.now().toUtc().isBefore(startsAt);
+  bool get hasEnded => !DateTime.now().toUtc().isBefore(endsAt);
+  bool get isLive => hasStarted && !hasEnded;
+
+  static ExclusiveOffer? fromJson(dynamic j) {
+    if (j is! Map) return null;
+    final starts = DateTime.tryParse(j['startsAt'] as String? ?? '');
+    final ends = DateTime.tryParse(j['endsAt'] as String? ?? '');
+    if (starts == null || ends == null) return null;
+    return ExclusiveOffer(
+      startsAt: starts.toUtc(),
+      endsAt: ends.toUtc(),
+      maxPerUser: (j['maxPerUser'] as num?)?.toInt() ?? 1,
+    );
+  }
+}
+
 class StoreProduct {
   const StoreProduct({
     required this.id,
@@ -50,7 +75,18 @@ class StoreProduct {
     required this.acceptsShoppingCredit,
     required this.paymentMode,
     required this.isFeatured,
+    this.offer,
   });
+
+  /// Set when this product is an exclusive offer.
+  final ExclusiveOffer? offer;
+
+  /// How many of this a customer may put in the cart: the stock, and an offer's own limit.
+  int get maxPerOrder {
+    final stock = availableQuantity > 0 ? availableQuantity : 1;
+    final limit = offer?.maxPerUser;
+    return limit != null && limit < stock ? limit : stock;
+  }
 
   final String id;
   final String name;
@@ -96,6 +132,7 @@ class StoreProduct {
         acceptsShoppingCredit: j['acceptsShoppingCredit'] as bool? ?? false,
         paymentMode: j['paymentMode'] as String? ?? 'ShoppingWallet',
         isFeatured: j['isFeatured'] as bool? ?? false,
+        offer: ExclusiveOffer.fromJson(j['offer']),
       );
 }
 
@@ -121,6 +158,7 @@ class StoreProductDetail extends StoreProduct {
     this.categoryId,
     this.parentCategoryName,
     this.deliveryTime,
+    super.offer,
   });
 
   /// How long delivery takes ("1-5 أيام"), when the store says; null shows nothing.
@@ -168,6 +206,7 @@ class StoreProductDetail extends StoreProduct {
       categoryId: j['categoryId'] as String?,
       parentCategoryName: j['parentCategoryName'] as String?,
       deliveryTime: (j['deliveryTime'] as String?)?.trim().isEmpty ?? true ? null : (j['deliveryTime'] as String).trim(),
+      offer: ExclusiveOffer.fromJson(j['offer']),
     );
   }
 }
@@ -182,7 +221,11 @@ class StoreHome {
     required this.offers,
     required this.shoppingCreditBalance,
     required this.currency,
+    this.exclusiveOffers = const [],
   });
+
+  /// Exclusive offers running now, for the hot row on the home page.
+  final List<StoreProduct> exclusiveOffers;
 
   final List<StoreCategory> categories;
   final List<StoreProduct> featured;
@@ -209,6 +252,7 @@ class StoreHome {
         creditEligible: _products(j['shoppingCreditEligible']),
         offers: _products(j['offers']),
         shoppingCreditBalance: _num(j['shoppingCreditBalance']),
+        exclusiveOffers: _products(j['exclusiveOffers']),
         currency: j['currency'] as String? ?? 'USD',
       );
 }

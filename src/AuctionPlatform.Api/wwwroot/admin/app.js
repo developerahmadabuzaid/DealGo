@@ -417,6 +417,7 @@ const AR = {
   'Notifications': 'الإشعارات', 'Send notification': 'إرسال إشعار', 'Title': 'العنوان',
   'Message': 'نص الرسالة', 'Opens': 'عند الضغط يفتح', 'Preview': 'معاينة',
   'Automatic messages': 'الرسائل التلقائية',
+  'Exclusive offers': 'عروض حصرية',
   'Bank transfers waiting to be made. The money has already left the user’s wallet.':
     'تحويلات بنكية بانتظار التنفيذ. المبلغ خُصم من محفظة المستخدم عند الطلب.',
   'To pay': 'بانتظار الدفع', 'Paid': 'مدفوعة', 'Refused': 'مرفوضة', 'All': 'الكل',
@@ -1111,6 +1112,7 @@ const NAV = [
     items: [
       { id: 'store-overview', label: 'Overview', icon: 'cart' },
       { id: 'store-products', label: 'Products', icon: 'box' },
+      { id: 'store-offers', label: 'Exclusive offers', icon: 'gift' },
       { id: 'store-categories', label: 'Categories', icon: 'layers' },
       { id: 'store-inventory', label: 'Inventory', icon: 'tag' },
       { id: 'store-orders', label: 'Orders', icon: 'receipt' },
@@ -1233,6 +1235,7 @@ function routeView(route) {
     'auction-edit': viewAuctionForm,
     'store-overview': viewStoreOverview,
     'store-products': viewStoreProducts,
+    'store-offers': viewStoreOffers,
     'store-categories': viewStoreCategories,
     'store-inventory': viewInventory,
     'store-orders': viewOrders,
@@ -3709,7 +3712,7 @@ async function viewStoreProducts() {
     admin: ['Admin products first', 'source', false],
   };
 
-  const params = new URLSearchParams({ page: q.page, pageSize: 20 });
+  const params = new URLSearchParams({ page: q.page, pageSize: 20, exclusiveOffers: 'false' });
   if (q.search) params.set('search', q.search);
   if (q.status) params.set('status', q.status);
   if (q.source) params.set('source', q.source);
@@ -3788,31 +3791,137 @@ async function viewStoreProducts() {
       })));
 }
 
+/*
+ * Exclusive offers: products of their own, each shown only in the app's "عروض حصرية" section,
+ * sold only between its start and end, and at most its limit to each customer. The server
+ * enforces every one of those at checkout.
+ */
+function offerState(p) {
+  const now = Date.now();
+  const starts = new Date(p.offer.startsAt).getTime();
+  const ends = new Date(p.offer.endsAt).getTime();
+  if (p.status !== 'Active' && p.status !== 'OutOfStock') return ['موقوف', 'badge'];
+  if (now >= ends) return ['انتهى', 'badge danger'];
+  if (now < starts) return ['قادم', 'badge warn'];
+  if (!p.inStock) return ['نفدت الكمية', 'badge danger'];
+  return ['يعمل الآن', 'badge live'];
+}
+
+async function viewStoreOffers() {
+  const q = state.cache.offers || (state.cache.offers = { page: 1, search: '' });
+  const params = new URLSearchParams({ page: q.page, pageSize: 20, exclusiveOffers: 'true' });
+  if (q.search) params.set('search', q.search);
+
+  const [data, categories] = await Promise.all([
+    api(`/admin/store/products?${params}`),
+    api('/admin/store/categories'),
+  ]);
+
+  const search = h('input', { placeholder: 'Name or SKU', value: q.search });
+  const text = (v) => document.createTextNode(v ?? '');
+
+  const setStatus = async (id, action) => {
+    try {
+      await api(`/admin/store/products/${id}/${action}`, { method: 'POST' });
+      toast('Product updated.', 'ok');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+
+  return h('div', {},
+    pageHead('Exclusive offers', 'منتجات مستقلة تظهر في قسم «عروض حصرية» في الصفحة الرئيسية للتطبيق، بمدة محددة وحد أقصى لكل عميل.',
+      h('button', { class: 'btn', onclick: () => productForm(null, categories, { offer: true }) },
+        icon('gift'), h('span', {}, 'عرض جديد'))),
+
+    h('div', { class: 'card' },
+      h('div', { class: 'toolbar' }, search,
+        h('button', {
+          class: 'btn ghost sm',
+          onclick: () => { q.search = search.value; q.page = 1; render(); },
+        }, 'Apply')),
+
+      data.items.length === 0
+        ? h('div', { class: 'empty' }, 'لا توجد عروض حصرية بعد. اضغط «عرض جديد» لإضافة أول عرض.')
+        : pagedTable({
+          columns: [
+            { label: 'Product', render: (p) => h('div', {},
+                h('strong', {}, text(p.name)),
+                h('div', { class: 'hint mono' }, text(p.sku))) },
+            { label: 'سعر العرض', render: (p) => h('div', {},
+                h('strong', {}, money(p.price, p.currency)),
+                p.compareAtPrice ? h('div', { class: 'hint', style: 'text-decoration:line-through' }, money(p.compareAtPrice, p.currency)) : null) },
+            { label: 'المدة', render: (p) => (p.offer
+                ? h('div', {}, when(p.offer.startsAt), h('div', { class: 'hint' }, '← ', when(p.offer.endsAt)))
+                : '—') },
+            { label: 'لكل عميل', num: true, render: (p) => (p.offer ? num(p.offer.maxPerUser) : '—') },
+            { label: 'المتبقي', num: true, render: (p) => num(p.availableQuantity) },
+            { label: 'الحالة', render: (p) => {
+                if (!p.offer) return '—';
+                const [label, cls] = offerState(p);
+                return h('span', { class: cls }, label);
+              } },
+            {
+              label: '',
+              render: (p) => h('div', { class: 'row' },
+                h('button', { class: 'btn ghost sm', onclick: () => editProduct(p.id, categories) }, 'Edit'),
+                p.status !== 'Active' && p.status !== 'OutOfStock'
+                  ? h('button', { class: 'btn ghost sm', onclick: () => setStatus(p.id, 'activate') }, 'Activate')
+                  : h('button', { class: 'btn ghost sm', onclick: () => setStatus(p.id, 'hide') }, 'إيقاف'),
+                h('button', { class: 'btn ghost sm', onclick: () => setStatus(p.id, 'archive') }, 'Archive')),
+            },
+          ],
+          rows: data.items,
+          page: data.page,
+          totalPages: data.totalPages,
+          totalCount: data.totalCount,
+          onPage: (pg) => { q.page = pg; render(); },
+        })));
+}
+
 async function editProduct(id, categories) {
   const p = await api(`/admin/store/products/${id}`);
   productForm(p, categories);
 }
 
-function productForm(p, categories) {
+function productForm(p, categories, { offer = false } = {}) {
   const isNew = !p;
+  const isOffer = offer || !!p?.offer;
   const catOptions = [{ value: '', label: '— none —' },
     ...orderedCategories(categories).map((c) => ({ value: c.id, label: categoryLabel(c) }))];
 
-  formModal(isNew ? 'Add product' : `Edit ${p.name}`,
-    isNew ? 'New products start as drafts; activate them when they are ready to sell.'
-          : 'Changing the price never rewrites existing orders: those hold their own snapshots.',
+  // An exclusive offer is a product of its own: it starts on sale and shows only between its times.
+  const inAnHour = new Date(Date.now() + 60 * 60 * 1000);
+  inAnHour.setMinutes(0, 0, 0);
+  const inADay = new Date(inAnHour.getTime() + 24 * 60 * 60 * 1000);
+  const offerFields = isOffer ? [
+    { name: 'offerStartsAt', label: 'يبدأ العرض', type: 'datetime-local',
+      value: toLocalInput(p?.offer ? new Date(p.offer.startsAt) : inAnHour) },
+    { name: 'offerEndsAt', label: 'ينتهي العرض', type: 'datetime-local',
+      value: toLocalInput(p?.offer ? new Date(p.offer.endsAt) : inADay),
+      hint: 'بتوقيت جهازك. لا يظهر العرض ولا يُباع إلا بين هذين الوقتين.' },
+    { name: 'offerMaxPerUser', label: 'الحد الأقصى لكل عميل', type: 'number', value: p?.offer?.maxPerUser ?? 1,
+      hint: 'كم قطعة يمكن للعميل الواحد شراؤها من هذا العرض، في كل طلباته.' },
+  ] : [];
+
+  formModal(isNew ? (isOffer ? 'عرض حصري جديد' : 'Add product') : `Edit ${p.name}`,
+    isOffer
+      ? 'منتج مستقل يظهر في قسم «عروض حصرية» فقط، بسعره وكميته ومدته.'
+      : isNew ? 'New products start as drafts; activate them when they are ready to sell.'
+        : 'Changing the price never rewrites existing orders: those hold their own snapshots.',
     [
       { name: 'name', label: 'Name', value: p?.name },
-      { name: 'sku', label: 'SKU', value: p?.sku, placeholder: 'SKU-HEADPHONES-001' },
+      { name: 'sku', label: 'SKU', value: p?.sku, placeholder: isOffer ? 'OFFER-IPHONE-001' : 'SKU-HEADPHONES-001' },
       { name: 'description', label: 'Description', value: p?.description },
       { name: 'categoryId', label: 'Category', type: 'select', options: catOptions, value: p?.categoryId || '' },
-      { name: 'price', label: 'Price', type: 'number', step: '0.01', value: p?.price ?? 0 },
+      { name: 'price', label: isOffer ? 'سعر العرض' : 'Price', type: 'number', step: '0.01', value: p?.price ?? 0 },
       {
-        name: 'compareAtPrice', label: 'Price before offer', type: 'number', step: '0.01',
+        name: 'compareAtPrice', label: isOffer ? 'السعر قبل العرض' : 'Price before offer', type: 'number', step: '0.01',
         value: p?.compareAtPrice ?? '',
-        hint: 'اتركه فارغاً إذا لم يكن هناك عرض. يجب أن يكون أعلى من السعر.',
+        hint: isOffer ? 'يظهر مشطوباً بجانب سعر العرض. يجب أن يكون أعلى منه.'
+          : 'اتركه فارغاً إذا لم يكن هناك عرض. يجب أن يكون أعلى من السعر.',
       },
-      ...(isNew ? [{ name: 'stockQuantity', label: 'Initial stock', type: 'number', value: 0 }] : []),
+      ...(isNew ? [{ name: 'stockQuantity', label: isOffer ? 'الكمية المتاحة للعرض' : 'Initial stock', type: 'number', value: 0 }] : []),
+      ...offerFields,
       {
         name: 'paymentMode', label: 'Accepted payment', type: 'select', value: p?.paymentMode || 'ShoppingWallet',
         options: [
@@ -3845,10 +3954,31 @@ function productForm(p, categories) {
         images: v.imageUrl ? [{ url: v.imageUrl, thumbnailUrl: null, isPrimary: true, displayOrder: 0 }] : null,
       };
 
+      if (isOffer) {
+        const starts = new Date(v.offerStartsAt);
+        const ends = new Date(v.offerEndsAt);
+        if (!v.offerStartsAt || !v.offerEndsAt || Number.isNaN(starts.getTime()) || Number.isNaN(ends.getTime())) {
+          throw new Error('اختر وقت بداية العرض ونهايته.');
+        }
+        if (ends <= starts) throw new Error('يجب أن ينتهي العرض بعد أن يبدأ.');
+        if (!(Number(v.compareAtPrice) > Number(v.price))) {
+          throw new Error('اكتب السعر قبل العرض، ويجب أن يكون أعلى من سعر العرض.');
+        }
+        Object.assign(body, {
+          isExclusiveOffer: true,
+          offerStartsAt: starts.toISOString(),
+          offerEndsAt: ends.toISOString(),
+          offerMaxPerUser: Number(v.offerMaxPerUser),
+        });
+      }
+
       if (isNew) {
         await api('/admin/store/products', {
           method: 'POST',
-          body: JSON.stringify({ ...body, stockQuantity: Number(v.stockQuantity), status: 'Draft', currency: 'SAR' }),
+          // An offer goes on sale by itself at its start time, so it is saved active.
+          body: JSON.stringify({
+            ...body, stockQuantity: Number(v.stockQuantity), status: isOffer ? 'Active' : 'Draft', currency: 'SAR',
+          }),
         });
       } else {
         await api(`/admin/store/products/${p.id}`, { method: 'PUT', body: JSON.stringify(body) });

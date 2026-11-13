@@ -315,12 +315,17 @@ class CartController extends StateNotifier<List<CartLine>> {
   void add(StoreProduct product, {int quantity = 1}) {
     final existing = state.indexWhere((l) => l.product.id == product.id);
 
+    // An exclusive offer's limit per customer is the most the cart holds; the server checks it
+    // again, counting earlier orders too.
+    final limit = product.offer?.maxPerUser;
+    int capped(int n) => limit != null && n > limit ? limit : n;
+
     if (existing >= 0) {
       final updated = [...state];
-      updated[existing].quantity += quantity;
+      updated[existing].quantity = capped(updated[existing].quantity + quantity);
       state = updated;
     } else {
-      state = [...state, CartLine(product: product, quantity: quantity)];
+      state = [...state, CartLine(product: product, quantity: capped(quantity))];
     }
   }
 
@@ -331,7 +336,13 @@ class CartController extends StateNotifier<List<CartLine>> {
     }
     state = [
       for (final line in state)
-        if (line.product.id == productId) (line..quantity = quantity) else line
+        if (line.product.id == productId)
+          (line
+            ..quantity = line.product.offer?.maxPerUser != null && quantity > line.product.offer!.maxPerUser
+                ? line.product.offer!.maxPerUser
+                : quantity)
+        else
+          line
     ];
   }
 

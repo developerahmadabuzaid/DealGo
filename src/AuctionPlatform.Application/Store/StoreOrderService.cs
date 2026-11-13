@@ -167,6 +167,8 @@ public sealed class StoreOrderService : IStoreOrderService
                 }
             }
 
+            await EnforceExclusiveOffersAsync(userId, request, byId, now, ct);
+
             if (request.ShippingAddressId is null && NeedsDeliveryAddress(products))
             {
                 throw new DomainException(
@@ -289,6 +291,46 @@ public sealed class StoreOrderService : IStoreOrderService
         await CheckLowStockAsync(request, ct);
 
         return dto;
+    }
+
+    /// <summary>
+    /// An exclusive offer is sold only while it runs, and at most its limit to each customer,
+    /// counting what they already bought in orders still standing. Checked under the product's row
+    /// lock, so two checkouts at once cannot both slip under the limit.
+    /// </summary>
+    private async Task EnforceExclusiveOffersAsync(
+        Guid userId, CheckoutRequest request, IReadOnlyDictionary<Guid, StoreProduct> byId, DateTime now, CancellationToken ct)
+    {
+        foreach (var group in request.Items.GroupBy(i => i.ProductId))
+        {
+            if (!byId.TryGetValue(group.Key, out var product) || !product.IsExclusiveOffer) continue;
+
+            if (product.OfferStartsAt is { } starts && now < starts)
+            {
+                throw new DomainException(ErrorCodes.ProductNotAvailable,
+                    $"The offer on {product.Name} has not started yet.");
+            }
+            if (product.OfferEndsAt is not { } ends || now >= ends)
+            {
+                throw new DomainException(ErrorCodes.ProductNotAvailable,
+                    $"The offer on {product.Name} has ended.");
+            }
+
+            var max = product.OfferMaxPerUser ?? 1;
+            var wanted = group.Sum(i => i.Quantity);
+            var bought = await _db.StoreOrderItems.AsNoTracking()
+                .Where(i => i.ProductId == product.Id && i.Order!.UserId == userId &&
+                            i.Order.Status != StoreOrderStatus.Cancelled && i.Order.Status != StoreOrderStatus.Refunded)
+                .SumAsync(i => (int?)i.Quantity, ct) ?? 0;
+
+            if (bought + wanted > max)
+            {
+                var left = Math.Max(0, max - bought);
+                throw new DomainException(ErrorCodes.OfferLimitReached, left == 0
+                    ? $"You have already bought the most allowed of {product.Name} ({max})."
+                    : $"You can buy {left} more of {product.Name} (at most {max} per customer).");
+            }
+        }
     }
 
     private async Task NotifyOrderCreatedAsync(Guid userId, StoreOrderDto order, CancellationToken ct)

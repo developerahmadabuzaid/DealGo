@@ -122,6 +122,17 @@ class AppStrings {
   String get shopWithCredit => _t('تسوّق برصيدك', 'Shop with your credit');
   String get pickedForYou => _t('مختارات لك', 'Picked for you');
   String get offers => _t('العروض', 'Offers');
+  String get exclusiveOffers => _t('عروض حصرية', 'Exclusive offers');
+  String get exclusiveOffer => _t('عرض حصري', 'Exclusive offer');
+  String get exclusiveOffersHint => _t('لفترة محدودة وبكمية محدودة لكل عميل', 'For a limited time, limited per customer');
+  String get exclusiveBadge => _t('حصري', 'Exclusive');
+  String offerLimitPerCustomer(int n) => _t('الحد الأقصى $n لكل عميل', 'Up to $n per customer');
+  String offerEndsIn(String time) => _t('ينتهي خلال $time', 'Ends in $time');
+  String offerStartsIn(String time) => _t('يبدأ خلال $time', 'Starts in $time');
+  String get offerEnded => _t('انتهى العرض', 'Offer ended');
+  String get offerNotStarted => _t('لم يبدأ العرض بعد', 'Not started yet');
+  String get offerSoldOut => _t('نفدت الكمية', 'Sold out');
+  String days(int n) => _t('$nي', '${n}d');
   String offersIn(String category) => _t('عروض $category', '$category offers');
   String get priceBeforeOffer => _t('قبل الخصم', 'Before the offer');
   String discountOff(int percent) => _t('خصم $percent%', '$percent% off');

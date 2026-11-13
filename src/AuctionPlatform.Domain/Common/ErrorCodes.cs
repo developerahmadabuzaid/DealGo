@@ -55,6 +55,7 @@ public static class ErrorCodes
     public const string CategoryTooDeep = "CATEGORY_TOO_DEEP";
     public const string CategoryHasSubcategories = "CATEGORY_HAS_SUBCATEGORIES";
     public const string DuplicateSku = "DUPLICATE_SKU";
+    public const string OfferLimitReached = "OFFER_LIMIT_REACHED";
 
     // Prizes
     public const string PrizeClaimNotFound = "PRIZE_CLAIM_NOT_FOUND";

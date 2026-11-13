@@ -16,6 +16,7 @@ import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
 import '../../home/data/ads_repository.dart';
 import '../data/store_repository.dart';
+import 'exclusive_offers.dart';
 
 class StoreScreen extends ConsumerStatefulWidget {
   const StoreScreen({super.key, this.categoryId});
@@ -1437,6 +1438,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (p.offer != null) ...[
+                        ExclusiveOfferBanner(offer: p.offer!),
+                        const SizedBox(height: 12),
+                      ],
                       _ProductGallery(product: p),
                       const SizedBox(height: 16),
                       _ProductInfo(product: p),
@@ -1483,7 +1488,15 @@ class _BuyBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final p = product;
-    final max = p.availableQuantity > 0 ? p.availableQuantity : 1;
+    final max = p.maxPerOrder;
+    // An exclusive offer is sold only while it runs.
+    final offer = p.offer;
+    final buyable = p.inStock && (offer == null || offer.isLive);
+    final blockedLabel = !p.inStock
+        ? t.outOfStock
+        : offer != null && !offer.hasStarted
+            ? t.offerNotStarted
+            : t.offerEnded;
 
     return Container(
       decoration: BoxDecoration(
@@ -1498,7 +1511,7 @@ class _BuyBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Row(
             children: [
-              if (p.inStock) ...[
+              if (buyable) ...[
                 _QuantityCounter(value: quantity, max: max, onChanged: onQuantity),
                 const SizedBox(width: 12),
               ],
@@ -1520,19 +1533,19 @@ class _BuyBar extends StatelessWidget {
                         fontFamilyFallback: AppTheme.riyalFallback,
                       ),
                     ),
-                    onPressed: p.inStock ? onAdd : null,
+                    onPressed: buyable ? onAdd : null,
                     // Shrinks rather than overflows on a narrow phone or with large text.
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(p.inStock
+                          Icon(buyable
                               ? Icons.shopping_cart_outlined
                               : Icons.remove_shopping_cart_outlined),
                           const SizedBox(width: 8),
-                          Text(p.inStock ? t.addToCart : t.outOfStock),
-                          if (p.inStock) ...[
+                          Text(buyable ? t.addToCart : blockedLabel),
+                          if (buyable) ...[
                             const SizedBox(width: 12),
                             _Money(
                               p.price * quantity,

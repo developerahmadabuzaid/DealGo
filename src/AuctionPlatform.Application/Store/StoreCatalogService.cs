@@ -12,12 +12,14 @@ public sealed class StoreCatalogService : IStoreCatalogService
     private readonly IApplicationDbContext _db;
     private readonly IWalletService _wallets;
     private readonly ICacheService _cache;
+    private readonly IDateTimeProvider _clock;
 
-    public StoreCatalogService(IApplicationDbContext db, IWalletService wallets, ICacheService cache)
+    public StoreCatalogService(IApplicationDbContext db, IWalletService wallets, ICacheService cache, IDateTimeProvider clock)
     {
         _db = db;
         _wallets = wallets;
         _cache = cache;
+        _clock = clock;
     }
 
     public async Task<StoreHomeDto> GetHomeAsync(Guid? userId, CancellationToken ct = default)
@@ -60,6 +62,14 @@ public sealed class StoreCatalogService : IStoreCatalogService
             .Select(Projection)
             .ToListAsync(ct);
 
+        // Those still in stock first, then the soonest to end.
+        var exclusive = await LiveExclusiveOffers()
+            .OrderByDescending(p => p.StockQuantity - p.ReservedQuantity > 0)
+            .ThenBy(p => p.OfferEndsAt)
+            .Take(20)
+            .Select(Projection)
+            .ToListAsync(ct);
+
         var creditBalance = 0m;
         var currency = Money.DefaultCurrency;
 
@@ -71,13 +81,25 @@ public sealed class StoreCatalogService : IStoreCatalogService
         }
 
         return new StoreHomeDto(
-            categories, featured, newArrivals, popular, creditEligible, offers, creditBalance, currency);
+            categories, featured, newArrivals, popular, creditEligible, offers, creditBalance, currency, exclusive);
     }
 
+    /// <summary>The store's own lists. Exclusive offers are products of their own, shown only in their section.</summary>
     private IQueryable<StoreProduct> PublicProducts() =>
+        VisibleProducts().Where(p => !p.IsExclusiveOffer);
+
+    private IQueryable<StoreProduct> VisibleProducts() =>
         _db.StoreProducts
             .AsNoTracking()
             .Where(p => p.Status == StoreProductStatus.Active || p.Status == StoreProductStatus.OutOfStock);
+
+    /// <summary>Exclusive offers running now.</summary>
+    private IQueryable<StoreProduct> LiveExclusiveOffers()
+    {
+        var now = _clock.UtcNow;
+        return VisibleProducts()
+            .Where(p => p.IsExclusiveOffer && p.OfferStartsAt <= now && p.OfferEndsAt > now);
+    }
 
     /// <summary>Shared list projection so every catalog surface reports availability identically.</summary>
     internal static System.Linq.Expressions.Expression<Func<StoreProduct, StoreProductListItemDto>> Projection =>
@@ -91,12 +113,15 @@ public sealed class StoreCatalogService : IStoreCatalogService
             p.Status, p.PaymentMode,
             p.PaymentMode == StorePaymentMode.ShoppingWallet || p.PaymentMode == StorePaymentMode.Both,
             p.IsFeatured,
-            p.Source);
+            p.Source,
+            p.IsExclusiveOffer && p.OfferStartsAt != null && p.OfferEndsAt != null
+                ? new ExclusiveOfferInfo(p.OfferStartsAt.Value, p.OfferEndsAt.Value, p.OfferMaxPerUser ?? 1)
+                : null);
 
     public async Task<PagedResult<StoreProductListItemDto>> GetProductsAsync(
         StoreProductQuery query, CancellationToken ct = default)
     {
-        var q = PublicProducts();
+        var q = query.ExclusiveOffers == true ? LiveExclusiveOffers() : PublicProducts();
 
         // A main department shows its own products and every sub-department's.
         if (query.CategoryId.HasValue)
@@ -174,7 +199,10 @@ public sealed class StoreCatalogService : IStoreCatalogService
             .ToList(),
         p.CreatedAt, p.UpdatedAt,
         p.Category?.ParentId, p.Category?.Parent?.Name,
-        p.DeliveryTime, p.Source);
+        p.DeliveryTime, p.Source,
+        p.IsExclusiveOffer && p.OfferStartsAt is { } starts && p.OfferEndsAt is { } ends
+            ? new ExclusiveOfferInfo(starts, ends, p.OfferMaxPerUser ?? 1)
+            : null);
 
     public async Task<IReadOnlyList<StoreCategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
     {
