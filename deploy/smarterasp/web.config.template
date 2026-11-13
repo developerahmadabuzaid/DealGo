@@ -35,6 +35,12 @@
         <environmentVariables>
           <environmentVariable name="ASPNETCORE_ENVIRONMENT" value="Production" />
           <environmentVariable name="DOTNET_gcServer" value="0" />
+          <!--
+            SmarterASP has no Redis. Left on, every lock, cache read and bid rate check waited for a
+            server that is not there, and the live connection sent its events through it too. Off,
+            the API uses its in-process versions, which is right for a single server.
+          -->
+          <environmentVariable name="Redis__Enabled" value="false" />
           <environmentVariable name="ConnectionStrings__Postgres" value="__CONNECTION_STRING__" />
           <environmentVariable name="Jwt__Secret" value="__JWT_SECRET__" />
           <environmentVariable name="Tawked__ApiKey" value="__TAWKED_API_KEY__" />

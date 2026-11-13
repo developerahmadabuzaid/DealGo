@@ -144,6 +144,24 @@ var signalR = builder.Services.AddSignalR(options =>
     options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
+// ---------------------------------------------------------------- compression
+
+// The API's JSON answers are compressed: lists of auctions and products shrink to a fraction,
+// which is what a phone on a mobile network waits for. Fastest level: the time saved on the wire
+// is lost again if the server spends it compressing. The app's own files are already compressed
+// at build time and are served as they are.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+    options.MimeTypes = new[] { "application/json", "application/problem+json" };
+});
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProviderOptions>(
+    o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProviderOptions>(
+    o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+
 // The Redis backplane is what lets a bid accepted on one instance reach clients on another.
 var redisSection = builder.Configuration.GetSection(RedisOptions.SectionName);
 if (redisSection.GetValue("Enabled", true))
@@ -540,6 +558,13 @@ if (app.Environment.IsDevelopment() || app.Configuration.GetValue("Api:EnableSwa
 //
 // Nothing is loosened: the same allowlist of origins applies, and the API's own endpoints are
 // unaffected by the move.
+// Sign-in answers carry tokens and are left uncompressed, so compression can never be used to
+// guess at them; everything else under /api is compressed.
+app.UseWhen(
+    context => context.Request.Path.StartsWithSegments("/api")
+               && !context.Request.Path.StartsWithSegments("/api/v1/auth"),
+    branch => branch.UseResponseCompression());
+
 app.UseCors("Default");
 
 app.UseDefaultFiles();
