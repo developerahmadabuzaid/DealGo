@@ -44,6 +44,9 @@ class AuctionMusic {
   /// a newer track was asked for — and must not leave its sound playing.
   int _generation = 0;
 
+  /// The track that should be playing now; null when nothing should.
+  AuctionTrack? get current => _track;
+
   /// The person's own choice, kept on the device.
   final ValueNotifier<bool> muted = ValueNotifier(false);
 

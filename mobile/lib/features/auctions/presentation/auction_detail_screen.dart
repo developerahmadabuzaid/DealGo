@@ -11,6 +11,7 @@ import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/auto_refresh.dart';
 import '../../../shared/app_header.dart';
+import '../../../shared/auction_music.dart';
 import '../../../shared/sign_in_gate.dart';
 import '../../../shared/widgets.dart';
 import '../../wallets/presentation/top_up_sheet.dart';
@@ -36,8 +37,10 @@ class AuctionDetailScreen extends ConsumerStatefulWidget {
       _AuctionDetailScreenState();
 }
 
-class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
+class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen>
+    with WidgetsBindingObserver {
   Timer? _tick;
+  final _music = AuctionMusic.instance;
 
   /// The arena opens by itself once per visit, the first time a joined auction is seen live.
   /// Closing it leaves the user on this page; the button here opens it again.
@@ -58,6 +61,8 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
       title: title,
     );
     _arenaOpen = false;
+    // The bidding screen stops the music as it closes; this page picks it up again.
+    if (mounted) setState(() {});
     // The auction ended while the screen was open and the user asked for the results.
     if (showResults == true && mounted) {
       context.push('/auctions/${widget.auctionId}/results');
@@ -67,6 +72,7 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Repaints the countdown once a second; the value itself comes from the server's end time.
     // Not while the bidding screen covers it: repainting the whole page underneath every second
     // took time from the screen the user is bidding on.
@@ -77,8 +83,39 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
+    unawaited(_music.stop());
     super.dispose();
+  }
+
+  /// The bidding screen's music, also for someone watching the live auction from this page
+  /// without having joined it. While the bidding screen is open it owns the music; when this page
+  /// is not the one on show (another tab, another page on top) it is silent.
+  void _followAuction(AuctionSnapshot? s, bool isLive) {
+    if (_arenaOpen) return;
+    final onShow =
+        TickerMode.valuesOf(context).enabled &&
+        (ModalRoute.of(context)?.isCurrent ?? true);
+    final want = !onShow || s == null || !isLive
+        ? null
+        : (s.isFinalPhase ? AuctionTrack.finalPhase : AuctionTrack.live);
+    // Compared with what the player holds, not with a copy here: the bidding screen stops it as
+    // it closes, and the next repaint has to notice.
+    if (_music.current == want) return;
+    unawaited(_music.play(want));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // No music from a phone in a pocket. The bidding screen does this itself while it is open.
+    if (_arenaOpen) return;
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_music.resume());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_music.pause());
+    }
   }
 
   @override
@@ -136,8 +173,11 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
         // The live state names the user's participant id when they are in the auction, so either
         // answer is enough.
         final joined = _knownJoined =
-            _knownJoined || detail.hasJoined || snapshot?.myParticipantId != null;
+            _knownJoined ||
+            detail.hasJoined ||
+            snapshot?.myParticipantId != null;
         final canEnterArena = isLive && snapshot != null && joined;
+        _followAuction(snapshot, isLive);
 
         if (canEnterArena && !_arenaShown) {
           _arenaShown = true;
@@ -159,6 +199,20 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             actions: [
+              if (isLive)
+                ValueListenableBuilder<bool>(
+                  valueListenable: _music.muted,
+                  builder: (context, muted, _) => IconButton(
+                    tooltip: muted ? t.musicOn : t.musicOff,
+                    onPressed: () => _music.setMuted(!muted),
+                    icon: Icon(
+                      muted
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_up_rounded,
+                      size: 21,
+                    ),
+                  ),
+                ),
               if (isLive) ConnectionIndicator(status: live.hubStatus),
               const SizedBox(width: AppTheme.space2),
             ],
@@ -250,7 +304,8 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen> {
                 if (detail.isComplete) ...[
                   const SizedBox(height: 22),
                   _EndedDeviceList(detail: detail),
-                ] else if (detail.status != 'Cancelled' && detail.status != 'Expired') ...[
+                ] else if (detail.status != 'Cancelled' &&
+                    detail.status != 'Expired') ...[
                   const SizedBox(height: 22),
                   _PrizeList(detail: detail),
                 ],
@@ -327,7 +382,12 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
     try {
       // The entry fee comes from the Main wallet. Short of it, the top-up opens first for what is
       // missing, and joining carries on once the money is in.
-      if (!await ensureMainBalance(context, ref, amount: d.entryFee, currency: d.currency)) {
+      if (!await ensureMainBalance(
+        context,
+        ref,
+        amount: d.entryFee,
+        currency: d.currency,
+      )) {
         return;
       }
 
@@ -437,7 +497,9 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
                     : const Icon(Icons.how_to_reg_rounded),
                 label: Text(
                   short
-                      ? t.topUpAndPay(Fmt.money(d.entryFee, d.currency, locale: locale))
+                      ? t.topUpAndPay(
+                          Fmt.money(d.entryFee, d.currency, locale: locale),
+                        )
                       : '${t.joinAuction} · ${Fmt.money(d.entryFee, d.currency, locale: locale)}',
                 ),
               ),
@@ -611,7 +673,9 @@ class _EndedDeviceList extends StatelessWidget {
       children: [
         Text(
           '${t.prizes} (${prizes.length})',
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 10),
         for (final p in prizes)
@@ -632,7 +696,12 @@ class _EndedDeviceList extends StatelessWidget {
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            RemoteImage(p.imageUrl, height: 88, width: 88, radius: 0),
+                            RemoteImage(
+                              p.imageUrl,
+                              height: 88,
+                              width: 88,
+                              radius: 0,
+                            ),
                             PositionedDirectional(
                               top: 6,
                               start: 6,
@@ -655,10 +724,15 @@ class _EndedDeviceList extends StatelessWidget {
                             p.productName,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                           const Spacer(),
-                          Divider(height: AppTheme.space3, color: theme.colorScheme.outline),
+                          Divider(
+                            height: AppTheme.space3,
+                            color: theme.colorScheme.outline,
+                          ),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -666,11 +740,15 @@ class _EndedDeviceList extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(t.finalPrice, style: theme.textTheme.labelSmall),
+                                    Text(
+                                      t.finalPrice,
+                                      style: theme.textTheme.labelSmall,
+                                    ),
                                     const SizedBox(height: 2),
                                     FittedBox(
                                       fit: BoxFit.scaleDown,
-                                      alignment: AlignmentDirectional.centerStart,
+                                      alignment:
+                                          AlignmentDirectional.centerStart,
                                       child: Text(
                                         Fmt.money(
                                           prizePriceForRank(
@@ -683,11 +761,12 @@ class _EndedDeviceList extends StatelessWidget {
                                           p.currency,
                                           locale: locale,
                                         ),
-                                        style: theme.textTheme.titleSmall?.copyWith(
-                                          color: AppTheme.brand,
-                                          fontWeight: FontWeight.w800,
-                                          fontFeatures: AppTheme.numeric,
-                                        ),
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              color: AppTheme.brand,
+                                              fontWeight: FontWeight.w800,
+                                              fontFeatures: AppTheme.numeric,
+                                            ),
                                       ),
                                     ),
                                   ],
@@ -705,7 +784,11 @@ class _EndedDeviceList extends StatelessWidget {
                                     ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    Fmt.money(p.originalPrice, p.currency, locale: locale),
+                                    Fmt.money(
+                                      p.originalPrice,
+                                      p.currency,
+                                      locale: locale,
+                                    ),
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       decoration: TextDecoration.lineThrough,
                                       fontFeatures: AppTheme.numeric,
@@ -727,6 +810,7 @@ class _EndedDeviceList extends StatelessWidget {
     );
   }
 }
+
 class _PrizeList extends StatelessWidget {
   const _PrizeList({required this.detail});
 
