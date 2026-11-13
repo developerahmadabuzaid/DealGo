@@ -682,6 +682,76 @@ function confirmDialog(title, message, onConfirm, { danger = false, needsReason 
   if (needsReason) reason.focus();
 }
 
+/*
+ * The roles a SUPER_ADMIN can give an account, as options in Arabic. The values sent are the
+ * server's own names; USER is always kept, so the account still works in the app.
+ */
+const ADMIN_ROLE_OPTIONS = [
+  { value: 'SUPER_ADMIN', name: 'مدير أعلى', about: 'كل الصلاحيات، ومنها منح الصلاحيات للآخرين. امنحها لمن تثق به تماماً.', danger: true },
+  { value: 'ADMIN', name: 'مدير', about: 'كل أقسام لوحة التحكم، عدا تغيير صلاحيات الحسابات.' },
+  { value: 'AUCTION_MANAGER', name: 'مدير المزادات', about: 'إنشاء المزادات وتعديلها وبدؤها وإلغاؤها، وعرض المستخدمين والتقارير.' },
+  { value: 'STORE_MANAGER', name: 'مدير المتجر', about: 'المنتجات والأقسام والمخزون وطلبات المتجر ونصوص الموقع والتقارير.' },
+  { value: 'FINANCE', name: 'المالية', about: 'المحافظ والتعديلات والاستردادات وطلبات المتجر والتقارير وسجل العمليات.' },
+  { value: 'SUPPORT', name: 'الدعم', about: 'عرض فقط: المستخدمون والمزادات والمتجر والمحافظ، دون أي تعديل.' },
+];
+
+function rolesDialog(u) {
+  const back = h('div', { class: 'modal-back' });
+  const error = h('div', { class: 'err-text' });
+  const current = new Set(u.roles || []);
+
+  const boxes = ADMIN_ROLE_OPTIONS.map((r) => {
+    const box = h('input', { type: 'checkbox', value: r.value });
+    box.checked = current.has(r.value);
+    return { role: r, box };
+  });
+
+  const reason = h('input', { placeholder: 'مثال: موظف جديد في قسم المتجر' });
+  const save = h('button', { class: 'btn' }, 'Save');
+
+  const submit = async () => {
+    if (!reason.value.trim()) { reason.focus(); error.textContent = 'اكتب سبب التغيير، فهو يُحفظ في سجل العمليات.'; return; }
+    const roles = ['USER', ...boxes.filter((b) => b.box.checked).map((b) => b.role.value)];
+    save.disabled = true;
+    error.textContent = '';
+    try {
+      await api(`/admin/users/${u.id}/roles`, {
+        method: 'PUT',
+        body: JSON.stringify({ roles, reason: reason.value.trim() }),
+      });
+      back.remove();
+      toast('تم تحديث الصلاحيات. تُطبق عند دخوله التالي.', 'ok');
+      render();
+    } catch (e) {
+      error.textContent = tr(e.message);
+      save.disabled = false;
+    }
+  };
+  save.addEventListener('click', submit);
+
+  back.append(h('div', { class: 'modal' },
+    h('h3', {}, 'الصلاحيات — ', document.createTextNode(u.fullName || '')),
+    h('p', { class: 'sub' }, 'اختر ما يستطيع هذا الحساب فعله في لوحة التحكم. المدير الأعلى فقط يمكنه تغيير الصلاحيات.'),
+    h('div', { class: 'role-list' },
+      h('label', { class: 'role-option is-fixed' },
+        h('input', { type: 'checkbox', checked: '', disabled: '' }),
+        h('span', { class: 'role-text' },
+          h('strong', {}, 'مستخدم'),
+          h('span', { class: 'hint' }, 'استخدام التطبيق كأي عميل. مفعّلة دائماً.'))),
+      ...boxes.map(({ role, box }) => h('label', { class: `role-option${role.danger ? ' is-danger' : ''}` },
+        box,
+        h('span', { class: 'role-text' },
+          h('strong', {}, role.name),
+          h('span', { class: 'hint' }, role.about))))),
+    h('div', { class: 'field', style: 'margin-top:14px' }, h('label', {}, 'السبب (مطلوب)'), reason),
+    error,
+    h('div', { class: 'modal-actions' },
+      h('button', { class: 'btn ghost', onclick: () => back.remove() }, 'Cancel'),
+      save)));
+
+  document.body.append(back);
+}
+
 function formModal(title, subtitle, fields, onSubmit) {
   const inputs = {};
   const back = h('div', { class: 'modal-back' });
@@ -5529,21 +5599,7 @@ async function viewUsers() {
       } catch (e) { toast(e.message, 'err'); }
     }, { danger: u.isActive, needsReason: true });
 
-  const editRoles = (u) => formModal(`الصلاحيات — ${u.fullName}`,
-    'Comma-separated. Only SUPER_ADMIN may change roles.', [
-      { name: 'roles', label: 'Roles', value: u.roles.join(', ') },
-      { name: 'reason', label: 'Reason (required)' },
-    ], async (v) => {
-      await api(`/admin/users/${u.id}/roles`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          roles: v.roles.split(',').map((r) => r.trim()).filter(Boolean),
-          reason: v.reason,
-        }),
-      });
-      toast('Roles updated.', 'ok');
-      render();
-    });
+  const editRoles = (u) => rolesDialog(u);
 
   return h('div', {},
     pageHead('Users', 'الحسابات وصلاحياتها وأرصدتها.'),

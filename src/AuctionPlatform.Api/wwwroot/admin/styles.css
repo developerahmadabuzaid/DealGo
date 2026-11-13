@@ -1844,3 +1844,17 @@ td.num, th.num { text-align: end; }
 .auto-chip .mono { direction: ltr; unicode-bidi: isolate; }
 .auto-lang { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; letter-spacing: .02em; }
 .auto-body textarea { width: 100%; resize: vertical; }
+
+/* Roles as options in the user's roles window. */
+.role-list { display: grid; gap: 8px; }
+.role-option {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0; cursor: pointer;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+}
+.role-option:hover { border-color: var(--border-strong); }
+.role-option:has(input:checked) { border-color: var(--brand); background: var(--accent-soft); }
+.role-option.is-danger:has(input:checked) { border-color: var(--danger, #d92d20); background: rgba(217, 45, 32, .06); }
+.role-option.is-fixed { cursor: default; opacity: .75; }
+.role-option input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; accent-color: var(--brand); }
+.role-text { display: grid; gap: 2px; font-weight: normal; }
+.role-text strong { font-size: 14px; }
