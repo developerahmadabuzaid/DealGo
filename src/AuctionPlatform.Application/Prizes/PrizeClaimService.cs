@@ -180,12 +180,20 @@ public sealed class PrizeClaimService : IPrizeClaimService
                 ErrorCodes.PrizeClaimNotPayable, $"A claim in status {claim.Status} cannot be paid.");
         }
 
+        var now = _clock.UtcNow;
+
+        // Past the deadline the claim is about to expire and the entry fee goes back; paying now
+        // would leave the winner with both.
+        if (claim.PaymentDeadlineAt is { } deadline && now > deadline)
+        {
+            throw new DomainException(ErrorCodes.PrizeClaimNotPayable,
+                "The time to pay for this prize has run out. Your entry fee is returned to your Shopping Wallet.");
+        }
+
         if (request.ShippingAddressId is { } addressId)
         {
             await ShippingAddressService.EnsureUsableAsync(_db, userId, addressId, ct);
         }
-
-        var now = _clock.UtcNow;
 
         // Prize payments come from the Main wallet only; store credit is not cash.
         var payment = await _wallets.DebitAsync(new WalletMovement

@@ -35,6 +35,14 @@ public sealed class AuctionOptions
     /// </summary>
     public int PrizeClaimPaymentHours { get; set; } = 24;
 
+    /// <summary>
+    /// Unpaid prize claims expire, with the winner's entry fee returned as shopping credit, only
+    /// when they were made from this moment on. Older ones (from before expiry existed, test
+    /// auctions among them) are left for staff to settle by hand rather than all paid out at once
+    /// on the first run.
+    /// </summary>
+    public DateTime PrizeClaimExpiryAppliesFrom { get; set; } = new(2026, 11, 13, 0, 0, 0, DateTimeKind.Utc);
+
     /// <summary>Maximum bids a single participant may submit per second.</summary>
     public int BidRateLimitPerSecond { get; set; } = 5;
     public int BidRateLimitPerMinute { get; set; } = 120;

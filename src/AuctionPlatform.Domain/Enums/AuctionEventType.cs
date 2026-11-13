@@ -21,5 +21,8 @@ public enum AuctionEventType
     ShoppingCreditAdded = 16,
     AuctionCreated = 17,
     AuctionPublished = 18,
-    AuctionUpdated = 19
+    AuctionUpdated = 19,
+
+    /// <summary>A winner did not pay for their device in time; the claim closed and the entry fee came back.</summary>
+    PrizeClaimExpired = 20
 }

@@ -314,6 +314,11 @@ class AppStrings {
         _ => status,
       };
 
+  String get prizeClaimExpiredNote => _t(
+        'انتهت مهلة الدفع (24 ساعة)، وأُعيدت رسوم الاشتراك إلى محفظة التسوق.',
+        'The 24 hours to pay have passed. Your entry fee was returned to your Shopping Wallet.',
+      );
+
   String get willNotifyOnStart =>
       _t('سنرسل لك إشعاراً عند بدء المزاد.', 'We will notify you when the auction starts.');
 

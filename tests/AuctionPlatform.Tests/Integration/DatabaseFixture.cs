@@ -163,6 +163,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IPaymentMonitorService, PaymentMonitorService>();
         services.AddScoped<IMoneyOperationsService, MoneyOperationsService>();
         services.AddScoped<IPrizeClaimService, PrizeClaimService>();
+        services.AddScoped<IPrizeClaimExpiryService, PrizeClaimExpiryService>();
         services.AddScoped<IAdminWalletService, AdminWalletService>();
         services.AddScoped<IAdminWithdrawalService, AdminWithdrawalService>();
         services.AddScoped<ISiteContentService, SiteContentService>();

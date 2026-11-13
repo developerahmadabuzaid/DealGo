@@ -360,6 +360,7 @@ builder.Services.AddSingleton<NotificationBroadcastQueue>();
 builder.Services.AddSingleton<INotificationBroadcaster>(sp => sp.GetRequiredService<NotificationBroadcastQueue>());
 builder.Services.AddHostedService<NotificationBroadcastWorker>();
 builder.Services.AddHostedService<ScheduledNotificationWorker>();
+builder.Services.AddHostedService<PrizeClaimExpiryWorker>();
 
 // ---------------------------------------------------------------- swagger
 

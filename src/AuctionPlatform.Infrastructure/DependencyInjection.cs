@@ -174,6 +174,7 @@ public static class DependencyInjection
         services.AddScoped<IAuctionCompletionService, AuctionCompletionService>();
 
         services.AddScoped<IPrizeClaimService, PrizeClaimService>();
+        services.AddScoped<IPrizeClaimExpiryService, PrizeClaimExpiryService>();
 
         services.AddScoped<IStoreCatalogService, StoreCatalogService>();
         services.AddScoped<StoreOrderService>();

@@ -48,7 +48,18 @@ class PrizeClaim {
       ? 1 - paymentAmount / prizeOriginalPrice
       : 0;
 
-  bool get needsPayment => status == 'PaymentRequired' || status == 'Pending';
+  /// Still to be paid, and still within the time to pay. Past it the server refuses the payment
+  /// and returns the entry fee as shopping credit instead.
+  bool get needsPayment =>
+      (status == 'PaymentRequired' || status == 'Pending') &&
+      (paymentDeadlineAt == null || paymentDeadlineAt!.isAfter(DateTime.now().toUtc()));
+
+  /// The time to pay ran out; the entry fee went back to the Shopping wallet.
+  bool get isExpired =>
+      status == 'Expired' ||
+      ((status == 'PaymentRequired' || status == 'Pending') &&
+          paymentDeadlineAt != null &&
+          !paymentDeadlineAt!.isAfter(DateTime.now().toUtc()));
   bool get isPaid => status == 'Paid' || status == 'Claimed' || status == 'Fulfilled';
 
   factory PrizeClaim.fromJson(Map<String, dynamic> j) => PrizeClaim(

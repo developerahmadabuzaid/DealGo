@@ -136,8 +136,12 @@ class _ClaimCard extends StatelessWidget {
                 Row(
                   children: [
                     StatusPill(
-                      t.claimStatus(claim.status),
-                      color: claim.isPaid ? AppTheme.success : AppTheme.gold,
+                      t.claimStatus(claim.isExpired ? 'Expired' : claim.status),
+                      color: claim.isPaid
+                          ? AppTheme.success
+                          : claim.isExpired
+                              ? AppTheme.urgentDeep
+                              : AppTheme.gold,
                     ),
                     const Spacer(),
                     if (claim.needsPayment && claim.paymentDeadlineAt != null)
@@ -150,6 +154,15 @@ class _ClaimCard extends StatelessWidget {
                       ),
                   ],
                 ),
+                if (claim.isExpired) ...[
+                  const SizedBox(height: AppTheme.space3),
+                  Text(
+                    t.prizeClaimExpiredNote,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 if (claim.needsPayment) ...[
                   const SizedBox(height: AppTheme.space3),
                   _PayButton(

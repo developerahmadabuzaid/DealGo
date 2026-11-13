@@ -64,6 +64,9 @@ public static class NotificationKeys
     public const string NewAuctionTitle = "notification.new_auction.title";
     public const string NewAuctionBody = "notification.new_auction.body";
 
+    public const string PrizeClaimExpiredTitle = "notification.prize_claim_expired.title";
+    public const string PrizeClaimExpiredBody = "notification.prize_claim_expired.body";
+
     public const string SmsBalanceEmptyTitle = "notification.sms_balance_empty.title";
     public const string SmsBalanceEmptyBody = "notification.sms_balance_empty.body";
 }

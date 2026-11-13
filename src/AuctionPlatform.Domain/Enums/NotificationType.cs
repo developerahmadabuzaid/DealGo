@@ -25,5 +25,8 @@ public enum NotificationType
     AdminMessage = 18,
 
     /// <summary>An auction was published and is open for registration.</summary>
-    NewAuction = 19
+    NewAuction = 19,
+
+    /// <summary>A winner's time to pay for their device ran out; the entry fee went to their Shopping wallet.</summary>
+    PrizeClaimExpired = 20
 }

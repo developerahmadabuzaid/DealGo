@@ -53,6 +53,8 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.AdminMessageBody] = "{0}",
             [NotificationKeys.NewAuctionTitle] = "مزاد جديد",
             [NotificationKeys.NewAuctionBody] = "«{0}» مفتوح للتسجيل الآن. سجّل قبل اكتمال العدد!",
+            [NotificationKeys.PrizeClaimExpiredTitle] = "انتهت مهلة دفع قيمة الجهاز",
+            [NotificationKeys.PrizeClaimExpiredBody] = "لم يتم دفع قيمة جهازك في مزاد «{1}» خلال 24 ساعة، فأُعيدت رسوم الاشتراك {0} إلى محفظة التسوق.",
             [NotificationKeys.SmsBalanceEmptyTitle] = "انتهى رصيد الرسائل",
             [NotificationKeys.SmsBalanceEmptyBody] = "لا يستطيع العملاء استلام رمز الدخول. اشحن الرصيد من Wallet في لوحة Tawked.",
 
@@ -101,6 +103,8 @@ public sealed class LocalizationService : ILocalizationService
             [NotificationKeys.AdminMessageBody] = "{0}",
             [NotificationKeys.NewAuctionTitle] = "New auction",
             [NotificationKeys.NewAuctionBody] = "\"{0}\" is open for registration. Join before it fills up!",
+            [NotificationKeys.PrizeClaimExpiredTitle] = "Time to pay for your prize has run out",
+            [NotificationKeys.PrizeClaimExpiredBody] = "Your prize from \"{1}\" was not paid for within 24 hours, so your {0} entry fee was returned to your Shopping Wallet.",
             [NotificationKeys.SmsBalanceEmptyTitle] = "SMS balance is empty",
             [NotificationKeys.SmsBalanceEmptyBody] = "Customers cannot receive sign-in codes. Top up under Wallet in the Tawked console.",
 
