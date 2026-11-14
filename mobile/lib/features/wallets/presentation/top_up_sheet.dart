@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -159,13 +160,37 @@ class _TopUpSheetState extends ConsumerState<TopUpSheet> with WidgetsBindingObse
     }
   }
 
+  /// Paymob's page opens inside DealGo, in the phone's own secure in-app browser
+  /// (SFSafariViewController on iPhone, Chrome Custom Tabs on Android), so the customer never
+  /// leaves the app; Apple Pay and the bank's 3-D Secure check work there. The web app opens a
+  /// new tab. Should the in-app browser be missing, the outside browser is used instead.
   Future<void> _openCheckout() async {
     final url = _topUp?.checkoutUrl;
     if (url == null) return;
+    final uri = Uri.parse(url);
     try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final opened = await launchUrl(
+        uri,
+        mode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.inAppBrowserView,
+      );
+      if (!opened) await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
-      // No browser answered. The sheet keeps waiting and offers to open the page again.
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        // No browser answered. The sheet keeps waiting and offers to open the page again.
+      }
+    }
+  }
+
+  /// Takes the payment page away once the server has the answer, where the phone allows an app to
+  /// (iPhone). On Android the customer closes it, and the sheet is already showing the result.
+  Future<void> _closeCheckout() async {
+    if (kIsWeb) return;
+    try {
+      if (await supportsCloseForLaunchMode(LaunchMode.inAppBrowserView)) await closeInAppWebView();
+    } catch (_) {
+      // Already closed by the customer.
     }
   }
 
@@ -179,6 +204,7 @@ class _TopUpSheetState extends ConsumerState<TopUpSheet> with WidgetsBindingObse
 
       if (status.isDone) {
         _poll?.cancel();
+        unawaited(_closeCheckout());
         ref.invalidate(walletsProvider);
         final t = AppStrings.of(context);
         final messenger = ScaffoldMessenger.of(context);
@@ -190,6 +216,7 @@ class _TopUpSheetState extends ConsumerState<TopUpSheet> with WidgetsBindingObse
         ));
       } else if (status.isFailed) {
         _poll?.cancel();
+        unawaited(_closeCheckout());
         setState(() {
           _failed = true;
           _topUp = null;
