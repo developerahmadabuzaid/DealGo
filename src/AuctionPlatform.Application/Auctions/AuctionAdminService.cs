@@ -414,9 +414,12 @@ public sealed class AuctionAdminService : IAuctionAdminService
         return await _reader.GetAsync(auctionId, null, ct);
     }
 
-    public async Task<AuctionDetailDto> StartNowAsync(Guid auctionId, CancellationToken ct = default)
+    public async Task<AuctionDetailDto> StartNowAsync(
+        Guid auctionId, CancellationToken ct = default, string? earlyStartReason = null)
     {
         var now = _clock.UtcNow;
+        var early = false;
+        int joined = 0, required = 0;
 
         await using (var tx = await _db.BeginTransactionAsync(ct))
         {
@@ -425,7 +428,27 @@ public sealed class AuctionAdminService : IAuctionAdminService
                 .FirstOrDefaultAsync(ct)
                 ?? throw new DomainException(ErrorCodes.AuctionNotFound, "Auction not found.");
 
-            if (auction.Status is not (AuctionStatus.Ready or AuctionStatus.WaitingForStart))
+            joined = auction.ParticipantCount;
+            required = auction.RequiredParticipants;
+
+            // Before it fills up, an admin may still start it, with whoever has joined: joining
+            // closes, and with fewer than four people not every prize can be won. So it takes at
+            // least one participant and a reason on record.
+            early = auction.Status is AuctionStatus.RegistrationOpen or AuctionStatus.WaitingForParticipants;
+            if (early)
+            {
+                if (auction.ParticipantCount < 1)
+                {
+                    throw new DomainException(ErrorCodes.AuctionNotReady,
+                        "Nobody has joined this auction yet, so it cannot start.");
+                }
+                if (string.IsNullOrWhiteSpace(earlyStartReason))
+                {
+                    throw new DomainException(ErrorCodes.ValidationFailed,
+                        "Give a reason for starting before the auction is full; it is kept in the audit log.");
+                }
+            }
+            else if (auction.Status is not (AuctionStatus.Ready or AuctionStatus.WaitingForStart))
             {
                 throw new DomainException(
                     ErrorCodes.AuctionNotReady,
@@ -463,7 +486,8 @@ public sealed class AuctionAdminService : IAuctionAdminService
         await NotifyParticipantsOfStartAsync(auctionId, ct);
 
         await _audit.LogAsync(AuditActionType.AuctionStarted, nameof(Auction), auctionId,
-            null, new { StartedAt = now }, "Started manually", ct);
+            null, new { StartedAt = now, Early = early, Joined = joined, Required = required },
+            early ? $"Started early ({joined} of {required} joined): {earlyStartReason!.Trim()}" : "Started manually", ct);
 
         return await _reader.GetAsync(auctionId, null, ct);
     }

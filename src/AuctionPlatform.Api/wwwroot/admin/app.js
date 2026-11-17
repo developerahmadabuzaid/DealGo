@@ -1673,6 +1673,9 @@ async function openAuction(id) {
 
   const canPublish = a.status === 'Draft' || a.status === 'Scheduled';
   const canStart = a.status === 'Ready' || a.status === 'WaitingForStart';
+  // Before it is full, with at least one person in: an early start, confirmed with a reason.
+  const canStartEarly = (a.status === 'RegistrationOpen' || a.status === 'WaitingForParticipants')
+    && a.participantCount > 0;
   const canPause = a.status === 'Live' || a.status === 'FinalPhase';
   const canResume = a.status === 'Paused';
   const canCancel = !['Completed', 'Cancelled'].includes(a.status);
@@ -1814,6 +1817,25 @@ async function openAuction(id) {
         canStart ? h('button', {
           class: 'btn ok', onclick: () => act(() => api(`/admin/auctions/${a.id}/start`, { method: 'POST' }), 'Auction started.'),
         }, 'ابدأ الآن') : null,
+
+        canStartEarly ? h('button', {
+          class: 'btn ghost',
+          onclick: () => {
+            back.remove();
+            const few = a.participantCount < 4
+              ? ` عدد المشاركين أقل من 4، لذلك يمكن أن يفوز ${a.participantCount} فقط وتبقى بقية الجوائز بلا فائز.`
+              : '';
+            confirmDialog('بدء المزاد قبل اكتمال العدد؟',
+              `انضم ${a.participantCount} من ${a.requiredParticipants} مشارك. يبدأ المزاد الآن بهم، ويُغلق الانضمام فلا يستطيع أحد آخر الدخول.${few} ويصل إلى المشتركين إشعار بالبدء.`,
+              async (reason) => {
+                try {
+                  await api(`/admin/auctions/${a.id}/start`, { method: 'POST', body: JSON.stringify({ reason }) });
+                  toast('Auction started.', 'ok');
+                  render();
+                } catch (e) { toast(e.message, 'err'); }
+              }, { needsReason: true });
+          },
+        }, `ابدأ قبل اكتمال العدد (${a.participantCount}/${a.requiredParticipants})`) : null,
 
         canPause ? h('button', {
           class: 'btn ghost', onclick: () => act(() => api(`/admin/auctions/${a.id}/pause`, { method: 'POST' }), 'Auction paused.'),
@@ -5894,6 +5916,7 @@ function addressLine(a) {
     a.phone,
   ].filter(Boolean).join(' · ') + (a.notes ? ` — ${a.notes}` : '');
 }
+
 
 /** The customer's pin, opened on OpenStreetMap. Nothing when they did not drop one. */
 function addressMapLink(a) {

@@ -85,10 +85,14 @@ public sealed class AdminAuctionsController : ApiControllerBase
     public async Task<ActionResult<AuctionDetailDto>> Publish(Guid id, CancellationToken ct) =>
         Ok(await _admin.PublishAsync(id, ct));
 
+    /// <summary>Starts the auction now. Before it is full, send a reason: that makes it an early start.</summary>
     [HttpPost("{id:guid}/start")]
     [Authorize(Policy = Permissions.AuctionStart)]
-    public async Task<ActionResult<AuctionDetailDto>> StartNow(Guid id, CancellationToken ct) =>
-        Ok(await _admin.StartNowAsync(id, ct));
+    public async Task<ActionResult<AuctionDetailDto>> StartNow(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] StartAuctionRequest? request,
+        CancellationToken ct) =>
+        Ok(await _admin.StartNowAsync(id, ct, request?.Reason));
 
     [HttpPatch("{id:guid}/schedule")]
     [Authorize(Policy = Permissions.AuctionStart)]
@@ -168,3 +172,6 @@ public sealed class AdminDashboardController : ApiControllerBase
         [FromQuery] AuditLogQuery query, CancellationToken ct) =>
         Ok(await _dashboard.GetAuditLogsAsync(query, ct));
 }
+
+/// <param name="Reason">Needed only to start before the required participants have joined.</param>
+public sealed record StartAuctionRequest(string? Reason);

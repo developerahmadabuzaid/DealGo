@@ -19,14 +19,15 @@ public static class AuctionStateMachine
         {
             AuctionStatus.RegistrationOpen, AuctionStatus.Cancelled
         },
+        // Live from here only by an admin's early start, with whoever has joined so far.
         [AuctionStatus.RegistrationOpen] = new[]
         {
             AuctionStatus.WaitingForParticipants, AuctionStatus.Ready,
-            AuctionStatus.Cancelled, AuctionStatus.Expired
+            AuctionStatus.Cancelled, AuctionStatus.Expired, AuctionStatus.Live
         },
         [AuctionStatus.WaitingForParticipants] = new[]
         {
-            AuctionStatus.Ready, AuctionStatus.Cancelled, AuctionStatus.Expired
+            AuctionStatus.Ready, AuctionStatus.Cancelled, AuctionStatus.Expired, AuctionStatus.Live
         },
         [AuctionStatus.Ready] = new[]
         {

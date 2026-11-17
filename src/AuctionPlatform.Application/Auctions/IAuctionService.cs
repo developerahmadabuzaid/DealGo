@@ -42,7 +42,11 @@ public interface IAuctionAdminService
     Task<AuctionDetailDto> PublishAsync(Guid auctionId, CancellationToken ct = default);
 
     /// <summary>Starts the auction immediately, bypassing the scheduled start.</summary>
-    Task<AuctionDetailDto> StartNowAsync(Guid auctionId, CancellationToken ct = default);
+    /// <summary>
+    /// Starts the auction now. Before it has all its participants this is an early start: it
+    /// needs at least one participant and a reason, which goes to the audit log.
+    /// </summary>
+    Task<AuctionDetailDto> StartNowAsync(Guid auctionId, CancellationToken ct = default, string? earlyStartReason = null);
 
     Task<AuctionDetailDto> UpdateScheduleAsync(Guid auctionId, UpdateScheduleRequest request, CancellationToken ct = default);
     Task<AuctionDetailDto> PauseAsync(Guid auctionId, CancellationToken ct = default);

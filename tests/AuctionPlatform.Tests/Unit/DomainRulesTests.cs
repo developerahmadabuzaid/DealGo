@@ -196,9 +196,18 @@ public class AuctionStateMachineTests
         AuctionStateMachine.CanTransition(from, to).Should().BeTrue();
     }
 
+    // An admin's early start: an auction still taking participants may go live with those it has.
+    [Theory]
+    [InlineData(AuctionStatus.RegistrationOpen, AuctionStatus.Live)]
+    [InlineData(AuctionStatus.WaitingForParticipants, AuctionStatus.Live)]
+    public void An_auction_still_filling_up_may_be_started_early(AuctionStatus from, AuctionStatus to)
+    {
+        AuctionStateMachine.CanTransition(from, to).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(AuctionStatus.Draft, AuctionStatus.Live)]
-    [InlineData(AuctionStatus.RegistrationOpen, AuctionStatus.Live)]
+    [InlineData(AuctionStatus.Scheduled, AuctionStatus.Live)]
     [InlineData(AuctionStatus.Finished, AuctionStatus.Live)]
     [InlineData(AuctionStatus.Completed, AuctionStatus.Live)]
     [InlineData(AuctionStatus.Cancelled, AuctionStatus.Live)]
