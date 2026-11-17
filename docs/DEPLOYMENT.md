@@ -294,6 +294,37 @@ flutter build ipa    --release --dart-define=API_BASE_URL=https://api.example.co
 flutter build web    --release --dart-define=API_BASE_URL=https://api.example.com
 ```
 
+### TikTok ad measurement
+
+The app reports installs, sign-ups, sign-ins, searches, product views, add-to-cart, checkout and
+paid store orders to TikTok (`mobile/lib/core/analytics/tiktok_tracking.dart`). The app IDs are in
+the code, but the **App secret is not committed** because the repository is public. A build without
+the secret works normally and sends nothing to TikTok.
+
+- **iOS (Codemagic):** add `TIKTOK_APP_SECRET` as a *Secure* environment variable in a group named
+  `tiktok`. `codemagic.yaml` passes it to `flutter build ipa`.
+- **Android (local):** keep the secret in `mobile/secrets.json`, which git ignores, so it never
+  appears in the shell history:
+
+  ```json
+  { "TIKTOK_APP_SECRET": "…", "TIKTOK_ANDROID_APP_ID": "…" }
+  ```
+
+  ```bash
+  cd mobile
+  flutter build appbundle --release --build-number=N --dart-define-from-file=secrets.json
+  flutter build apk       --release --build-number=N --dart-define-from-file=secrets.json
+  ```
+
+  `TIKTOK_ANDROID_APP_ID` is the TikTok App ID that Events Manager gives the Android app, which
+  is a different app there from the iOS one. If TikTok gave the Android app its own secret as
+  well, add `TIKTOK_ANDROID_APP_SECRET`. Leave `TIKTOK_ANDROID_APP_ID` out and Android reports
+  nothing.
+- `TIKTOK_DEBUG=true` sends events to Events Manager's *Test events* tab instead of the live data.
+
+On iOS the App Tracking Transparency question is asked once, three seconds after the main page
+first shows, and TikTok starts after the answer. On Android TikTok starts at the same moment.
+
 For push notifications, add the Firebase configuration files (`google-services.json`,
 `GoogleService-Info.plist`), apply the Firebase Gradle plugin, and set `Firebase__Enabled=true` on
 the API with service-account credentials. Without them the app builds and runs normally; only push

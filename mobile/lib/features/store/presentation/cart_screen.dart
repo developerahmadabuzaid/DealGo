@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/analytics/tiktok_tracking.dart';
 import '../../../core/errors/api_exception.dart';
 import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
@@ -89,6 +90,14 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final cart = ref.read(cartProvider);
     if (cart.isEmpty) return;
 
+    final tiktok = ref.read(tiktokTrackingProvider);
+    final count = cart.fold<int>(0, (n, l) => n + l.quantity);
+    tiktok.checkout(
+      value: _quote?.total ?? cart.fold<double>(0, (sum, l) => sum + l.lineTotal),
+      currency: _quote?.currency ?? cart.first.product.currency,
+      quantity: count,
+    );
+
     // Something in the cart is delivered and nowhere has been chosen: ask before anything else.
     if (_quote?.requiresShippingAddress == true && _address == null) {
       if (!await _chooseAddress() || !mounted) return;
@@ -119,6 +128,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       final order = await ref.read(storeRepositoryProvider).checkout(
           cart, _paymentMethod, key,
           shippingAddressId: _quote?.requiresShippingAddress == true ? _address?.id : null);
+
+      // Store orders are paid from the wallet as they are placed.
+      tiktok.purchase(orderId: order.id, value: order.total, currency: order.currency, quantity: count);
 
       ref.read(cartProvider.notifier).clear();
       ref.invalidate(walletsProvider);

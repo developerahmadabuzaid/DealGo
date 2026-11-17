@@ -33,6 +33,10 @@
 	<string>نستخدم موقعك فقط أثناء استخدامك للتطبيق، لتحديد عنوان التوصيل على الخريطة بدقة حتى تصل طلباتك وجوائزك إلى بابك. لا نتتبع موقعك في الخلفية.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>نستخدم موقعك فقط أثناء استخدامك للتطبيق، لتحديد عنوان التوصيل على الخريطة بدقة حتى تصل طلباتك وجوائزك إلى بابك. لا نتتبع موقعك في الخلفية.</string>
+	<!-- Asked once, a moment after the app first opens (lib/core/analytics/tiktok_tracking.dart).
+	     Allowing it lets TikTok tell us which of our ads brought a customer; nothing else uses it. -->
+	<key>NSUserTrackingUsageDescription</key>
+	<string>نستخدم هذا الإذن لقياس أداء إعلاناتنا على تيك توك فقط، ولا نبيع بياناتك. We use this only to measure how our TikTok ads perform; we never sell your data.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

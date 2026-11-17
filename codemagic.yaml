@@ -25,6 +25,12 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.dealgosa.app
+      # TikTok ad measurement. Codemagic > the app > Environment variables: add TIKTOK_APP_SECRET
+      # (TikTok Events Manager > the iOS app > App secret), marked Secure, in a group named "tiktok".
+      # It is never written in this file: the repository is public. Without it the build still
+      # works and the app simply reports nothing to TikTok.
+      groups:
+        - tiktok
       vars:
         # The upload names DealGo's App Store Connect record (App Information → Apple ID) instead
         # of looking it up from the bundle ID. That lookup failed with altool error 19 ("Cannot
@@ -55,6 +61,7 @@ workflows:
           # comes from pubspec.yaml; raise it there once a version has been approved by Apple.
           flutter build ipa --release \
             --build-number=$BUILD_NUMBER \
+            --dart-define=TIKTOK_APP_SECRET="$TIKTOK_APP_SECRET" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:

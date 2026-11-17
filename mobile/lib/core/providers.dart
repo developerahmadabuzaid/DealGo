@@ -11,6 +11,7 @@ import '../features/prizes/data/prize_repository.dart';
 import '../features/shipping/data/shipment_repository.dart';
 import '../features/store/data/store_repository.dart';
 import '../features/wallets/data/wallet_repository.dart';
+import 'analytics/tiktok_tracking.dart';
 import 'errors/api_exception.dart';
 import 'network/api_client.dart';
 import 'push/push_service.dart';
@@ -117,6 +118,8 @@ class AuthController extends StateNotifier<AuthState> {
 
   AuthRepository get _repo => _ref.read(authRepositoryProvider);
 
+  TikTokTracking get _tiktok => _ref.read(tiktokTrackingProvider);
+
   /// Restores the stored session on launch.
   ///
   /// The session lasts until the user signs out, so a failure to reach the server must not end it.
@@ -132,6 +135,7 @@ class AuthController extends StateNotifier<AuthState> {
       final user = await _repo.currentUser();
       state = AuthState(user: user, checked: true, hasSession: user != null);
       if (user != null) {
+        _tiktok.identify(user.id);
         await _ref.read(hubClientProvider).connect();
         unawaited(_ref.read(pushServiceProvider).start());
       }
@@ -173,6 +177,10 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       final user = await _repo.verifyLoginOtp(destination, code);
       state = AuthState(user: user, checked: true, hasSession: true);
+      _tiktok.identify(user.id);
+      // An account created by this sign-in has no name yet; it counts as a registration once it
+      // has one (completeProfile).
+      if (user.fullName.trim().isNotEmpty) _tiktok.login();
       await _ref.read(hubClientProvider).connect();
       unawaited(_ref.read(pushServiceProvider).start());
     } finally {
@@ -184,11 +192,13 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> completeProfile(String fullName) async {
     final updated = await _repo.updateProfile(fullName: fullName);
     state = state.copyWith(user: updated);
+    _tiktok.registration();
   }
 
   /// Deletes the account after the user confirms with a code, then leaves the user signed out.
   Future<void> deleteAccount(String code) async {
     await _repo.deleteAccount(code);
+    _tiktok.logout();
     await _ref.read(hubClientProvider).disconnect();
     state = const AuthState(checked: true);
   }
@@ -197,12 +207,14 @@ class AuthController extends StateNotifier<AuthState> {
     // First, while the session still lets this phone be removed from the account's devices.
     await _ref.read(pushServiceProvider).stop();
     await _repo.logout();
+    _tiktok.logout();
     await _ref.read(hubClientProvider).disconnect();
     state = const AuthState(checked: true);
   }
 
   /// Called when a refresh fails: the tokens are already gone, so only local state is cleared.
   void forceSignOut() {
+    _tiktok.logout();
     _ref.read(hubClientProvider).disconnect();
     state = const AuthState(checked: true);
   }

@@ -1,7 +1,7 @@
 name: mobile
 description: "Real-time auction platform — mobile client."
 publish_to: 'none'
-version: 1.0.3+11
+version: 1.0.4+12
 
 environment:
   sdk: ^3.12.2
@@ -49,6 +49,12 @@ dependencies:
   geolocator: ^14.0.2
   cached_network_image: ^4.0.3
   geocoding: ^5.0.1
+
+  # TikTok ad measurement: app events (install, sign-up, purchases) reported to TikTok so its
+  # ads can be measured; on iOS the App Tracking Transparency question is asked first. Both are
+  # wrapped by lib/core/analytics/tiktok_tracking.dart, which does nothing without its keys.
+  tiktok_events_sdk: ^1.5.1
+  app_tracking_transparency: ^2.0.7
 
 dev_dependencies:
   flutter_test:

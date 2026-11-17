@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // TikTok's Business SDK for Android (used by the tiktok_events_sdk plugin) is only on JitPack.
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

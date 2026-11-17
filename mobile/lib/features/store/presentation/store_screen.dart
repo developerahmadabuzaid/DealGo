@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/analytics/tiktok_tracking.dart';
 import '../../../core/errors/api_exception.dart';
 import '../../../core/format/formatters.dart';
 import '../../../core/localization/app_strings.dart';
@@ -1270,7 +1271,16 @@ class _StoreProductsScreenState extends ConsumerState<StoreProductsScreen> {
     final typed = _search.text.trim();
     _query = typed.isEmpty ? null : typed;
     _future = _fetch(1);
+
+    // A retry of the same search is not another search.
+    if (_query != null && _query != _trackedQuery) {
+      _trackedQuery = _query;
+      ref.read(tiktokTrackingProvider).search(_query!);
+    }
   }
+
+  /// The last search reported to TikTok.
+  String? _trackedQuery;
 
   Future<Paged<StoreProduct>> _fetch(int page) => ref
       .read(storeRepositoryProvider)
@@ -1367,10 +1377,26 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   /// How many the customer means to add. Kept here so the bottom bar and its total agree.
   int _quantity = 1;
 
+  @override
+  void initState() {
+    super.initState();
+    // Reported once, when the product has loaded; a pull to refresh is not another view.
+    var viewed = false;
+    ref.listenManual(productDetailProvider(widget.productId), (_, next) {
+      final p = next.value;
+      if (viewed || p == null) return;
+      viewed = true;
+      ref.read(tiktokTrackingProvider).viewContent(
+          productId: p.id, name: p.name, price: p.price, currency: p.currency);
+    }, fireImmediately: true);
+  }
+
   void _addToCart(StoreProductDetail p) {
     final t = AppStrings.of(context);
     HapticFeedback.lightImpact();
     ref.read(cartProvider.notifier).add(p, quantity: _quantity);
+    ref.read(tiktokTrackingProvider).addToCart(
+        productId: p.id, name: p.name, price: p.price, quantity: _quantity, currency: p.currency);
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();

@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/analytics/tiktok_tracking.dart';
 import 'core/localization/app_strings.dart';
 import 'core/providers.dart';
 import 'core/push/push_service.dart';
@@ -279,6 +280,10 @@ class _MainShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppStrings.of(context);
+
+    // TikTok ad measurement starts a moment after the main page is first on screen, so the
+    // iPhone's tracking question never comes before the person has seen the app. Once only.
+    ref.read(tiktokTrackingProvider).startSoon();
 
     return Scaffold(
       // One bar for the whole app: it is drawn above the tabs' own pages and never scrolls away.
