@@ -118,6 +118,16 @@ void main() {
       expect(AddressRules.shortAddress(t, '12345678'), t.invalidShortAddress);
     });
 
+    test('a valid short address makes the district and street optional', () {
+      String? street(String? value, String? code) => AddressRules.requiredUnlessShortAddress(
+          t, value, t.street, AddressRules.streetMax, code);
+
+      expect(street('', null), t.fieldRequired(t.street));
+      expect(street('', 'ABC123'), t.fieldRequired(t.street), reason: 'a malformed code does not count');
+      expect(street('', 'ragi 1234'), isNull);
+      expect(street('x' * 151, 'RAGI1234'), t.tooLong(150), reason: 'what is typed is still checked');
+    });
+
     test('names and lengths', () {
       expect(AddressRules.name(t, ' '), t.fieldRequired(t.recipientName));
       expect(AddressRules.name(t, 'أ'), t.nameTooShort);

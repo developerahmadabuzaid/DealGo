@@ -116,6 +116,29 @@ public class ShippingAddressTests
     }
 
     [Fact]
+    public async Task A_national_short_address_can_stand_in_for_the_district_and_street()
+    {
+        var userId = await NewUserAsync();
+
+        var saved = await WithAddressesAsync(userId, a => a.CreateAsync(userId,
+            new SaveShippingAddressRequest("أحمد", "0551234567", "الرياض", "", "", ShortAddress: "ragi 1234")));
+
+        saved.ShortAddress.Should().Be("RAGI1234");
+        saved.City.Should().Be("الرياض");
+        saved.District.Should().BeEmpty();
+        saved.Street.Should().BeEmpty();
+
+        // The city is still needed, and a code in the wrong shape does not count.
+        var noCity = () => WithAddressesAsync(userId, a => a.CreateAsync(userId,
+            new SaveShippingAddressRequest("أحمد", "0551234567", "", "", "", ShortAddress: "RAGI1234")));
+        var badCode = () => WithAddressesAsync(userId, a => a.CreateAsync(userId,
+            new SaveShippingAddressRequest("أحمد", "0551234567", "الرياض", "", "", ShortAddress: "RAG1234")));
+
+        (await noCity.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+        (await badCode.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+    }
+
+    [Fact]
     public async Task A_delivery_outside_the_kingdom_is_refused()
     {
         var userId = await NewUserAsync();

@@ -499,7 +499,10 @@ class AppStrings {
   String get addressNotesHint =>
       _t('مثل: الدور الثاني، بجانب المسجد', 'e.g. second floor, next to the mosque');
   String get shortAddress => _t('العنوان الوطني المختصر', 'National short address');
-  String get shortAddressHint => _t('اختياري، مثل RRRD2929', 'Optional, e.g. RRRD2929');
+  String get shortAddressHint => _t(
+        'مثل RAGI1234. مع العنوان المختصر يصبح الحي والشارع اختياريين',
+        'e.g. RAGI1234. With it, the district and street are optional',
+      );
   String get optional => _t('اختياري', 'Optional');
   String get makeDefaultAddress => _t('اجعله العنوان الافتراضي', 'Make this the default');
   String get defaultAddress => _t('الافتراضي', 'Default');

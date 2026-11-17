@@ -34,6 +34,15 @@ class AddressRules {
     return null;
   }
 
+  /// District and street: needed unless a valid national short address is given, which pins the
+  /// building on its own. The server applies the same rule.
+  static String? requiredUnlessShortAddress(
+      AppStrings t, String? value, String field, int max, String? shortAddress) {
+    final code = normaliseShortAddress(shortAddress);
+    final hasShort = code != null && _shortAddress.hasMatch(code);
+    return hasShort ? optional(t, value, max) : required(t, value, field, max);
+  }
+
   static String? optional(AppStrings t, String? value, int max) =>
       (value?.trim().length ?? 0) > max ? t.tooLong(max) : null;
 
@@ -286,6 +295,17 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
             ),
             gap,
             TextFormField(
+              key: const ValueKey('address-short'),
+              controller: _shortAddress,
+              decoration: label(t.shortAddress, hint: t.shortAddressHint),
+              textCapitalization: TextCapitalization.characters,
+              textDirection: TextDirection.ltr,
+              inputFormatters: [LengthLimitingTextInputFormatter(12)],
+              textInputAction: TextInputAction.next,
+              validator: (v) => AddressRules.shortAddress(t, v),
+            ),
+            gap,
+            TextFormField(
               key: const ValueKey('address-city'),
               controller: _city,
               decoration: label(t.city),
@@ -298,8 +318,8 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
               controller: _district,
               decoration: label(t.district),
               textInputAction: TextInputAction.next,
-              validator: (v) =>
-                  AddressRules.required(t, v, t.district, AddressRules.districtMax),
+              validator: (v) => AddressRules.requiredUnlessShortAddress(
+                  t, v, t.district, AddressRules.districtMax, _shortAddress.text),
             ),
             gap,
             TextFormField(
@@ -307,7 +327,8 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
               controller: _street,
               decoration: label(t.street),
               textInputAction: TextInputAction.next,
-              validator: (v) => AddressRules.required(t, v, t.street, AddressRules.streetMax),
+              validator: (v) => AddressRules.requiredUnlessShortAddress(
+                  t, v, t.street, AddressRules.streetMax, _shortAddress.text),
             ),
             gap,
             TextFormField(
@@ -316,17 +337,6 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
               decoration: label(t.buildingNumber, hint: t.optional),
               textInputAction: TextInputAction.next,
               validator: (v) => AddressRules.optional(t, v, AddressRules.buildingMax),
-            ),
-            gap,
-            TextFormField(
-              key: const ValueKey('address-short'),
-              controller: _shortAddress,
-              decoration: label(t.shortAddress, hint: t.shortAddressHint),
-              textCapitalization: TextCapitalization.characters,
-              textDirection: TextDirection.ltr,
-              inputFormatters: [LengthLimitingTextInputFormatter(12)],
-              textInputAction: TextInputAction.next,
-              validator: (v) => AddressRules.shortAddress(t, v),
             ),
             gap,
             TextFormField(

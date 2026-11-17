@@ -266,11 +266,18 @@ public sealed partial class ShippingAddressService : IShippingAddressService
 
         var phone = SaudiPhone.Normalise(r.Phone);
         var city = Required(r.City, "city", 80);
-        var district = Required(r.District, "district", 80);
-        var street = Required(r.Street, "street", 150);
+        var shortAddress = NormaliseShortAddress(r.ShortAddress);
+
+        // The national short address (RAGI1234) pins the building on its own, so with one the
+        // district and street may be left out. The city stays: couriers ask for it.
+        var district = shortAddress is null
+            ? Required(r.District, "district", 80)
+            : Optional(r.District, "district", 80) ?? string.Empty;
+        var street = shortAddress is null
+            ? Required(r.Street, "street", 150)
+            : Optional(r.Street, "street", 150) ?? string.Empty;
         var building = Optional(r.BuildingNumber, "building", 30);
         var notes = Optional(r.Notes, "notes", 500);
-        var shortAddress = NormaliseShortAddress(r.ShortAddress);
 
         if (r.Latitude.HasValue != r.Longitude.HasValue)
         {
