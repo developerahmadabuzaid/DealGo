@@ -4693,6 +4693,46 @@ async function viewM5azn() {
       })));
 }
 
+/*
+ * M5azn's products: M5azn delivers them, one parcel per order, and charges DealGo for it. Staff
+ * enter that charge, how much of it DealGo covers, and the tax on the customer's part; the
+ * customer pays (charge − covered) + tax, once per order that has M5azn products.
+ */
+function m5aznShippingCard(s, f, numField) {
+  const cost = numField('m5aznShippingCost', 'تكلفة شحن مخزن', s.m5aznShippingCost ?? 0, '0.01');
+  const covered = numField('m5aznShippingCovered', 'المبلغ الذي تتحمله أنت', s.m5aznShippingCovered ?? 0, '0.01');
+  const tax = numField('m5aznShippingTaxPercentage', 'ضريبة الشحن %', s.m5aznShippingTaxPercentage ?? 0, '0.01');
+  const example = h('div', { class: 'push-preview' });
+
+  const round = (n) => Math.round(n * 100) / 100;
+  const draw = () => {
+    const c = Number(f.m5aznShippingCost.value || 0);
+    const v = Number(f.m5aznShippingCovered.value || 0);
+    const p = Number(f.m5aznShippingTaxPercentage.value || 0);
+    const fee = round(Math.max(0, c - v));
+    const t = round(fee * p / 100);
+    const invalid = v > c;
+    example.replaceChildren(
+      h('div', { class: 'push-preview-app' }, 'ما يدفعه العميل على كل طلب فيه منتجات مخزن'),
+      invalid
+        ? h('div', { class: 'err-text' }, 'المبلغ الذي تتحمله لا يمكن أن يكون أكبر من تكلفة الشحن.')
+        : h('div', { class: 'push-preview-body' },
+            // money() gives an element, so the line is built from parts rather than one string.
+            h('div', {}, 'الشحن ', money(fee, 'SAR'), ' + الضريبة ', money(t, 'SAR'), ' = ',
+              h('strong', {}, money(round(fee + t), 'SAR'))),
+            v > 0 ? h('div', { class: 'hint' }, 'وتتحمل أنت ', money(round(v), 'SAR'), ' من تكلفة الشحن.') : null));
+  };
+  [f.m5aznShippingCost, f.m5aznShippingCovered, f.m5aznShippingTaxPercentage]
+    .forEach((input) => input.addEventListener('input', draw));
+  draw();
+
+  return h('div', { class: 'card' },
+    h('h3', {}, 'شحن منتجات مخزن'),
+    h('p', { class: 'hint' }, 'مخزن يوصّل منتجاته في شحنة واحدة لكل طلب ويخصم تكلفتها من رصيدك لديه. يدفع العميل التكلفة ناقص ما تتحمله أنت، مع ضريبة الشحن، مرة واحدة لكل طلب فيه منتجات من مخزن، ويظهر ذلك له في سطري الشحن والضريبة عند الدفع.'),
+    h('div', { class: 'grid-2' }, cost, covered, tax),
+    example);
+}
+
 async function viewStoreSettings() {
   const s = await api('/admin/store/settings');
 
@@ -4722,6 +4762,9 @@ async function viewStoreSettings() {
         taxPercentage: Number(f.taxPercentage.value),
         shippingEnabled: f.shippingEnabled.value === 'true',
         defaultShippingFee: Number(f.defaultShippingFee.value),
+        m5aznShippingCost: Number(f.m5aznShippingCost.value || 0),
+        m5aznShippingCovered: Number(f.m5aznShippingCovered.value || 0),
+        m5aznShippingTaxPercentage: Number(f.m5aznShippingTaxPercentage.value || 0),
         minimumOrderAmount: Number(f.minimumOrderAmount.value),
         maximumOrderAmount: Number(f.maximumOrderAmount.value),
         shoppingCreditExpirationEnabled: f.creditExpiry.value === 'true',
@@ -4745,14 +4788,22 @@ async function viewStoreSettings() {
         bool('allowMain', 'Allow main wallet purchases', s.allowMainWalletPurchases))),
 
     h('div', { class: 'card' },
-      h('h3', {}, 'Pricing & shipping'),
+      h('h3', {}, 'Pricing'),
       h('div', { class: 'grid-2' },
         bool('taxEnabled', 'Tax', s.taxEnabled),
         numField('taxPercentage', 'Tax %', s.taxPercentage, '0.01'),
-        bool('shippingEnabled', 'Shipping', s.shippingEnabled),
-        numField('defaultShippingFee', 'Default shipping fee', s.defaultShippingFee, '0.01'),
         numField('minimumOrderAmount', 'Minimum order', s.minimumOrderAmount, '0.01'),
         numField('maximumOrderAmount', 'Maximum order', s.maximumOrderAmount, '0.01'))),
+
+    // Products staff add themselves: DealGo ships them, each order line at its own fee or this one.
+    h('div', { class: 'card' },
+      h('h3', {}, 'شحن منتجات المتجر'),
+      h('p', { class: 'hint' }, 'للمنتجات التي تضيفها من لوحة التحكم وتشحنها بنفسك. يُستخدم رسم المنتج الخاص إن وُجد، وإلا هذا الرسم الافتراضي.'),
+      h('div', { class: 'grid-2' },
+        bool('shippingEnabled', 'Shipping', s.shippingEnabled),
+        numField('defaultShippingFee', 'رسم الشحن الافتراضي', s.defaultShippingFee, '0.01'))),
+
+    m5aznShippingCard(s, f, numField),
 
     h('div', { class: 'card' },
       h('h3', {}, 'Shopping credit & stock'),

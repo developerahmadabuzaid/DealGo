@@ -319,7 +319,16 @@ public sealed record StoreSettingsDto(
     bool ShoppingCreditExpirationEnabled,
     int ShoppingCreditExpirationDays,
     string? RefundPolicy,
-    int LowStockThreshold);
+    int LowStockThreshold,
+
+    /// <summary>What M5azn charges to deliver one order.</summary>
+    decimal M5aznShippingCost = 0m,
+
+    /// <summary>The part of it DealGo pays itself; the customer pays the rest.</summary>
+    decimal M5aznShippingCovered = 0m,
+
+    /// <summary>Tax on the customer's part of M5azn shipping, in percent.</summary>
+    decimal M5aznShippingTaxPercentage = 0m);
 
 public sealed record StoreOverviewDto(
     int TotalProducts,

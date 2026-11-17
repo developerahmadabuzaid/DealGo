@@ -83,8 +83,18 @@ public class StoreSettings : AuditableEntity
     public bool TaxEnabled { get; set; }
     public decimal TaxPercentage { get; set; }
 
+    /// <summary>Shipping for the products staff add themselves: each product's own fee, else this one.</summary>
     public bool ShippingEnabled { get; set; } = true;
     public decimal DefaultShippingFee { get; set; }
+
+    /// <summary>
+    /// Shipping for M5azn's products, once per order that has any: what M5azn charges for
+    /// delivery, less the part DealGo covers, plus tax on what is left. The customer pays
+    /// (<see cref="M5aznShippingCost"/> − <see cref="M5aznShippingCovered"/>) and that amount's tax.
+    /// </summary>
+    public decimal M5aznShippingCost { get; set; }
+    public decimal M5aznShippingCovered { get; set; }
+    public decimal M5aznShippingTaxPercentage { get; set; }
 
     public decimal MinimumOrderAmount { get; set; }
     public decimal MaximumOrderAmount { get; set; } = 100000m;

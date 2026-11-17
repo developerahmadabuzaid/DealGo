@@ -403,6 +403,7 @@ public sealed class StoreOrderService : IStoreOrderService
         var byId = products.ToDictionary(p => p.Id);
         decimal subtotal = 0m;
         decimal shipping = 0m;
+        var hasM5azn = false;
 
         foreach (var item in request.Items)
         {
@@ -413,23 +414,45 @@ public sealed class StoreOrderService : IStoreOrderService
 
             subtotal += product.Price * item.Quantity;
 
+            // M5azn delivers its products in one parcel per order, charged once below.
+            if (product.Source == StoreProductSource.M5azn)
+            {
+                hasM5azn |= product.RequiresShipping;
+                continue;
+            }
+
             if (settings.ShippingEnabled && product.RequiresShipping)
             {
                 shipping += product.ShippingFee > 0 ? product.ShippingFee : settings.DefaultShippingFee;
             }
         }
 
+        // The customer's part of M5azn's delivery charge, and the tax on it.
+        var (m5aznShipping, m5aznTax) = hasM5azn ? M5aznShipping(settings) : (0m, 0m);
+        shipping += m5aznShipping;
+
         subtotal = Money.Round(subtotal);
         shipping = Money.Round(shipping);
 
         var discount = 0m;
-        var tax = settings.TaxEnabled
+        var tax = (settings.TaxEnabled
             ? Money.Round((subtotal - discount) * settings.TaxPercentage / 100m)
-            : 0m;
+            : 0m) + m5aznTax;
 
         var total = Money.Round(subtotal - discount + shipping + tax);
 
         return new OrderTotals(subtotal, discount, shipping, tax, total);
+    }
+
+    /// <summary>
+    /// What the customer pays for M5azn's delivery: M5azn's charge less the part DealGo covers,
+    /// never below zero, and the tax on that.
+    /// </summary>
+    internal static (decimal Fee, decimal Tax) M5aznShipping(StoreSettings settings)
+    {
+        var fee = Money.Round(Math.Max(0m, settings.M5aznShippingCost - settings.M5aznShippingCovered));
+        var tax = Money.Round(fee * settings.M5aznShippingTaxPercentage / 100m);
+        return (fee, tax);
     }
 
     private sealed record OrderTotals(

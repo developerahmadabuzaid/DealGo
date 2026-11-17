@@ -843,6 +843,23 @@ public sealed class StoreAdminService : IStoreAdminService
         settings.TaxPercentage = request.TaxPercentage;
         settings.ShippingEnabled = request.ShippingEnabled;
         settings.DefaultShippingFee = request.DefaultShippingFee;
+
+        if (request.M5aznShippingCost < 0 || request.M5aznShippingCovered < 0)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "M5azn shipping amounts cannot be negative.");
+        }
+        if (request.M5aznShippingCovered > request.M5aznShippingCost)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed,
+                "The part you cover cannot be more than M5azn's shipping cost.");
+        }
+        if (request.M5aznShippingTaxPercentage is < 0 or > 100)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "The tax on M5azn shipping must be between 0 and 100%.");
+        }
+        settings.M5aznShippingCost = Money.Round(request.M5aznShippingCost);
+        settings.M5aznShippingCovered = Money.Round(request.M5aznShippingCovered);
+        settings.M5aznShippingTaxPercentage = Math.Round(request.M5aznShippingTaxPercentage, 2);
         settings.MinimumOrderAmount = request.MinimumOrderAmount;
         settings.MaximumOrderAmount = request.MaximumOrderAmount;
         settings.ShoppingCreditExpirationEnabled = request.ShoppingCreditExpirationEnabled;
@@ -875,7 +892,8 @@ public sealed class StoreAdminService : IStoreAdminService
         s.AllowMainWalletPurchases, s.DefaultCurrency, s.TaxEnabled, s.TaxPercentage,
         s.ShippingEnabled, s.DefaultShippingFee, s.MinimumOrderAmount, s.MaximumOrderAmount,
         s.ShoppingCreditExpirationEnabled, s.ShoppingCreditExpirationDays,
-        s.RefundPolicy, s.LowStockThreshold);
+        s.RefundPolicy, s.LowStockThreshold,
+        s.M5aznShippingCost, s.M5aznShippingCovered, s.M5aznShippingTaxPercentage);
 
     /// <summary>
     /// The price before an offer. Zero or less clears the offer; anything not above the price

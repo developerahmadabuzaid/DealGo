@@ -2329,6 +2329,15 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<int>("LowStockThreshold")
                         .HasColumnType("integer");
 
+                    b.Property<decimal>("M5aznShippingCost")
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("M5aznShippingCovered")
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("M5aznShippingTaxPercentage")
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<decimal>("MaximumOrderAmount")
                         .HasColumnType("numeric(18,2)");
 
