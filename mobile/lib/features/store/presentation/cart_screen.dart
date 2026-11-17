@@ -413,7 +413,7 @@ class _QuoteCard extends StatelessWidget {
             row(t.total, quote.total, bold: true),
             const SizedBox(height: 12),
             row(t.available, quote.availableBalance),
-            row(quote.canAfford ? t.remaining : t.required,
+            row(quote.canAfford ? t.balanceAfterPurchase : t.required,
                 quote.canAfford ? quote.remainingAfterPurchase : quote.total - quote.availableBalance),
             if (!quote.canAfford) ...[
               const SizedBox(height: 10),

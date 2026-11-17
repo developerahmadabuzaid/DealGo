@@ -202,6 +202,9 @@ class AppStrings {
   String get lastSeats => _t('آخر المقاعد', 'Last seats');
   String get reserveYourSeat => _t('احجز مقعدك', 'Reserve your seat');
   String get remaining => _t('الوقت المتبقي', 'Time left');
+
+  /// What stays in the wallet after paying, at checkout. Not [remaining], which is an auction's time.
+  String get balanceAfterPurchase => _t('الرصيد المتبقي', 'Balance left');
   String get progressToTarget => _t('التقدم نحو الهدف', 'Progress to target');
 
   String participantsRemaining(int n) =>
