@@ -1845,6 +1845,13 @@ td.num, th.num { text-align: end; }
 .auto-lang { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; letter-spacing: .02em; }
 .auto-body textarea { width: 100%; resize: vertical; }
 
+/* The national short address under an order's delivery address. */
+.short-address-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+.short-address-code {
+  direction: ltr; unicode-bidi: isolate; font-weight: 700; letter-spacing: .06em;
+  padding: 2px 8px; border-radius: 6px; background: var(--surface-3); border: 1px solid var(--border);
+}
+
 /* Roles as options in the user's roles window. */
 .role-list { display: grid; gap: 8px; }
 .role-option {

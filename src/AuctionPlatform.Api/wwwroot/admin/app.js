@@ -4254,6 +4254,7 @@ async function openOrder(id) {
     o.shippingAddress
       ? h('div', {}, h('label', {}, 'Shipping address'),
           h('div', { class: 'hint' }, addressLine(o.shippingAddress)),
+          shortAddressRow(o.shippingAddress),
           addressMapLink(o.shippingAddress))
       : null,
 
@@ -5912,11 +5913,33 @@ function addressLine(a) {
     [a.buildingNumber, a.street].filter(Boolean).join(' '),
     a.district,
     a.city,
-    a.shortAddress,
     a.phone,
   ].filter(Boolean).join(' · ') + (a.notes ? ` — ${a.notes}` : '');
 }
 
+/*
+ * The national short address (RAGI1234) on a line of its own, with a copy button: it is what a
+ * courier types into their system, and when the customer gave none, staff should see that too.
+ */
+function shortAddressRow(a) {
+  const code = a.shortAddress;
+  return h('div', { class: 'short-address-row' },
+    h('span', { class: 'hint' }, 'العنوان الوطني المختصر:'),
+    code
+      ? h('span', { class: 'mono short-address-code' }, document.createTextNode(code))
+      : h('span', { class: 'hint' }, 'لم يُضف'),
+    code
+      ? h('button', {
+          class: 'btn ghost sm', type: 'button',
+          onclick: async () => {
+            try {
+              await navigator.clipboard.writeText(code);
+              toast('تم نسخ العنوان الوطني المختصر.', 'ok');
+            } catch { toast(code, 'ok'); }
+          },
+        }, 'نسخ')
+      : null);
+}
 
 /** The customer's pin, opened on OpenStreetMap. Nothing when they did not drop one. */
 function addressMapLink(a) {
