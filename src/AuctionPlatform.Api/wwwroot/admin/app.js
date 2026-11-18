@@ -3944,6 +3944,12 @@ function productForm(p, categories, { offer = false } = {}) {
       },
       ...(isNew ? [{ name: 'stockQuantity', label: isOffer ? 'الكمية المتاحة للعرض' : 'Initial stock', type: 'number', value: 0 }] : []),
       ...offerFields,
+      // M5azn delivers its own products at the M5azn shipping set in the store settings.
+      ...(p?.source === 'M5azn' ? [] : [{
+        name: 'shippingFee', label: 'رسم التوصيل الخاص', type: 'number', step: '0.01',
+        value: p?.shippingFee > 0 ? p.shippingFee : '',
+        hint: 'اتركه فارغاً لاستخدام رسم الشحن الافتراضي من إعدادات المتجر.',
+      }]),
       {
         name: 'paymentMode', label: 'Accepted payment', type: 'select', value: p?.paymentMode || 'ShoppingWallet',
         options: [
@@ -3968,8 +3974,9 @@ function productForm(p, categories, { offer = false } = {}) {
         // Empty clears the offer; the server refuses anything not above the price.
         compareAtPrice: v.compareAtPrice === '' ? null : Number(v.compareAtPrice),
         paymentMode: v.paymentMode,
-        // Not editable in this form; an edit keeps whatever the product already has.
-        shippingFee: p?.shippingFee ?? 0,
+        // Empty means the store's default fee (stored as 0). M5azn's products keep theirs.
+        shippingFee: v.shippingFee === undefined ? (p?.shippingFee ?? 0)
+          : v.shippingFee.trim() === '' ? 0 : Number(v.shippingFee),
         lowStockThreshold: p?.lowStockThreshold ?? 5,
         isFeatured: v.isFeatured === 'true',
         requiresShipping: true,

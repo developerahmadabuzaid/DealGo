@@ -168,6 +168,8 @@ public sealed class StoreAdminService : IStoreAdminService
             throw new DomainException(ErrorCodes.CategoryNotFound, "Category not found.");
         }
 
+        EnsureShippingFee(request.ShippingFee);
+
         var product = new StoreProduct
         {
             Name = request.Name,
@@ -184,7 +186,7 @@ public sealed class StoreAdminService : IStoreAdminService
             PaymentMode = request.PaymentMode ?? StorePaymentMode.ShoppingWallet,
             IsFeatured = request.IsFeatured ?? false,
             RequiresShipping = request.RequiresShipping ?? true,
-            ShippingFee = request.ShippingFee ?? 0m,
+            ShippingFee = Money.Round(request.ShippingFee ?? 0m),
             IsExclusiveOffer = request.IsExclusiveOffer ?? false,
             OfferStartsAt = Utc(request.OfferStartsAt),
             OfferEndsAt = Utc(request.OfferEndsAt),
@@ -255,7 +257,8 @@ public sealed class StoreAdminService : IStoreAdminService
         if (request.PaymentMode.HasValue) product.PaymentMode = request.PaymentMode.Value;
         if (request.IsFeatured.HasValue) product.IsFeatured = request.IsFeatured.Value;
         if (request.RequiresShipping.HasValue) product.RequiresShipping = request.RequiresShipping.Value;
-        if (request.ShippingFee.HasValue) product.ShippingFee = request.ShippingFee.Value;
+        EnsureShippingFee(request.ShippingFee);
+        if (request.ShippingFee.HasValue) product.ShippingFee = Money.Round(request.ShippingFee.Value);
         if (request.LowStockThreshold.HasValue) product.LowStockThreshold = request.LowStockThreshold.Value;
 
         if (request.IsExclusiveOffer.HasValue) product.IsExclusiveOffer = request.IsExclusiveOffer.Value;
@@ -279,6 +282,18 @@ public sealed class StoreAdminService : IStoreAdminService
             before, new { product.Name, product.Sku, product.Price, product.PaymentMode, product.Status }, ct: ct);
 
         return StoreCatalogService.MapDetail(await LoadProductAsync(productId, ct));
+    }
+
+    /// <summary>
+    /// A product's own delivery charge. Zero (left empty in the dashboard) means the store's default
+    /// fee applies at checkout; it is never negative.
+    /// </summary>
+    private static void EnsureShippingFee(decimal? fee)
+    {
+        if (fee is < 0)
+        {
+            throw new DomainException(ErrorCodes.ValidationFailed, "The delivery charge cannot be negative.");
+        }
     }
 
     /// <summary>Most an exclusive offer may allow one customer.</summary>

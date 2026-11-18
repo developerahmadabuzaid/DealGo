@@ -118,6 +118,41 @@ public class StoreShippingTests
     }
 
     [Fact]
+    public async Task A_product_with_its_own_delivery_charge_uses_it_and_one_without_uses_the_default()
+    {
+        await using var _ = await ShippingAsync(defaultFee: 12m, m5aznCost: 0m, covered: 0m, taxPercent: 0m);
+        var c = await CustomerAsync();
+
+        Guid special;
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var product = await TestData.CreateStoreProductAsync(db, price: 50m, stock: 10);
+            product.RequiresShipping = true;
+            product.ShippingFee = 18m;
+            await db.SaveChangesAsync();
+            special = product.Id;
+        }
+
+        var order = await BuyAsync(c.UserId, c.AddressId, (special, 1), (c.Own, 1));
+
+        order.ShippingFee.Should().Be(18m + 12m, "its own 18, and the default 12 for the product without one");
+    }
+
+    [Fact]
+    public async Task A_negative_delivery_charge_is_refused()
+    {
+        await using var scope = _fixture.CreateScope();
+        var admin = scope.ServiceProvider.GetRequiredService<IStoreAdminService>();
+
+        var act = () => admin.CreateProductAsync(new CreateStoreProductRequest(
+            "منتج", null, null, null, $"NEG-{Guid.NewGuid():N}"[..20], 50m, null, null, 5,
+            StoreProductStatus.Active, StorePaymentMode.Both, false, true, -5m, null, null));
+
+        (await act.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+    }
+
+    [Fact]
     public async Task Covering_more_than_M5azns_cost_is_refused()
     {
         await using var scope = _fixture.CreateScope();
