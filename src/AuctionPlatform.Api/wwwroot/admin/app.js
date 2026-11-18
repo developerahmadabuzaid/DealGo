@@ -3944,12 +3944,14 @@ function productForm(p, categories, { offer = false } = {}) {
       },
       ...(isNew ? [{ name: 'stockQuantity', label: isOffer ? 'الكمية المتاحة للعرض' : 'Initial stock', type: 'number', value: 0 }] : []),
       ...offerFields,
-      // M5azn delivers its own products at the M5azn shipping set in the store settings.
-      ...(p?.source === 'M5azn' ? [] : [{
+      // M5azn's products: an extra charge on top of the order's M5azn shipping, never sent to M5azn.
+      {
         name: 'shippingFee', label: 'رسم التوصيل الخاص', type: 'number', step: '0.01',
         value: p?.shippingFee > 0 ? p.shippingFee : '',
-        hint: 'اتركه فارغاً لاستخدام رسم الشحن الافتراضي من إعدادات المتجر.',
-      }]),
+        hint: p?.source === 'M5azn'
+          ? 'منتج من مخزن: يُضاف هذا الرسم فوق شحن مخزن للطلب، مع ضريبة شحن مخزن، ويظهر للعميل في صفحة المنتج. لا يُرسل إلى مخزن. اتركه فارغاً لعدم إضافة شيء.'
+          : 'اتركه فارغاً لاستخدام رسم الشحن الافتراضي من إعدادات المتجر.',
+      },
       {
         name: 'paymentMode', label: 'Accepted payment', type: 'select', value: p?.paymentMode || 'ShoppingWallet',
         options: [
@@ -3974,7 +3976,7 @@ function productForm(p, categories, { offer = false } = {}) {
         // Empty clears the offer; the server refuses anything not above the price.
         compareAtPrice: v.compareAtPrice === '' ? null : Number(v.compareAtPrice),
         paymentMode: v.paymentMode,
-        // Empty means the store's default fee (stored as 0). M5azn's products keep theirs.
+        // Empty is stored as 0: the store's default fee, or for an M5azn product nothing extra.
         shippingFee: v.shippingFee === undefined ? (p?.shippingFee ?? 0)
           : v.shippingFee.trim() === '' ? 0 : Number(v.shippingFee),
         lowStockThreshold: p?.lowStockThreshold ?? 5,

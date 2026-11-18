@@ -405,6 +405,10 @@ public sealed class StoreOrderService : IStoreOrderService
         decimal shipping = 0m;
         var hasM5azn = false;
 
+        // M5azn products staff gave a delivery charge of their own: added on top of the order's
+        // M5azn shipping. It stays DealGo's: what M5azn is sent is only its products' prices.
+        decimal m5aznExtra = 0m;
+
         foreach (var item in request.Items)
         {
             if (!byId.TryGetValue(item.ProductId, out var product))
@@ -414,10 +418,12 @@ public sealed class StoreOrderService : IStoreOrderService
 
             subtotal += product.Price * item.Quantity;
 
-            // M5azn delivers its products in one parcel per order, charged once below.
+            // M5azn delivers its products in one parcel per order, charged once below, plus any
+            // product's own charge.
             if (product.Source == StoreProductSource.M5azn)
             {
                 hasM5azn |= product.RequiresShipping;
+                if (product.RequiresShipping && product.ShippingFee > 0) m5aznExtra += product.ShippingFee;
                 continue;
             }
 
@@ -430,6 +436,14 @@ public sealed class StoreOrderService : IStoreOrderService
         // The customer's part of M5azn's delivery charge, and the tax on it.
         var (m5aznShipping, m5aznTax) = hasM5azn ? M5aznShipping(settings) : (0m, 0m);
         shipping += m5aznShipping;
+
+        // The products' own charges are M5azn delivery too, taxed at the same rate.
+        if (m5aznExtra > 0)
+        {
+            m5aznExtra = Money.Round(m5aznExtra);
+            shipping += m5aznExtra;
+            m5aznTax += Money.Round(m5aznExtra * settings.M5aznShippingTaxPercentage / 100m);
+        }
 
         subtotal = Money.Round(subtotal);
         shipping = Money.Round(shipping);

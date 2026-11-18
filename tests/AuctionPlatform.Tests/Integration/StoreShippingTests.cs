@@ -140,6 +140,28 @@ public class StoreShippingTests
     }
 
     [Fact]
+    public async Task An_M5azn_products_own_charge_is_added_on_top_and_taxed_like_M5azn_shipping()
+    {
+        // Order's M5azn shipping: 30 - 10 = 20, tax 3. The product's own 8 adds 8 and tax 1.20.
+        await using var _ = await ShippingAsync(defaultFee: 12m, m5aznCost: 30m, covered: 10m, taxPercent: 15m);
+        var c = await CustomerAsync();
+
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var product = await db.StoreProducts.SingleAsync(p => p.Id == c.M5azn);
+            product.ShippingFee = 8m;
+            await db.SaveChangesAsync();
+        }
+
+        var order = await BuyAsync(c.UserId, c.AddressId, (c.M5azn, 1));
+
+        order.ShippingFee.Should().Be(28m);
+        order.Tax.Should().Be(4.20m);
+        order.Total.Should().Be(100m + 28m + 4.20m);
+    }
+
+    [Fact]
     public async Task A_negative_delivery_charge_is_refused()
     {
         await using var scope = _fixture.CreateScope();
