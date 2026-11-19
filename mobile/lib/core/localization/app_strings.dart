@@ -503,8 +503,13 @@ class AppStrings {
       _t('مثل: الدور الثاني، بجانب المسجد', 'e.g. second floor, next to the mosque');
   String get shortAddress => _t('العنوان الوطني المختصر', 'National short address');
   String get shortAddressHint => _t(
-        'مثل RAGI1234. مع العنوان المختصر يصبح الحي والشارع اختياريين',
-        'e.g. RAGI1234. With it, the district and street are optional',
+        'مطلوب، مثل RAGI1234. تجده في أبشر أو على لوحة العنوان الوطني على مبناك',
+        'Required, e.g. RAGI1234. Find it in Absher or on your building\'s national address plate',
+      );
+
+  String get shortAddressNeededForOrder => _t(
+        'أضف العنوان الوطني المختصر لعنوان التوصيل لإتمام الطلب.',
+        'Add the national short address to the delivery address to place the order.',
       );
   String get optional => _t('اختياري', 'Optional');
   String get makeDefaultAddress => _t('اجعله العنوان الافتراضي', 'Make this the default');
@@ -621,6 +626,7 @@ class AppStrings {
     'VALIDATION_FAILED': 'تحقق من البيانات المدخلة.',
     'ADDRESS_NOT_FOUND': 'العنوان غير موجود. اختر عنواناً آخر.',
     'ADDRESS_REQUIRED': 'اختر عنوان التوصيل أولاً.',
+    'SHORT_ADDRESS_REQUIRED': 'أضف العنوان الوطني المختصر لعنوان التوصيل أولاً (أربعة أحرف وأربعة أرقام).',
     'INTERNAL_ERROR': 'حدث خطأ في الخادم. حاول مرة أخرى.',
     'NETWORK_ERROR': 'لا يوجد اتصال بالخادم.',
     // The platform is up but something it needs is not answering: the database, or the provider

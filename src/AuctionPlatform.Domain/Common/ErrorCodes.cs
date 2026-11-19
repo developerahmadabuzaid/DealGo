@@ -50,6 +50,7 @@ public static class ErrorCodes
     public const string CategoryNotFound = "CATEGORY_NOT_FOUND";
     public const string AddressNotFound = "ADDRESS_NOT_FOUND";
     public const string AddressRequired = "ADDRESS_REQUIRED";
+    public const string ShortAddressRequired = "SHORT_ADDRESS_REQUIRED";
 
     /// <summary>Departments go two levels deep: main, then sub. Never a third.</summary>
     public const string CategoryTooDeep = "CATEGORY_TOO_DEEP";

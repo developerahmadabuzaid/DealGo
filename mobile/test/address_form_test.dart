@@ -112,7 +112,7 @@ void main() {
     test('the short address is four letters then four digits', () {
       expect(AddressRules.normaliseShortAddress(' rrrd 2929 '), 'RRRD2929');
       expect(AddressRules.normaliseShortAddress('RRRD-٢٩٢٩'), 'RRRD2929');
-      expect(AddressRules.shortAddress(t, ''), isNull, reason: 'it is optional');
+      expect(AddressRules.shortAddress(t, ''), t.fieldRequired(t.shortAddress), reason: 'it is required');
       expect(AddressRules.shortAddress(t, 'rrrd2929'), isNull);
       expect(AddressRules.shortAddress(t, 'ABC123'), t.invalidShortAddress);
       expect(AddressRules.shortAddress(t, '12345678'), t.invalidShortAddress);
@@ -266,6 +266,7 @@ void main() {
         city: 'جدة',
         district: 'الروضة',
         street: 'شارع التحلية',
+        shortAddress: 'JRSA1234',
         latitude: 21.54,
         longitude: 39.17,
         isDefault: true,
@@ -282,6 +283,25 @@ void main() {
       expect(fake.updated!.latitude, 21.54);
       expect(fake.updated!.isDefault, isTrue);
       expect(popped.single?.street, 'شارع فلسطين');
+    });
+
+    testWidgets('an address without the national short address is not saved', (tester) async {
+      const existing = ShippingAddress(
+        id: 'a2',
+        fullName: 'سارة',
+        phone: '+966501112222',
+        city: 'جدة',
+        district: 'الروضة',
+        street: 'شارع التحلية',
+        isDefault: true,
+      );
+      final (fake, popped) = await open(tester, existing: existing);
+
+      await save(tester);
+
+      expect(fake.updatedId, isNull);
+      expect(popped, isEmpty);
+      expect(find.text(t.fieldRequired(t.shortAddress)), findsOneWidget);
     });
   });
 

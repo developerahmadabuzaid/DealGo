@@ -70,9 +70,10 @@ class AddressRules {
     return out.toString();
   }
 
+  /// Required: every delivery needs the national short address. The server checks the same.
   static String? shortAddress(AppStrings t, String? value) {
     final code = normaliseShortAddress(value);
-    if (code == null) return null;
+    if (code == null) return t.fieldRequired(t.shortAddress);
     return _shortAddress.hasMatch(code) ? null : t.invalidShortAddress;
   }
 

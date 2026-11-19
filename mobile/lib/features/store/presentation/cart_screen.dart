@@ -10,6 +10,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/app_header.dart';
 import '../../../shared/widgets.dart';
 import '../../addresses/data/address_repository.dart';
+import '../../addresses/presentation/address_form_screen.dart';
 import '../../addresses/presentation/addresses_screen.dart';
 import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/store_repository.dart';
@@ -101,6 +102,17 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     // Something in the cart is delivered and nowhere has been chosen: ask before anything else.
     if (_quote?.requiresShippingAddress == true && _address == null) {
       if (!await _chooseAddress() || !mounted) return;
+    }
+
+    // An address saved before the national short address was required: it is added now, in the
+    // address form, rather than the server refusing the order.
+    final chosen = _address;
+    if (_quote?.requiresShippingAddress == true && chosen != null && chosen.shortAddress == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.shortAddressNeededForOrder)));
+      final updated = await AddressFormScreen.open(context, existing: chosen);
+      if (!mounted) return;
+      if (updated == null || updated.shortAddress == null) return;
+      setState(() => _address = updated);
     }
 
     setState(() {

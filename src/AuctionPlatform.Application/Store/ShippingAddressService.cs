@@ -203,10 +203,20 @@ public sealed partial class ShippingAddressService : IShippingAddressService
     internal static async Task EnsureUsableAsync(
         IApplicationDbContext db, Guid userId, Guid addressId, CancellationToken ct)
     {
-        var usable = await db.ShippingAddresses
-            .AnyAsync(a => a.Id == addressId && a.UserId == userId && a.ArchivedAt == null, ct);
+        var address = await db.ShippingAddresses.AsNoTracking()
+            .Where(a => a.Id == addressId && a.UserId == userId && a.ArchivedAt == null)
+            .Select(a => new { a.ShortAddress })
+            .FirstOrDefaultAsync(ct);
 
-        if (!usable) throw new DomainException(ErrorCodes.AddressNotFound, "Address not found.");
+        if (address is null) throw new DomainException(ErrorCodes.AddressNotFound, "Address not found.");
+
+        // Every delivery needs the national short address. Addresses saved before it was required
+        // are asked to add it here, rather than shipped without it.
+        if (string.IsNullOrWhiteSpace(address.ShortAddress))
+        {
+            throw new DomainException(ErrorCodes.ShortAddressRequired,
+                "Add the national short address (four letters and four digits) to this address first.");
+        }
     }
 
     internal static ShippingAddressDto Map(ShippingAddress a) => new(
@@ -266,7 +276,8 @@ public sealed partial class ShippingAddressService : IShippingAddressService
 
         var phone = SaudiPhone.Normalise(r.Phone);
         var city = Required(r.City, "city", 80);
-        var shortAddress = NormaliseShortAddress(r.ShortAddress);
+        var shortAddress = NormaliseShortAddress(r.ShortAddress)
+            ?? throw Invalid("Enter the national short address: four letters and four digits, for example RAGI1234.");
 
         // The national short address (RAGI1234) pins the building on its own, so with one the
         // district and street may be left out. The city stays: couriers ask for it.

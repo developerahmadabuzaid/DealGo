@@ -187,6 +187,46 @@ public class ShippingAddressTests
     }
 
     [Fact]
+    public async Task An_address_needs_the_national_short_address()
+    {
+        var userId = await NewUserAsync();
+
+        var save = () => WithAddressesAsync(userId, a => a.CreateAsync(userId, Riyadh() with { ShortAddress = null }));
+
+        (await save.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
+    }
+
+    [Fact]
+    public async Task An_older_address_without_the_short_address_cannot_receive_an_order()
+    {
+        var buyer = await NewUserAsync(shopping: 500m);
+
+        // Saved before the short address was required.
+        Guid addressId, productId;
+        await using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var old = new ShippingAddress
+            {
+                UserId = buyer, FullName = "Old", Phone = "+966551234567", Country = "SA",
+                City = "الرياض", District = "العليا", Street = "طريق الملك فهد", IsDefault = true
+            };
+            db.ShippingAddresses.Add(old);
+            await db.SaveChangesAsync();
+            addressId = old.Id;
+            productId = (await TestData.CreateStoreProductAsync(db, 50m, 10)).Id;
+        }
+
+        await using var orderScope = _fixture.CreateScope(buyer);
+        var orders = orderScope.ServiceProvider.GetRequiredService<IStoreOrderService>();
+        var buy = () => orders.CheckoutAsync(buyer, new CheckoutRequest(
+            new[] { new CheckoutItemRequest(productId, 1) },
+            StorePaymentMethod.ShoppingWallet, addressId, $"old-{Guid.NewGuid():N}"));
+
+        (await buy.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ShortAddressRequired);
+    }
+
+    [Fact]
     public async Task A_delivered_product_cannot_be_ordered_without_an_address()
     {
         var buyer = await NewUserAsync(shopping: 500m);
