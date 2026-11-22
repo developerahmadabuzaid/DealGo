@@ -96,6 +96,9 @@ public class StoreSettings : AuditableEntity
     public decimal M5aznShippingCovered { get; set; }
     public decimal M5aznShippingTaxPercentage { get; set; }
 
+    /// <summary>Whether the app shows customers how many pieces of a product are left.</summary>
+    public bool ShowStockQuantity { get; set; } = true;
+
     public decimal MinimumOrderAmount { get; set; }
     public decimal MaximumOrderAmount { get; set; } = 100000m;
 

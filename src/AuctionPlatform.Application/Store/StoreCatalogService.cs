@@ -184,7 +184,12 @@ public sealed class StoreCatalogService : IStoreCatalogService
             throw new DomainException(ErrorCodes.ProductNotAvailable, "This product is not available.");
         }
 
-        return MapDetail(product);
+        // No settings row yet means the defaults, which show the stock.
+        var showStock = await _db.StoreSettings.AsNoTracking()
+            .Select(s => (bool?)s.ShowStockQuantity)
+            .FirstOrDefaultAsync(ct) ?? true;
+
+        return MapDetail(product) with { ShowStockQuantity = showStock };
     }
 
     internal static StoreProductDetailDto MapDetail(StoreProduct p) => new(

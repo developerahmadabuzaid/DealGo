@@ -19,6 +19,7 @@ void main() {
     String description = 'وصف قصير',
     List<String> images = const [],
     String? deliveryTime,
+    bool showStockQuantity = true,
   }) =>
       StoreProductDetail(
         id: 'p1',
@@ -40,6 +41,7 @@ void main() {
         images: images,
         categoryId: 'c1',
         deliveryTime: deliveryTime,
+        showStockQuantity: showStockQuantity,
       );
 
   StoreProduct other(String id) => StoreProduct(
@@ -171,6 +173,13 @@ void main() {
     await open(tester, detail(images: const ['https://cdn.test/1.jpg']));
     expect(find.byKey(const ValueKey('product-thumbnails')), findsNothing);
     expect(find.text('مدة التوصيل'), findsNothing);
+  });
+
+  testWidgets('the stock line is left out when the store hides it', (tester) async {
+    await open(tester, detail(available: 7, showStockQuantity: false));
+    expect(find.text('المخزون المتوفر'), findsNothing);
+    expect(find.text('7 قطعة'), findsNothing);
+    expect(find.byKey(const ValueKey('product-facts')), findsOneWidget); // the SKU is still shown
   });
 
   testWidgets('low stock is called out', (tester) async {

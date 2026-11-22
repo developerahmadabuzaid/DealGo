@@ -2073,13 +2073,15 @@ class _ProductFacts extends StatelessWidget {
 
     final rows = <(IconData, String, String)>[
       if (p.sku.trim().isNotEmpty) (Icons.qr_code_2_rounded, t.skuLabel, p.sku.trim()),
-      (
-        Icons.inventory_2_outlined,
-        t.availableStock,
-        p.inStock && p.availableQuantity > 0 ? t.pieces(p.availableQuantity) : t.outOfStock,
-      ),
+      if (p.showStockQuantity)
+        (
+          Icons.inventory_2_outlined,
+          t.availableStock,
+          p.inStock && p.availableQuantity > 0 ? t.pieces(p.availableQuantity) : t.outOfStock,
+        ),
       if (p.deliveryTime != null) (Icons.local_shipping_outlined, t.deliveryTimeLabel, p.deliveryTime!),
     ];
+    if (rows.isEmpty) return const SizedBox.shrink();
 
     return Container(
       key: const ValueKey('product-facts'),

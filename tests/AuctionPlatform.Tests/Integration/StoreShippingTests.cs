@@ -185,4 +185,29 @@ public class StoreShippingTests
 
         (await act.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be(ErrorCodes.ValidationFailed);
     }
+
+    [Fact]
+    public async Task The_store_can_hide_the_stock_line_on_products()
+    {
+        await using var scope = _fixture.CreateScope();
+        var admin = scope.ServiceProvider.GetRequiredService<IStoreAdminService>();
+        var catalog = scope.ServiceProvider.GetRequiredService<IStoreCatalogService>();
+        var current = await admin.GetSettingsAsync();
+        var product = await admin.CreateProductAsync(new CreateStoreProductRequest(
+            "منتج", null, null, null, $"STK-{Guid.NewGuid():N}"[..20], 50m, null, null, 5,
+            StoreProductStatus.Active, StorePaymentMode.Both, false, true, 0m, null, null));
+
+        try
+        {
+            (await catalog.GetProductAsync(product.Id)).ShowStockQuantity.Should().BeTrue();
+
+            (await admin.UpdateSettingsAsync(current with { ShowStockQuantity = false }))
+                .ShowStockQuantity.Should().BeFalse();
+            (await catalog.GetProductAsync(product.Id)).ShowStockQuantity.Should().BeFalse();
+        }
+        finally
+        {
+            await admin.UpdateSettingsAsync(current);
+        }
+    }
 }

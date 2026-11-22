@@ -4803,6 +4803,7 @@ async function viewStoreSettings() {
         shoppingCreditExpirationDays: Number(f.creditExpiryDays.value),
         refundPolicy: s.refundPolicy,
         lowStockThreshold: Number(f.lowStockThreshold.value),
+        showStockQuantity: f.showStockQuantity.value === 'true',
       };
       await api('/admin/store/settings', { method: 'PUT', body: JSON.stringify(body) });
       toast('Settings saved.', 'ok');
@@ -4842,7 +4843,8 @@ async function viewStoreSettings() {
       h('div', { class: 'grid-2' },
         bool('creditExpiry', 'Credit expiration', s.shoppingCreditExpirationEnabled),
         numField('creditExpiryDays', 'Expires after (days)', s.shoppingCreditExpirationDays),
-        numField('lowStockThreshold', 'Low stock threshold', s.lowStockThreshold)),
+        numField('lowStockThreshold', 'Low stock threshold', s.lowStockThreshold),
+        bool('showStockQuantity', 'إظهار "المخزون المتوفر" في التطبيق', s.showStockQuantity ?? true)),
       h('div', { class: 'hint', style: 'margin-top:8px' },
         'Credit is only ever expired through an explicit ledger entry, so a balance always matches its history.')),
 

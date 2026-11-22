@@ -158,8 +158,12 @@ class StoreProductDetail extends StoreProduct {
     this.categoryId,
     this.parentCategoryName,
     this.deliveryTime,
+    this.showStockQuantity = true,
     super.offer,
   });
+
+  /// Whether to show the "available stock" line; the store turns it off from the dashboard.
+  final bool showStockQuantity;
 
   /// How long delivery takes ("1-5 أيام"), when the store says; null shows nothing.
   final String? deliveryTime;
@@ -207,6 +211,7 @@ class StoreProductDetail extends StoreProduct {
       parentCategoryName: j['parentCategoryName'] as String?,
       deliveryTime: (j['deliveryTime'] as String?)?.trim().isEmpty ?? true ? null : (j['deliveryTime'] as String).trim(),
       offer: ExclusiveOffer.fromJson(j['offer']),
+      showStockQuantity: j['showStockQuantity'] as bool? ?? true,
     );
   }
 }

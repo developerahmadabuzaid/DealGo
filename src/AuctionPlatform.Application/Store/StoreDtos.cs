@@ -105,7 +105,10 @@ public sealed record StoreProductDetailDto(
     StoreProductSource Source = StoreProductSource.Admin,
 
     /// <summary>Set when this product is an exclusive offer.</summary>
-    ExclusiveOfferInfo? Offer = null)
+    ExclusiveOfferInfo? Offer = null,
+
+    /// <summary>Whether the app shows the "available stock" line (a store setting).</summary>
+    bool ShowStockQuantity = true)
 {
     public bool IsOnOffer => StoreDiscount.Applies(Price, CompareAtPrice);
     public int DiscountPercentage => StoreDiscount.Percentage(Price, CompareAtPrice);
@@ -328,7 +331,10 @@ public sealed record StoreSettingsDto(
     decimal M5aznShippingCovered = 0m,
 
     /// <summary>Tax on the customer's part of M5azn shipping, in percent.</summary>
-    decimal M5aznShippingTaxPercentage = 0m);
+    decimal M5aznShippingTaxPercentage = 0m,
+
+    /// <summary>Whether the app shows the "available stock" line on a product.</summary>
+    bool ShowStockQuantity = true);
 
 public sealed record StoreOverviewDto(
     int TotalProducts,

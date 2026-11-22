@@ -2360,6 +2360,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<bool>("ShoppingWalletEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("ShowStockQuantity")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("StoreEnabled")
                         .HasColumnType("boolean");
 
