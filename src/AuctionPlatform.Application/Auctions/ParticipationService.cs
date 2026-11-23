@@ -138,14 +138,17 @@ public sealed class ParticipationService : IParticipationService
                 $"Registration is closed for this auction (status {auction.Status}).");
         }
 
-        if (auction.ParticipantCount >= auction.RequiredParticipants)
+        // A demo auction has no cap: anyone may join until it starts.
+        if (!auction.IsDemo && auction.ParticipantCount >= auction.RequiredParticipants)
         {
             throw new DomainException(ErrorCodes.AuctionFull, "This auction already has all its participants.");
         }
 
         // An administrator may set the fee for one participant; everyone else pays the auction's.
         // Refunds read EntryFeePaid, so a participant always gets back exactly what they paid.
-        var entryFee = entryFeeOverride ?? auction.EntryFee;
+        // A demo auction is free for everyone, an administrator's override included: nothing is
+        // charged, so nothing can ever be owed back.
+        var entryFee = auction.IsDemo ? 0m : entryFeeOverride ?? auction.EntryFee;
 
         var participant = new AuctionParticipant
         {
@@ -218,7 +221,10 @@ public sealed class ParticipationService : IParticipationService
 
         // The auction becomes ready only when the required participant count is met, never merely
         // because it was created.
-        if (auction.ParticipantCount >= auction.RequiredParticipants &&
+        // A demo auction never fills, so it never schedules itself from a count: it starts at
+        // its scheduled time or when an administrator starts it.
+        if (!auction.IsDemo &&
+            auction.ParticipantCount >= auction.RequiredParticipants &&
             auction.ParticipantsCompletedAt is null)
         {
             thresholdReached = true;

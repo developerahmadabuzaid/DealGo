@@ -64,7 +64,11 @@ public sealed class AuctionAdminService : IAuctionAdminService
         var now = _clock.UtcNow;
         var currency = request.Currency ?? _options.DefaultCurrency;
 
-        var main = RequireMainPrize(request.Prizes);
+        // A demo auction may come without any prize; its value is then the one typed for it.
+        var main = request.IsDemo
+            ? OptionalMainPrize(request.Prizes)
+            : RequireMainPrize(request.Prizes);
+        var value = main?.Price ?? RequireDemoValue(request.DemoValue);
 
         var targetPercentage = request.TargetPercentage ?? _options.DefaultTargetPercentage;
         var startingPercentage = request.StartingPercentage ?? _options.DefaultStartingPercentage;
@@ -75,11 +79,11 @@ public sealed class AuctionAdminService : IAuctionAdminService
             AuctionNumber = await _numbers.NextAuctionNumberAsync(ct),
             Title = request.Title,
             Description = request.Description,
-            MainProductNameSnapshot = main.Name.Trim(),
-            MainImageSnapshot = Blank(main.ImageUrl),
+            MainProductNameSnapshot = main?.Name.Trim() ?? request.Title.Trim(),
+            MainImageSnapshot = Blank(main?.ImageUrl),
             CoverImageUrl = Blank(request.CoverImageUrl),
             // The auction is worth what its first prize is worth.
-            OriginalPrice = Money.Round(main.Price),
+            OriginalPrice = Money.Round(value),
             StartingPercentage = startingPercentage,
             TargetPercentage = targetPercentage,
             FinalPhasePercentage = finalPhasePercentage,
@@ -98,6 +102,8 @@ public sealed class AuctionAdminService : IAuctionAdminService
             CreatedAt = now,
             UpdatedAt = now
         };
+
+        if (request.IsDemo) MakeDemo(auction);
 
         // Target and final-phase prices are computed once and stored; they are never recomputed
         // from the live catalog price later.
@@ -123,6 +129,35 @@ public sealed class AuctionAdminService : IAuctionAdminService
             null, new { auction.AuctionNumber, auction.Title, auction.OriginalPrice }, ct: ct);
 
         return await _reader.GetAsync(auction.Id, null, ct);
+    }
+
+    /// <summary>
+    /// Turns an auction into a demo: free to join, open to any number of people, and outside every
+    /// money path. Set here on the server whatever the request says, so a client can never send a
+    /// demo auction with a fee or a refund attached.
+    /// </summary>
+    private static void MakeDemo(Auction auction)
+    {
+        auction.IsDemo = true;
+        auction.EntryFee = 0m;
+        auction.RequiredParticipants = 0;
+        auction.RefundLosingParticipantsEntryFee = false;
+        auction.RefundWinnerEntryFee = false;
+    }
+
+    /// <summary>The rank 1 prize of a demo auction, when it has one. Checked like any other.</summary>
+    private static AuctionPrizeRequest? OptionalMainPrize(IReadOnlyList<AuctionPrizeRequest>? prizes) =>
+        prizes?.Any(p => p.Rank == 1) == true ? RequireMainPrize(prizes) : null;
+
+    private static decimal RequireDemoValue(decimal? value)
+    {
+        if (value is not > 0)
+        {
+            throw new DomainException(
+                ErrorCodes.InvalidAuctionConfiguration,
+                "A demo auction without a prize needs a value greater than zero to set its prices.");
+        }
+        return value.Value;
     }
 
     private static string? Blank(string? value) =>
@@ -211,6 +246,12 @@ public sealed class AuctionAdminService : IAuctionAdminService
             auction.MainProductNameSnapshot = main.Name.Trim();
             auction.MainImageSnapshot = Blank(main.ImageUrl);
             auction.OriginalPrice = Money.Round(main.Price);
+        }
+        else if (auction.IsDemo)
+        {
+            // A demo auction without a device is headed by its own title; its value stays as typed.
+            auction.MainProductNameSnapshot = auction.Title.Trim();
+            auction.MainImageSnapshot = null;
         }
     }
 
@@ -322,6 +363,39 @@ public sealed class AuctionAdminService : IAuctionAdminService
         if (request.DurationSeconds.HasValue) auction.DurationSeconds = request.DurationSeconds.Value;
         if (request.ExpirationPolicy.HasValue) auction.ExpirationPolicy = request.ExpirationPolicy.Value;
 
+        if (request.IsDemo is { } demo && demo != auction.IsDemo)
+        {
+            // Whoever joined did so on the terms they saw: free, or for a fee. Those terms can't
+            // change under them.
+            if (auction.ParticipantCount > 0)
+            {
+                throw new DomainException(
+                    ErrorCodes.InvalidAuctionState,
+                    "An auction cannot switch to or from demo once people have joined it.");
+            }
+
+            if (demo)
+            {
+                MakeDemo(auction);
+            }
+            else
+            {
+                auction.IsDemo = false;
+                auction.EntryFee = request.EntryFee ?? _options.DefaultEntryFee;
+                auction.RequiredParticipants = request.RequiredParticipants ?? _options.DefaultRequiredParticipants;
+                auction.RefundLosingParticipantsEntryFee = _options.RefundLosingParticipantsEntryFee;
+                auction.RefundWinnerEntryFee = _options.RefundWinnerEntryFee;
+            }
+        }
+
+        // A demo auction stays free and open, whatever fee or cap the request carried.
+        if (auction.IsDemo) MakeDemo(auction);
+
+        if (auction.IsDemo && request.DemoValue is { } demoValue)
+        {
+            auction.OriginalPrice = Money.Round(RequireDemoValue(demoValue));
+        }
+
         if (request.Prizes is not null)
         {
             await AttachPrizesAsync(auction, request.Prizes, ct);
@@ -381,6 +455,9 @@ public sealed class AuctionAdminService : IAuctionAdminService
         // Publishing is the gate: exactly four correctly ranked prizes and a coherent price ladder.
         AuctionRules.EnsurePublishable(auction, prizes.Count, prizes.Select(p => p.Rank));
         AuctionStateMachine.EnsureCanTransition(auction.Status, AuctionStatus.RegistrationOpen);
+
+        // Nothing should have changed it, but a demo auction is published free and open or not at all.
+        if (auction.IsDemo) MakeDemo(auction);
 
         auction.Status = AuctionStatus.RegistrationOpen;
         auction.CurrentPrice = auction.StartingPrice;
@@ -442,7 +519,8 @@ public sealed class AuctionAdminService : IAuctionAdminService
                     throw new DomainException(ErrorCodes.AuctionNotReady,
                         "Nobody has joined this auction yet, so it cannot start.");
                 }
-                if (string.IsNullOrWhiteSpace(earlyStartReason))
+                // A demo auction has no count to fill, so starting it needs no reason on record.
+                if (!auction.IsDemo && string.IsNullOrWhiteSpace(earlyStartReason))
                 {
                     throw new DomainException(ErrorCodes.ValidationFailed,
                         "Give a reason for starting before the auction is full; it is kept in the audit log.");
@@ -487,7 +565,7 @@ public sealed class AuctionAdminService : IAuctionAdminService
 
         await _audit.LogAsync(AuditActionType.AuctionStarted, nameof(Auction), auctionId,
             null, new { StartedAt = now, Early = early, Joined = joined, Required = required },
-            early ? $"Started early ({joined} of {required} joined): {earlyStartReason!.Trim()}" : "Started manually", ct);
+            early ? $"Started early ({joined} of {required} joined): {earlyStartReason?.Trim() ?? "demo auction"}" : "Started manually", ct);
 
         return await _reader.GetAsync(auctionId, null, ct);
     }

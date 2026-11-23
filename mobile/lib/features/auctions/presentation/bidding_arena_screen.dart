@@ -10,6 +10,7 @@ import '../../../shared/auction_music.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
 import 'auction_end_dialog.dart';
+import 'demo_auction_badge.dart';
 import 'live_auction_controller.dart';
 import 'live_bidding_widgets.dart';
 import 'top_bidders_panel.dart';
@@ -231,7 +232,11 @@ class _BiddingArenaScreenState extends ConsumerState<BiddingArenaScreen>
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
-            Text(t.liveBidding, style: Theme.of(context).textTheme.labelSmall),
+            // A demo auction says so on the live screen too, so nobody bids thinking it is real.
+            if (s?.isDemo ?? false)
+              const DemoAuctionBadge(dense: true)
+            else
+              Text(t.liveBidding, style: Theme.of(context).textTheme.labelSmall),
           ],
         ),
         centerTitle: true,

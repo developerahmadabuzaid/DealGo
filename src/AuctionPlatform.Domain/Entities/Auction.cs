@@ -50,6 +50,14 @@ public class Auction : AuditableEntity
     /// </summary>
     public int FeaturedOrder { get; set; }
 
+    /// <summary>
+    /// A demo auction (مزاد تجريبي): a free practice round. Joining charges nothing, there is no
+    /// participant cap, the prizes are optional and only on show, and no money path — entry fee,
+    /// refund, prize claim — ever runs for it. Its <see cref="EntryFee"/> is always 0 and its
+    /// <see cref="RequiredParticipants"/> is 0, meaning "open".
+    /// </summary>
+    public bool IsDemo { get; set; }
+
     public decimal OriginalPrice { get; set; }
     public decimal StartingPrice { get; set; }
 

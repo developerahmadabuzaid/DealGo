@@ -69,7 +69,12 @@ public sealed class AuctionSchedulerService : BackgroundService
 
         var due = await db.Auctions
             .AsNoTracking()
-            .Where(a => (a.Status == AuctionStatus.WaitingForStart || a.Status == AuctionStatus.Ready) &&
+            .Where(a => (a.Status == AuctionStatus.WaitingForStart || a.Status == AuctionStatus.Ready ||
+                         // A demo auction never fills up, so it starts at its scheduled time with
+                         // whoever has joined — as long as somebody has.
+                         (a.IsDemo && a.ParticipantCount > 0 &&
+                          (a.Status == AuctionStatus.RegistrationOpen ||
+                           a.Status == AuctionStatus.WaitingForParticipants))) &&
                         a.ScheduledStartAt != null &&
                         a.ScheduledStartAt <= now)
             .Select(a => a.Id)
@@ -87,7 +92,10 @@ public sealed class AuctionSchedulerService : BackgroundService
             // unstarted, so exactly one instance can flip it to LIVE.
             var started = await db.Auctions
                 .Where(a => a.Id == auctionId &&
-                            (a.Status == AuctionStatus.WaitingForStart || a.Status == AuctionStatus.Ready) &&
+                            (a.Status == AuctionStatus.WaitingForStart || a.Status == AuctionStatus.Ready ||
+                             (a.IsDemo && a.ParticipantCount > 0 &&
+                              (a.Status == AuctionStatus.RegistrationOpen ||
+                               a.Status == AuctionStatus.WaitingForParticipants))) &&
                             a.ActualStartedAt == null)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(a => a.Status, AuctionStatus.Live)

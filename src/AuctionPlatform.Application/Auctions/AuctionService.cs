@@ -111,6 +111,7 @@ public sealed class AuctionService : IAuctionService
                 MainImage = a.MainImageSnapshot,
                 a.CoverImageUrl,
                 a.IsFeatured,
+                a.IsDemo,
                 a.OriginalPrice, a.StartingPrice, a.CurrentPrice, a.TargetPrice,
                 a.EntryFee, a.Currency, a.ParticipantCount, a.RequiredParticipants,
                 a.Status, a.ScheduledStartAt, a.ActualStartedAt, a.DurationSeconds,
@@ -154,7 +155,8 @@ public sealed class AuctionService : IAuctionService
             a.Prizes
                 .Select(p => new AuctionListPrizeDto(
                     p.Rank, p.ProductNameSnapshot, p.ProductImageSnapshot, p.OriginalPrice))
-                .ToList())).ToList();
+                .ToList(),
+            a.IsDemo)).ToList();
 
         return PagedResult<AuctionListItemDto>.Create(items, query.Page, query.PageSize, total);
     }
@@ -215,7 +217,8 @@ public sealed class AuctionService : IAuctionService
             _clock.UtcNow,
             auction.CoverImageUrl,
             auction.IsFeatured,
-            auction.StartingPercentage);
+            auction.StartingPercentage,
+            auction.IsDemo);
     }
 
     /// <summary>
@@ -257,7 +260,7 @@ public sealed class AuctionService : IAuctionService
             auction.RemainingSeconds, auction.EndsAt, auction.TargetReached,
             AuctionRules.Progress(auction.StartingPrice, auction.CurrentPrice, auction.TargetPrice),
             myRank, me?.HighestPrice, leaderboard, auction.LastSequenceNumber,
-            _clock.UtcNow, me?.Id, lastBidParticipantId);
+            _clock.UtcNow, me?.Id, lastBidParticipantId, auction.IsDemo);
     }
 
     public async Task<IReadOnlyList<LeaderboardEntryDto>> GetLeaderboardAsync(

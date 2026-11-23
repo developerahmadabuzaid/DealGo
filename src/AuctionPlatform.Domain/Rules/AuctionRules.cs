@@ -54,7 +54,11 @@ public static class AuctionRules
         if (auction.EntryFee < 0)
             errors.Add("EntryFee cannot be negative.");
 
-        if (auction.RequiredParticipants < 1)
+        // A demo auction is free and open to any number of people.
+        if (auction.IsDemo && auction.EntryFee != 0)
+            errors.Add("A demo auction cannot charge an entry fee.");
+
+        if (!auction.IsDemo && auction.RequiredParticipants < 1)
             errors.Add("RequiredParticipants must be at least 1.");
 
         if (auction.DurationSeconds <= 0)
@@ -81,12 +85,22 @@ public static class AuctionRules
         if (auction.FinalPhasePrice >= auction.TargetPrice)
             errors.Add("FinalPhasePrice must be less than TargetPrice.");
 
-        if (prizeCount != 4)
-            errors.Add("An auction must have exactly 4 prizes.");
-
         var ranks = prizeRanks.OrderBy(r => r).ToArray();
-        if (!ranks.SequenceEqual(new[] { 1, 2, 3, 4 }))
-            errors.Add("Prize ranks must be exactly 1, 2, 3 and 4, each used once.");
+
+        if (auction.IsDemo)
+        {
+            // Devices are optional on a demo auction: any of the four places, or none at all.
+            if (ranks.Any(r => r is < 1 or > 4) || ranks.Distinct().Count() != ranks.Length)
+                errors.Add("Prize ranks must be between 1 and 4, each used at most once.");
+        }
+        else
+        {
+            if (prizeCount != 4)
+                errors.Add("An auction must have exactly 4 prizes.");
+
+            if (!ranks.SequenceEqual(new[] { 1, 2, 3, 4 }))
+                errors.Add("Prize ranks must be exactly 1, 2, 3 and 4, each used once.");
+        }
 
         if (string.IsNullOrWhiteSpace(auction.Title))
             errors.Add("Title is required.");

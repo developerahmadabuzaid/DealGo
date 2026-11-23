@@ -127,13 +127,19 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
             var participant = winners[i];
             var rank = i + 1;
             var prize = prizes.FirstOrDefault(p => p.Rank == rank);
+
+            participant.CurrentRank = rank;
+
             if (prize is null)
             {
-                _logger.LogError("Auction {AuctionId} has no prize for rank {Rank}.", auctionId, rank);
+                // Devices are optional on a demo auction, so a place without one is expected there.
+                if (!auction.IsDemo)
+                {
+                    _logger.LogError("Auction {AuctionId} has no prize for rank {Rank}.", auctionId, rank);
+                }
                 continue;
             }
 
-            participant.CurrentRank = rank;
             participant.Status = ParticipantStatus.Won;
             winnerParticipantIds.Add(participant.Id);
 
@@ -148,6 +154,19 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 HighestPriceAt = participant.HighestPriceAt,
                 RankedAt = now
             };
+
+            if (auction.IsDemo)
+            {
+                // A demo auction's devices are only on show: the place is recorded, but nothing is
+                // owed, paid, shipped or deducted, so no claim is written.
+                _db.Winners.Add(winner);
+                winnerDtos.Add(new WinnerDto(
+                    winner.Id, rank, participant.UserId,
+                    BidService.DisplayName(null), participant.HighestPrice, participant.HighestPriceAt,
+                    prize.Id, prize.ProductNameSnapshot, prize.ProductImageSnapshot,
+                    prize.OriginalPrice, auction.Currency, null, null, 0m));
+                continue;
+            }
 
             // Winning grants the right to the prize, not the prize itself: the winner still owes
             // the discounted prize price, tracked as a claim. First place pays the closing price;
@@ -255,6 +274,9 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         var auction = await _db.Auctions.AsNoTracking().FirstOrDefaultAsync(a => a.Id == auctionId, ct);
         if (auction is null) return;
 
+        // Nobody paid into a demo auction.
+        if (auction.IsDemo) return;
+
         if (auction.Status != AuctionStatus.Cancelled)
         {
             _logger.LogWarning(
@@ -324,6 +346,21 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
     {
         var auction = await _db.Auctions.AsNoTracking().FirstOrDefaultAsync(a => a.Id == auctionId, ct);
         if (auction is null || !auction.WinnersDeclared) return;
+
+        // Nobody paid into a demo auction, so there is nothing to give back, and no prize to claim:
+        // it is over once its places are declared.
+        if (auction.IsDemo)
+        {
+            var tracked = await _db.Auctions.FirstAsync(a => a.Id == auctionId, ct);
+            if (!tracked.RefundsProcessed)
+            {
+                tracked.RefundsProcessed = true;
+                tracked.Status = AuctionStatus.Completed;
+                tracked.UpdatedAt = _clock.UtcNow;
+                await _db.SaveChangesAsync(ct);
+            }
+            return;
+        }
 
         if (!auction.RefundLosingParticipantsEntryFee && !auction.RefundWinnerEntryFee)
         {
@@ -508,9 +545,16 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
     private async Task BroadcastAndNotifyWinnersAsync(
         Guid auctionId, List<WinnerDto> winners, CancellationToken ct)
     {
+        var isDemo = await _db.Auctions.AsNoTracking()
+            .Where(a => a.Id == auctionId).Select(a => a.IsDemo).FirstOrDefaultAsync(ct);
+
         await SafeNotifyAsync(async () =>
         {
             await _realtime.WinnersDeclaredAsync(auctionId, winners, ct);
+
+            // The usual messages speak of winning a device and of an entry fee coming back as
+            // credit; neither is true of a demo auction, so its players only see the result live.
+            if (isDemo) return;
 
             foreach (var winner in winners)
             {

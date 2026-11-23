@@ -1631,20 +1631,25 @@ async function viewAuctions() {
             mono: true,
             render: (a) => h('span', {},
               document.createTextNode(a.auctionNumber),
-              a.isFeatured ? h('span', { class: 'star', title: 'مزاد مميز' }, ' ★') : null),
+              a.isFeatured ? h('span', { class: 'star', title: 'مزاد مميز' }, ' ★') : null,
+              a.isDemo ? h('span', { class: 'badge info', style: 'margin-inline-start:6px' }, 'مزاد تجريبي') : null),
           },
           { label: 'Title', render: (a) => a.title },
           { label: 'Status', render: (a) => h('span', { class: badgeClass(a.status) }, a.status) },
           {
             label: 'Participants',
-            render: (a) => h('div', { class: 'cell-progress' },
-              h('span', { class: 'cell-progress-text' },
-                `${a.participantCount} / ${a.requiredParticipants}`),
-              miniProgress(a.participantCount, a.requiredParticipants)),
+            // A demo auction has no count to fill, so there is no bar to show.
+            render: (a) => a.isDemo
+              ? h('div', { class: 'cell-progress' },
+                  h('span', { class: 'cell-progress-text' }, `${a.participantCount} · مفتوح عدد المشاركين`))
+              : h('div', { class: 'cell-progress' },
+                  h('span', { class: 'cell-progress-text' },
+                    `${a.participantCount} / ${a.requiredParticipants}`),
+                  miniProgress(a.participantCount, a.requiredParticipants)),
           },
           { label: 'Price', num: true, render: (a) => money(a.currentPrice, a.currency) },
           { label: 'Target', num: true, render: (a) => money(a.targetPrice, a.currency) },
-          { label: 'Entry fee', num: true, render: (a) => money(a.entryFee, a.currency) },
+          { label: 'Entry fee', num: true, render: (a) => (a.isDemo ? 'مجاني' : money(a.entryFee, a.currency)) },
           { label: 'Scheduled', render: (a) => when(a.scheduledStartAt) },
           { label: '', render: (a) => h('button', { class: 'btn ghost sm', onclick: () => openAuction(a.id) }, 'Manage') },
         ],
@@ -1676,6 +1681,10 @@ async function openAuction(id) {
   // Before it is full, with at least one person in: an early start, confirmed with a reason.
   const canStartEarly = (a.status === 'RegistrationOpen' || a.status === 'WaitingForParticipants')
     && a.participantCount > 0;
+  // A demo auction never fills, so it is started by hand or at a time set for it, never "early".
+  const canStartDemo = a.isDemo && canStartEarly;
+  const canScheduleDemo = a.isDemo
+    && ['Draft', 'Scheduled', 'RegistrationOpen', 'WaitingForParticipants'].includes(a.status);
   const canPause = a.status === 'Live' || a.status === 'FinalPhase';
   const canResume = a.status === 'Paused';
   const canCancel = !['Completed', 'Cancelled'].includes(a.status);
@@ -1738,7 +1747,8 @@ async function openAuction(id) {
         h('div', { class: 'modal-hero-meta' },
           h('span', { class: 'num-chip' }, document.createTextNode(a.auctionNumber)),
           h('span', { class: badgeClass(a.status) }, a.status),
-          a.isFeatured ? h('span', { class: 'badge warn' }, '★ مميز') : null)),
+          a.isFeatured ? h('span', { class: 'badge warn' }, '★ مميز') : null,
+          a.isDemo ? h('span', { class: 'badge info' }, 'مزاد تجريبي') : null)),
       h('button', {
         class: 'modal-x', type: 'button', 'aria-label': 'إغلاق', onclick: () => back.remove(),
       }, '×')),
@@ -1757,12 +1767,19 @@ async function openAuction(id) {
 
       section('المشاركة والتوقيت', 'users', 'ok',
         h('div', { class: 'stat-grid' },
-          stat('رسوم الاشتراك', money(a.entryFee, a.currency)),
+          stat('رسوم الاشتراك', a.isDemo ? 'مجاني' : money(a.entryFee, a.currency)),
           stat('مدة المزاد', `${a.durationSeconds} ثانية`),
-          stat('مهلة البدء بعد اكتمال العدد', `${a.startDelayAfterParticipantsSeconds} ثانية`),
-          stat('سياسة الانتهاء', a.expirationPolicy)),
+          a.isDemo
+            ? stat('موعد البدء', a.scheduledStartAt ? when(a.scheduledStartAt) : 'يدوياً')
+            : stat('مهلة البدء بعد اكتمال العدد', `${a.startDelayAfterParticipantsSeconds} ثانية`),
+          stat('سياسة الانتهاء', a.expirationPolicy),
+          a.isDemo ? stat('المشاركون', `${a.participantCount} · مفتوح عدد المشاركين`) : null),
+        a.isDemo
+          ? h('div', { class: 'hint' },
+              'مزاد تجريبي: الانضمام والمزايدة مجانيان، ولا حد لعدد المشاركين. الأجهزة للعرض فقط: لا يدفع الفائز شيئاً ولا يُشحن له شيء. يبدأ في الموعد المحدد أو عند الضغط على «ابدأ الآن».')
+          : null,
         // Skipped when the ready panel is up, which already carries this same bar at 100%.
-        canStart ? null : progressBar(a.participantCount, a.requiredParticipants, {
+        canStart || a.isDemo ? null : progressBar(a.participantCount, a.requiredParticipants, {
           label: 'المشاركون',
           text: `${a.participantCount} / ${a.requiredParticipants}`,
         })),
@@ -1806,9 +1823,9 @@ async function openAuction(id) {
           },
         }, 'تعديل المزاد') : null,
 
-        canStart ? h('button', {
+        canStart || canScheduleDemo ? h('button', {
           class: 'btn ghost', onclick: () => { back.remove(); editSchedule(a); },
-        }, 'تعديل وقت البدء') : null,
+        }, a.isDemo ? 'تحديد وقت البدء' : 'تعديل وقت البدء') : null,
 
         canPublish ? h('button', {
           class: 'btn', onclick: () => act(() => api(`/admin/auctions/${a.id}/publish`, { method: 'POST' }), 'Auction published.'),
@@ -1818,7 +1835,12 @@ async function openAuction(id) {
           class: 'btn ok', onclick: () => act(() => api(`/admin/auctions/${a.id}/start`, { method: 'POST' }), 'Auction started.'),
         }, 'ابدأ الآن') : null,
 
-        canStartEarly ? h('button', {
+        canStartDemo ? h('button', {
+          class: 'btn ok',
+          onclick: () => act(() => api(`/admin/auctions/${a.id}/start`, { method: 'POST' }), 'Auction started.'),
+        }, `ابدأ الآن (${a.participantCount} مشارك)`) : null,
+
+        canStartEarly && !a.isDemo ? h('button', {
           class: 'btn ghost',
           onclick: () => {
             back.remove();
@@ -2081,9 +2103,10 @@ function addParticipantDialog(a) {
 
   const search = h('input', { placeholder: 'ابحث بالاسم أو البريد الإلكتروني أو رقم الهاتف' });
   const results = h('div', { class: 'pick-list' });
-  const fee = h('input', { type: 'number', step: '0.01', min: '0', value: String(a.entryFee) });
+  // A demo auction is free: the server charges nothing whatever is sent, so no fee is asked for.
+  const fee = h('input', { type: 'number', step: '0.01', min: '0', value: String(a.isDemo ? 0 : a.entryFee) });
   const chosenBox = h('div', { class: 'hint' }, 'لم يُختر مشارك بعد.');
-  const saveBtn = h('button', { class: 'btn', disabled: '' }, 'إضافة وخصم الرسوم');
+  const saveBtn = h('button', { class: 'btn', disabled: '' }, a.isDemo ? 'إضافة مجاناً' : 'إضافة وخصم الرسوم');
 
   let chosen = null;
 
@@ -2148,7 +2171,9 @@ function addParticipantDialog(a) {
         method: 'POST',
         body: JSON.stringify({ userId: chosen.id, entryFee: Number(fee.value) }),
       });
-      toast(`تمت إضافة ${chosen.fullName || chosen.email} وخُصمت ${moneyText(Number(fee.value), a.currency)} من محفظته الرئيسية.`, 'ok');
+      toast(a.isDemo
+        ? `تمت إضافة ${chosen.fullName || chosen.email} إلى المزاد التجريبي.`
+        : `تمت إضافة ${chosen.fullName || chosen.email} وخُصمت ${moneyText(Number(fee.value), a.currency)} من محفظته الرئيسية.`, 'ok');
       back.remove();
       render();
     } catch (e) {
@@ -2160,10 +2185,12 @@ function addParticipantDialog(a) {
   back.append(h('div', { class: 'modal' },
     h('h3', {}, 'إضافة مشارك'),
     h('p', { class: 'sub' },
-      document.createTextNode(`${a.auctionNumber} · تُخصم قيمة الاشتراك من المحفظة الرئيسية للمشارك، ولا تُقبل الإضافة إن لم يكفِ رصيدها.`)),
+      document.createTextNode(a.isDemo
+        ? `${a.auctionNumber} · مزاد تجريبي: الانضمام مجاني ولا يُخصم شيء من المحفظة.`
+        : `${a.auctionNumber} · تُخصم قيمة الاشتراك من المحفظة الرئيسية للمشارك، ولا تُقبل الإضافة إن لم يكفِ رصيدها.`)),
     h('label', {}, 'المشارك'), search, results, chosenBox,
-    h('label', {}, `قيمة الاشتراك (${a.currency})`), fee,
-    h('div', { class: 'hint' }, `رسوم الاشتراك في هذا المزاد ${moneyText(a.entryFee, a.currency)}، ويمكنك تغييرها لهذا المشارك وحده.`),
+    a.isDemo ? null : h('label', {}, `قيمة الاشتراك (${a.currency})`), a.isDemo ? null : fee,
+    a.isDemo ? null : h('div', { class: 'hint' }, `رسوم الاشتراك في هذا المزاد ${moneyText(a.entryFee, a.currency)}، ويمكنك تغييرها لهذا المشارك وحده.`),
     error,
     h('div', { class: 'modal-actions' },
       h('button', { class: 'btn ghost', onclick: () => back.remove() }, 'إلغاء'),
@@ -2483,6 +2510,16 @@ async function viewAuctionForm() {
   const prizeBody = h('div', {});
 
   /*
+   * Demo auction (مزاد تجريبي): free to join, open to any number of people, devices optional and
+   * only on show. Kept on the cache like the prizes, so a repaint keeps the choice.
+   */
+  if (cache.isDemo === undefined) cache.isDemo = !!existing?.isDemo;
+  const demoBox = h('input', { type: 'checkbox' });
+  demoBox.checked = cache.isDemo;
+  // With no first prize, a demo auction's prices are worked out from this value instead.
+  const demoValueDefault = existing?.isDemo ? String(existing.originalPrice) : '1000';
+
+  /*
    * The auction's own picture, separate from the prize pictures. It is what the app shows on the
    * auction's card and at the top of its page; without one, the first prize's picture stands in.
    * Kept on the cache like the prizes, so a repaint does not lose a picture just uploaded.
@@ -2528,8 +2565,13 @@ async function viewAuctionForm() {
   const sorted = () => [...cache.prizes].sort((a, b) => a.rank - b.rank);
   const mainPrize = () => cache.prizes.find((p) => p.rank === 1) || null;
 
+  const demoValue = () => Number(f.demoValue?.value || 0);
+
+  /* What the price ladder comes from: the first prize, or for a demo auction without one, its value. */
+  const auctionValue = () => Number(mainPrize()?.price || (cache.isDemo ? demoValue() : 0));
+
   const recompute = () => {
-    const original = Number(mainPrize()?.price || 0);
+    const original = auctionValue();
     const target = original * Number(f.targetPercentage?.value || 0) / 100;
     const finalPhase = original * Number(f.finalPhasePercentage?.value || 0) / 100;
     // The opening price is a share of the target, worked out on the server the same way.
@@ -2540,7 +2582,10 @@ async function viewAuctionForm() {
     preview.textContent = original > 0
       ? `يبدأ المزاد عند ${moneyText(starting, 'SAR')} · السعر المستهدف ${moneyText(target, 'SAR')}`
         + ` · تبدأ المرحلة النهائية عند ${moneyText(finalPhase, 'SAR')}`
-      : 'أضف جائزة المركز الأول أولاً؛ من قيمتها تُحسب باقي الأسعار.';
+      : cache.isDemo
+        ? 'أدخل قيمة المزاد التجريبي أو أضف جهازاً للمركز الأول؛ منها تُحسب باقي الأسعار.'
+        : 'أضف جائزة المركز الأول أولاً؛ من قيمتها تُحسب باقي الأسعار.';
+    if (demoValueField) demoValueField.hidden = !(cache.isDemo && !mainPrize());
   };
 
   const paintPrizes = () => {
@@ -2621,9 +2666,15 @@ async function viewAuctionForm() {
 
   const submit = async () => {
     error.textContent = '';
+    const demo = cache.isDemo;
 
-    if (cache.prizes.length !== 4) {
+    if (!demo && cache.prizes.length !== 4) {
       error.textContent = 'المزاد يحتاج إلى أربع جوائز بالضبط.';
+      return;
+    }
+
+    if (demo && !mainPrize() && !(demoValue() > 0)) {
+      error.textContent = 'أدخل قيمة للمزاد التجريبي، فمنها تُحسب الأسعار.';
       return;
     }
 
@@ -2634,8 +2685,11 @@ async function viewAuctionForm() {
       targetPercentage: Number(f.targetPercentage.value),
       finalPhasePercentage: Number(f.finalPhasePercentage.value),
       bidIncrement: Number(f.bidIncrement.value),
-      entryFee: Number(f.entryFee.value),
-      requiredParticipants: Number(f.requiredParticipants.value),
+      // A demo auction is free and open; the server enforces both whatever is sent.
+      entryFee: demo ? 0 : Number(f.entryFee.value),
+      requiredParticipants: demo ? 0 : Number(f.requiredParticipants.value),
+      isDemo: demo,
+      demoValue: demo && !mainPrize() ? demoValue() : null,
       startDelayAfterParticipantsSeconds: Number(f.startDelay.value),
       durationSeconds: Number(f.duration.value),
       expirationPolicy: f.expirationPolicy.value,
@@ -2671,6 +2725,15 @@ async function viewAuctionForm() {
     }
   };
 
+  // Built before the view so the demo switch can show and hide them.
+  const paidFields = [];
+  const demoParticipation = h('div', { class: 'hint' },
+    'مزاد تجريبي: الانضمام مجاني ومفتوح عدد المشاركين. يبدأ في الموعد المحدد أو عند الضغط على «ابدأ الآن».');
+  const prizesHint = h('span', { class: 'hint' }, 'في المزاد التجريبي الأجهزة اختيارية وللعرض فقط.');
+  const demoValueField = field('demoValue', 'قيمة المزاد التجريبي',
+    { type: 'number', value: demoValueDefault, step: '0.01', min: '0.01' },
+    'بلا جهاز للمركز الأول، تُحسب الأسعار من هذه القيمة. لا تُدفع ولا تُستحق لأحد.');
+
   const hero = formHero({
     title: editId ? 'تعديل المزاد' : 'إنشاء مزاد جديد',
     subtitle: editId
@@ -2687,26 +2750,28 @@ async function viewAuctionForm() {
         number: '٢',
         label: 'الجوائز',
         state: () => ({
-          done: cache.prizes.length === 4,
+          done: cache.isDemo || cache.prizes.length === 4,
           // Latin digits, matching every other figure on the page.
-          note: `${cache.prizes.length} من 4`,
+          note: cache.isDemo ? `${cache.prizes.length} · اختيارية` : `${cache.prizes.length} من 4`,
         }),
       },
       {
         number: '٣',
         label: 'التسعير',
         state: () => {
-          const original = Number(mainPrize()?.price || 0);
+          const original = auctionValue();
           return { done: original > 0, note: original > 0 ? moneyText(original, 'SAR') : 'بانتظار الجائزة الأولى' };
         },
       },
       {
         number: '٤',
         label: 'المشاركة والتوقيت',
-        state: () => ({
-          done: Number(f.requiredParticipants?.value || 0) > 0,
-          note: f.requiredParticipants?.value ? `${f.requiredParticipants.value} مشارك` : '',
-        }),
+        state: () => (cache.isDemo
+          ? { done: true, note: 'مفتوح عدد المشاركين' }
+          : {
+              done: Number(f.requiredParticipants?.value || 0) > 0,
+              note: f.requiredParticipants?.value ? `${f.requiredParticipants.value} مشارك` : '',
+            }),
       },
     ],
   });
@@ -2723,6 +2788,11 @@ async function viewAuctionForm() {
         placeholder: 'Optional', value: start('description', ''),
       }),
       h('div', { class: 'field' },
+        h('label', { class: 'row', style: 'gap:8px;align-items:center;cursor:pointer' },
+          demoBox, h('span', {}, 'مزاد تجريبي')),
+        h('div', { class: 'hint' },
+          'مجاني للجميع: لا رسوم اشتراك ولا خصم من أي محفظة، وعدد المشاركين مفتوح، والأجهزة اختيارية وللعرض فقط (لا يدفع الفائز شيئاً ولا يُشحن له شيء). يبدأ في الموعد الذي تحدده أو عند الضغط على «ابدأ الآن».')),
+      h('div', { class: 'field' },
         h('label', {}, 'صورة المزاد'),
         coverThumb,
         h('div', { class: 'row', style: 'margin-top:10px' }, coverPick, coverRemove),
@@ -2733,7 +2803,8 @@ async function viewAuctionForm() {
       sectionHead('2 · Prizes', 'gift', 'warn'),
       h('div', { class: 'toolbar' },
         h('button', { class: 'btn', onclick: addPrize }, icon('plus'), h('span', {}, 'إضافة جائزة')),
-        h('span', { class: 'hint' }, 'الجوائز تخص هذا المزاد وحده. قيمة المركز الأول هي قيمة المزاد.')),
+        h('span', { class: 'hint' }, 'الجوائز تخص هذا المزاد وحده. قيمة المركز الأول هي قيمة المزاد.'),
+        prizesHint),
       prizeBody),
 
     h('div', { class: 'card' },
@@ -2742,6 +2813,7 @@ async function viewAuctionForm() {
         h('label', {}, 'السعر الأصلي'),
         originalOut,
         h('div', { class: 'hint' }, 'مأخوذ من قيمة جائزة المركز الأول.')),
+      demoValueField,
       h('div', { class: 'grid-2' },
         field('targetPercentage', 'Target %',
           { type: 'number', value: start('targetPercentage', '50'), step: '0.01' }),
@@ -2762,11 +2834,12 @@ async function viewAuctionForm() {
 
     h('div', { class: 'card' },
       sectionHead('4 · Participation & timing', 'users', 'violet'),
+      demoParticipation,
       h('div', { class: 'grid-3' },
-        field('entryFee', 'Entry fee',
+        paidFields[0] = field('entryFee', 'Entry fee',
           { type: 'number', value: start('entryFee', '20'), step: '0.01' },
           'Charged once from the Main wallet.'),
-        field('requiredParticipants', 'Required participants',
+        paidFields[1] = field('requiredParticipants', 'Required participants',
           { type: 'number', value: start('requiredParticipants', '400') }),
         field('duration', 'Duration (seconds)',
           { type: 'number', value: start('durationSeconds', '180') })),
@@ -2807,7 +2880,20 @@ async function viewAuctionForm() {
   ['title', 'requiredParticipants'].forEach((k) =>
     f[k].addEventListener('input', hero.mark));
 
+  f.demoValue.addEventListener('input', () => { recompute(); hero.mark(); });
+
+  // Shows the fee and the participant count only for a paid auction.
+  const paintDemo = () => {
+    paidFields.forEach((el) => { el.hidden = cache.isDemo; });
+    demoParticipation.hidden = !cache.isDemo;
+    prizesHint.hidden = !cache.isDemo;
+    recompute();
+    hero.mark();
+  };
+  demoBox.addEventListener('change', () => { cache.isDemo = demoBox.checked; paintDemo(); });
+
   paintPrizes();
+  paintDemo();
   return view;
 }
 

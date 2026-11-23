@@ -40,7 +40,9 @@ public sealed record AuctionListItemDto(
     // Always false for an anonymous request.
     bool HasJoined = false,
     // The devices the auction awards, by place, so a list can show them under each auction.
-    IReadOnlyList<AuctionListPrizeDto>? Prizes = null);
+    IReadOnlyList<AuctionListPrizeDto>? Prizes = null,
+    // A free practice auction with no participant cap (مزاد تجريبي).
+    bool IsDemo = false);
 
 /// <summary>One device an auction awards, as a list shows it: its place, name and picture.</summary>
 public sealed record AuctionListPrizeDto(int Rank, string Name, string? ImageUrl, decimal OriginalPrice);
@@ -97,7 +99,8 @@ public sealed record AuctionDetailDto(
     DateTime ServerTime,
     string? CoverImageUrl,
     bool IsFeatured,
-    decimal StartingPercentage);
+    decimal StartingPercentage,
+    bool IsDemo = false);
 
 /// <summary>
 /// The authoritative state a reconnecting client resynchronises against. Clients never
@@ -124,7 +127,8 @@ public sealed record AuctionSnapshotDto(
     long LastSequenceNumber,
     DateTime ServerTime,
     Guid? MyParticipantId = null,
-    Guid? LastBidParticipantId = null);
+    Guid? LastBidParticipantId = null,
+    bool IsDemo = false);
 
 public sealed record LeaderboardEntryDto(
     int Rank,
@@ -214,8 +218,13 @@ public sealed record CreateAuctionRequest(
     int? StartDelayAfterParticipantsSeconds,
     int? DurationSeconds,
     ExpirationPolicy? ExpirationPolicy,
-    IReadOnlyList<AuctionPrizeRequest> Prizes,
-    string? CoverImageUrl = null);
+    IReadOnlyList<AuctionPrizeRequest>? Prizes,
+    string? CoverImageUrl = null,
+    // A free practice auction: no entry fee, no participant cap, prizes optional and display-only.
+    bool IsDemo = false,
+    // The value the price ladder is worked out from when a demo auction has no prizes. With a
+    // rank 1 prize, that prize's price is used instead, as for any auction.
+    decimal? DemoValue = null);
 
 /// <summary>
 /// One prize, described in full. Prizes belong to their auction: two auctions may award the same
@@ -242,7 +251,10 @@ public sealed record UpdateAuctionRequest(
     ExpirationPolicy? ExpirationPolicy,
     IReadOnlyList<AuctionPrizeRequest>? Prizes,
     // Null leaves the picture as it is; an empty string removes it.
-    string? CoverImageUrl = null);
+    string? CoverImageUrl = null,
+    // Null leaves it as it is. Only changeable while nobody has joined.
+    bool? IsDemo = null,
+    decimal? DemoValue = null);
 
 public sealed record UpdateScheduleRequest(DateTime ScheduledStartAt, string? Reason);
 

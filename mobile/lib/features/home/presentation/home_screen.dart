@@ -15,6 +15,7 @@ import '../../../shared/art_fallback.dart';
 import '../../../shared/brand.dart';
 import '../../../shared/widgets.dart';
 import '../../auctions/data/auction_models.dart';
+import '../../auctions/presentation/demo_auction_badge.dart';
 import '../../auctions/presentation/ended_auction_screen.dart';
 import '../../store/data/store_repository.dart';
 import '../../store/presentation/exclusive_offers.dart';
@@ -1422,6 +1423,10 @@ class _FeaturedAuctionTile extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (a.isDemo) ...[
+                        const DemoAuctionBadge(dense: true),
+                        const SizedBox(height: 3),
+                      ],
                       Text(
                         a.title.isEmpty ? a.mainProductName : a.title,
                         maxLines: 1,
@@ -1608,7 +1613,8 @@ class _UpcomingCard extends StatelessWidget {
     final needed = a.requiredParticipants <= 0 ? 1 : a.requiredParticipants;
     final filled = (a.participantCount / needed).clamp(0.0, 1.0);
     final left = (needed - a.participantCount).clamp(0, needed);
-    final urgent = filled >= _urgentFrom;
+    // A demo auction has no seats to run out of, so it never says "last seats".
+    final urgent = !a.isDemo && filled >= _urgentFrom;
 
     // The auction's own discount, the one it was set up with: where its price stops. The opening
     // price is far lower, but nobody wins the device at it.
@@ -1695,6 +1701,10 @@ class _UpcomingCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (a.isDemo) ...[
+                        const DemoAuctionBadge(dense: true),
+                        const SizedBox(height: 3),
+                      ],
                       Text(
                         a.title.isEmpty ? a.mainProductName : a.title,
                         maxLines: 1,
@@ -1780,7 +1790,7 @@ class _UpcomingCard extends StatelessWidget {
                           ),
                           child: Center(
                             child: Text(
-                              t.reserveYourSeat,
+                              a.isDemo ? t.joinDemoAuction : t.reserveYourSeat,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(

@@ -71,6 +71,7 @@ class AuctionSummary {
     this.finishedAt,
     this.hasJoined = false,
     this.prizes = const [],
+    this.isDemo = false,
   });
 
   final String id;
@@ -96,6 +97,9 @@ class AuctionSummary {
   /// The devices the auction awards, by place, for the strip under its card.
   final List<AuctionListPrize> prizes;
 
+  /// A free practice auction (مزاد تجريبي): no entry fee and no cap on participants.
+  final bool isDemo;
+
   final double originalPrice;
   final double startingPrice;
   final double currentPrice;
@@ -117,8 +121,9 @@ class AuctionSummary {
         'Finished', 'WinnersDeclared', 'PrizeClaim', 'Completed'
       }.contains(status);
 
-  int get participantsRemaining =>
-      (requiredParticipants - participantCount).clamp(0, requiredParticipants);
+  int get participantsRemaining => isDemo
+      ? 0
+      : (requiredParticipants - participantCount).clamp(0, requiredParticipants);
 
   double get fillProgress =>
       requiredParticipants == 0 ? 0 : (participantCount / requiredParticipants).clamp(0, 1);
@@ -150,6 +155,7 @@ class AuctionSummary {
           for (final p in (j['prizes'] as List?) ?? const [])
             AuctionListPrize.fromJson(p as Map<String, dynamic>),
         ]..sort((a, b) => a.rank.compareTo(b.rank)),
+        isDemo: j['isDemo'] as bool? ?? false,
       );
 }
 
@@ -242,6 +248,7 @@ class AuctionDetail {
     required this.myBidCount,
     required this.serverTime,
     this.coverImageUrl,
+    this.isDemo = false,
   });
 
   final String id;
@@ -295,6 +302,10 @@ class AuctionDetail {
   /// The server's clock at the moment this was produced, used to correct for device clock drift.
   final DateTime serverTime;
 
+  /// A free practice auction (مزاد تجريبي): joining and bidding cost nothing, there is no cap on
+  /// participants, and its devices are only on show.
+  final bool isDemo;
+
   bool get isLive => status == 'Live' || status == 'FinalPhase';
   bool get isFinalPhase => status == 'FinalPhase';
   bool get acceptsRegistration =>
@@ -305,8 +316,9 @@ class AuctionDetail {
   bool get isWaitingToStart =>
       status == 'Ready' || status == 'WaitingForStart';
 
-  int get participantsRemaining =>
-      (requiredParticipants - participantCount).clamp(0, requiredParticipants);
+  int get participantsRemaining => isDemo
+      ? 0
+      : (requiredParticipants - participantCount).clamp(0, requiredParticipants);
 
   factory AuctionDetail.fromJson(Map<String, dynamic> j) => AuctionDetail(
         id: j['id'] as String,
@@ -346,6 +358,7 @@ class AuctionDetail {
         myBidCount: j['myBidCount'] as int?,
         serverTime: _date(j['serverTime']) ?? DateTime.now().toUtc(),
         coverImageUrl: j['coverImageUrl'] as String?,
+        isDemo: j['isDemo'] as bool? ?? false,
       );
 }
 
@@ -373,6 +386,7 @@ class AuctionSnapshot {
     required this.serverTime,
     this.myParticipantId,
     this.lastBidParticipantId,
+    this.isDemo = false,
   });
 
   final String id;
@@ -401,6 +415,9 @@ class AuctionSnapshot {
   /// Who placed the latest bid. Nobody may bid twice in a row, so while this is the user the bid
   /// button stays off until someone else bids.
   final String? lastBidParticipantId;
+
+  /// A free practice auction (مزاد تجريبي).
+  final bool isDemo;
 
   bool get isLive => status == 'Live' || status == 'FinalPhase';
 
@@ -432,6 +449,7 @@ class AuctionSnapshot {
         lastSequenceNumber: lastSequenceNumber, serverTime: serverTime,
         myParticipantId: myParticipantId,
         lastBidParticipantId: lastBidParticipantId ?? this.lastBidParticipantId,
+        isDemo: isDemo,
       );
   bool get isFinalPhase => status == 'FinalPhase';
 
@@ -459,6 +477,7 @@ class AuctionSnapshot {
         serverTime: _date(j['serverTime']) ?? DateTime.now().toUtc(),
         myParticipantId: j['myParticipantId'] as String?,
         lastBidParticipantId: j['lastBidParticipantId'] as String?,
+        isDemo: j['isDemo'] as bool? ?? false,
       );
 }
 

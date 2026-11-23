@@ -19,6 +19,7 @@ import '../data/auction_models.dart';
 import 'auction_end_dialog.dart';
 import 'auction_results_screen.dart';
 import 'bidding_arena_screen.dart';
+import 'demo_auction_badge.dart';
 import 'live_auction_controller.dart';
 import 'live_bidding_widgets.dart';
 import 'top_bidders_panel.dart';
@@ -250,6 +251,13 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen>
                 ),
                 const SizedBox(height: AppTheme.space4),
 
+                if (detail.isDemo) ...[
+                  const Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: DemoAuctionBadge(),
+                  ),
+                  const SizedBox(height: AppTheme.space2),
+                ],
                 Text(
                   detail.title,
                   style: Theme.of(context).textTheme.headlineSmall,
@@ -300,7 +308,10 @@ class _AuctionDetailScreenState extends ConsumerState<AuctionDetailScreen>
 
                 // While it is open: the devices large, with what each could cost. Once it has closed:
                 // the same devices as compact cards, at the price their winners now pay.
-                if (detail.isComplete) ...[
+                // A demo auction may have no devices at all; then there is no list to show.
+                if (detail.isDemo && detail.prizes.isEmpty)
+                  const SizedBox.shrink()
+                else if (detail.isComplete) ...[
                   const SizedBox(height: 22),
                   _EndedDeviceList(detail: detail),
                 ] else if (detail.status != 'Cancelled' &&
@@ -381,12 +392,14 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
     try {
       // The entry fee comes from the Main wallet. Short of it, the top-up opens first for what is
       // missing, and joining carries on once the money is in.
-      if (!await ensureMainBalance(
-        context,
-        ref,
-        amount: d.entryFee,
-        currency: d.currency,
-      )) {
+      // A demo auction is free, so there is nothing to check or top up.
+      if (!d.isDemo &&
+          !await ensureMainBalance(
+            context,
+            ref,
+            amount: d.entryFee,
+            currency: d.currency,
+          )) {
         return;
       }
 
@@ -424,7 +437,10 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
 
     // Short of the entry fee, the button says it will top up first.
     final main = ref.watch(walletsProvider).valueOrNull?.main.balance;
-    final short = main != null && main < d.entryFee;
+    final short = !d.isDemo && main != null && main < d.entryFee;
+    final fee = d.isDemo
+        ? t.free
+        : Fmt.money(d.entryFee, d.currency, locale: locale);
 
     return Card(
       child: Padding(
@@ -433,19 +449,41 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // How full the auction is, as a bar only: the app does not show participant numbers.
-            Text(
-              t.participantsFilling,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-            TargetProgressBar(
-              height: 10,
-              progress: d.requiredParticipants == 0
-                  ? 0
-                  : d.participantCount / d.requiredParticipants,
-            ),
+            // A demo auction has no count to fill, so it says it is open instead.
+            if (d.isDemo) ...[
+              Row(
+                children: [
+                  const Icon(Icons.groups_rounded, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      t.openParticipants,
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                t.demoAuctionNote,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ] else ...[
+              Text(
+                t.participantsFilling,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              TargetProgressBar(
+                height: 10,
+                progress: d.requiredParticipants == 0
+                    ? 0
+                    : d.participantCount / d.requiredParticipants,
+              ),
+            ],
             const SizedBox(height: 18),
 
             Row(
@@ -471,7 +509,7 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
                 Expanded(
                   child: Stat(
                     label: t.entryFee,
-                    value: Fmt.money(d.entryFee, d.currency, locale: locale),
+                    value: fee,
                   ),
                 ),
               ],
@@ -495,11 +533,11 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
                       )
                     : const Icon(Icons.how_to_reg_rounded),
                 label: Text(
-                  short
-                      ? t.topUpAndPay(
-                          Fmt.money(d.entryFee, d.currency, locale: locale),
-                        )
-                      : '${t.joinAuction} · ${Fmt.money(d.entryFee, d.currency, locale: locale)}',
+                  d.isDemo
+                      ? t.joinDemoAuction
+                      : short
+                      ? t.topUpAndPay(fee)
+                      : '${t.joinAuction} · $fee',
                 ),
               ),
           ],
@@ -728,6 +766,10 @@ class _EndedDeviceList extends StatelessWidget {
                             ),
                           ),
                           const Spacer(),
+                          // A demo auction's devices are only on show: nothing is paid for them.
+                          if (detail.isDemo)
+                            Text(t.demoAuction, style: theme.textTheme.labelSmall)
+                          else ...[
                           Divider(
                             height: AppTheme.space3,
                             color: theme.colorScheme.outline,
@@ -797,6 +839,7 @@ class _EndedDeviceList extends StatelessWidget {
                               ),
                             ],
                           ),
+                          ],
                         ],
                       ),
                     ),
@@ -836,7 +879,10 @@ class _PrizeList extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(t.discountAppliesToAll, style: theme.textTheme.bodySmall),
+        Text(
+          detail.isDemo ? t.demoAuctionNote : t.discountAppliesToAll,
+          style: theme.textTheme.bodySmall,
+        ),
         const SizedBox(height: 10),
         for (final p in detail.prizes)
           Padding(
@@ -890,6 +936,7 @@ class _PrizeList extends StatelessWidget {
                             style: theme.textTheme.bodyMedium,
                           ),
                         ],
+                        if (!detail.isDemo) ...[
                         const SizedBox(height: AppTheme.space3),
                         PrizePriceBox(
                           fullPrice: p.originalPrice,
@@ -905,6 +952,7 @@ class _PrizeList extends StatelessWidget {
                           // Second to fourth place are priced at the target rate from the start.
                           exact: p.rank > 1,
                         ),
+                        ],
                       ],
                     ),
                   ),

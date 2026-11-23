@@ -12,6 +12,7 @@ import '../../../shared/art_fallback.dart';
 import '../../../shared/widgets.dart';
 import '../data/auction_models.dart';
 import 'auction_devices_strip.dart';
+import 'demo_auction_badge.dart';
 import 'ended_auction_screen.dart';
 
 class AuctionsScreen extends ConsumerStatefulWidget {
@@ -216,6 +217,10 @@ class AuctionCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
+                          if (auction.isDemo) ...[
+                            const DemoAuctionBadge(dense: true),
+                            const SizedBox(height: 2),
+                          ],
                           Text(
                             auction.mainProductName,
                             maxLines: 1,
@@ -245,11 +250,14 @@ class AuctionCard extends StatelessWidget {
                               Flexible(
                                 child: _Figure(
                                   label: sideLabel,
-                                  value: Fmt.money(
-                                    side,
-                                    auction.currency,
-                                    locale: locale,
-                                  ),
+                                  // A demo auction costs nothing to join.
+                                  value: auction.isDemo && !auction.isLive
+                                      ? t.free
+                                      : Fmt.money(
+                                          side,
+                                          auction.currency,
+                                          locale: locale,
+                                        ),
                                   end: true,
                                 ),
                               ),
@@ -257,11 +265,20 @@ class AuctionCard extends StatelessWidget {
                           ),
                           const SizedBox(height: AppTheme.space2),
                           // Filling up before it starts; climbing toward the target once it runs.
-                          TargetProgressBar(
-                            progress: progress,
-                            urgent: auction.isFinalPhase,
-                            height: 5,
-                          ),
+                          // A demo auction has no count to fill, so before it starts it says so.
+                          if (auction.isDemo && !auction.isLive)
+                            Text(
+                              '${t.openParticipants} · ${t.participantsCount(auction.participantCount)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall,
+                            )
+                          else
+                            TargetProgressBar(
+                              progress: progress,
+                              urgent: auction.isFinalPhase,
+                              height: 5,
+                            ),
                         ],
                       ),
                     ),

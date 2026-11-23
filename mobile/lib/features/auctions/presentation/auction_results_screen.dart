@@ -276,7 +276,20 @@ class MyResultCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppTheme.space3),
-          if (isWinner) ...[
+          // A demo auction's result is the place alone: nothing is paid, delivered or returned.
+          if (detail.isDemo) ...[
+            Text(
+              t.demoAuction,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              t.demoAuctionNote,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ] else if (isWinner) ...[
             Text(
               t.youWonPrize(won.prizeName),
               textAlign: TextAlign.center,

@@ -269,6 +269,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("FinishedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("IsDemo")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsFeatured")
                         .HasColumnType("boolean");
 

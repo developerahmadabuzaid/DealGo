@@ -171,6 +171,15 @@ class AppStrings {
   String get joinAuction => _t('اشترك في المزاد', 'Join auction');
   String get joined => _t('أنت مشترك', 'You have joined');
 
+  // ---- demo auctions: free to join, no cap on participants, devices only on show
+  String get demoAuction => _t('مزاد تجريبي', 'Demo auction');
+  String get openParticipants => _t('مفتوح عدد المشاركين', 'Open to everyone');
+  String get free => _t('مجاني', 'Free');
+  String get joinDemoAuction => _t('اشترك مجاناً', 'Join for free');
+  String get demoAuctionNote => _t(
+      'مزاد تجريبي للتجربة: الاشتراك والمزايدة مجانيان ولا يُخصم شيء من محفظتك، وعدد المشاركين مفتوح. الأجهزة للعرض فقط ولا تُسلَّم للفائز.',
+      'A practice auction: joining and bidding are free and nothing leaves your wallet, and anyone may join. The devices are only on show and are not delivered to the winner.');
+
   String get musicOn => _t('تشغيل الموسيقى', 'Turn music on');
   String get musicOff => _t('كتم الموسيقى', 'Mute music');
 
