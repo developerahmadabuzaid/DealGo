@@ -11,6 +11,7 @@ using AuctionPlatform.Application.Store;
 using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Entities;
 using AuctionPlatform.Infrastructure.Identity;
+using AuctionPlatform.Infrastructure.Diagnostics;
 using AuctionPlatform.Infrastructure.Persistence;
 using AuctionPlatform.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
@@ -65,7 +66,13 @@ public static class DependencyInjection
 
             // Queries are projected to DTOs, so tracking is opt-in per query.
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll);
+
+            // Measures how long each connection took to hand out; changes nothing else.
+            options.AddInterceptors(ConnectionTimingInterceptor.Instance);
         });
+
+        // Started at boot (see Program.cs) so connection and request counts are right from the start.
+        services.AddSingleton<RuntimeMetrics>();
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
         services.AddScoped<DatabaseSeeder>();

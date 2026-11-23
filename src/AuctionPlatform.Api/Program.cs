@@ -432,6 +432,10 @@ builder.Services.AddScoped<ExistingPictureShrinker>();
 
 var app = builder.Build();
 
+// Listening from the first request, so its running counts of connections and requests start at zero
+// together with the process rather than whenever an administrator first asks for them.
+app.Services.GetRequiredService<AuctionPlatform.Infrastructure.Diagnostics.RuntimeMetrics>();
+
 /*
  * Why the API stopped.
  *

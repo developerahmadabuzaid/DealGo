@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using AuctionPlatform.Application.Auctions;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Realtime;
@@ -170,9 +171,12 @@ public sealed class BidService : IBidService
         await using var tx = await _db.BeginTransactionAsync(ct);
 
         // SELECT ... FOR UPDATE. Concurrent bidders queue here rather than racing on price.
+        var lockRequested = Stopwatch.GetTimestamp();
         var auction = await _db.Auctions
             .FromSqlRaw("""SELECT *, xmin FROM "Auctions" WHERE "Id" = {0} FOR UPDATE""", auctionId)
             .FirstOrDefaultAsync(ct);
+        var lockAcquired = Stopwatch.GetTimestamp();
+        AppMetrics.RecordLockWait("bid", Stopwatch.GetElapsedTime(lockRequested, lockAcquired));
 
         if (auction is null)
         {
@@ -320,6 +324,7 @@ public sealed class BidService : IBidService
 
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+        AppMetrics.BidLockHeld.Record(Stopwatch.GetElapsedTime(lockAcquired).TotalSeconds);
 
         _logger.LogInformation(
             "Bid {Sequence} on auction {AuctionId} by {UserId}: {Previous} -> {New}{Target}",

@@ -126,10 +126,12 @@ public sealed class ParticipationService : IParticipationService
 
         // Locking the auction row serialises the participant counter, so participant #400 is
         // unambiguous even when hundreds of people join at once.
+        var lockRequested = System.Diagnostics.Stopwatch.GetTimestamp();
         var auction = await _db.Auctions
             .FromSqlRaw("""SELECT *, xmin FROM "Auctions" WHERE "Id" = {0} FOR UPDATE""", auctionId)
             .FirstOrDefaultAsync(ct)
             ?? throw new DomainException(ErrorCodes.AuctionNotFound, "Auction not found.");
+        AppMetrics.RecordLockWait("join", System.Diagnostics.Stopwatch.GetElapsedTime(lockRequested));
 
         if (!AuctionStateMachine.AcceptsRegistration(auction.Status))
         {
