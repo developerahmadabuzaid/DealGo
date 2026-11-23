@@ -26,6 +26,7 @@ public sealed class BidService : IBidService
     private readonly IAuctionRealtimeNotifier _realtime;
     private readonly IRateLimiterService _rateLimiter;
     private readonly IAuctionCompletionService _completion;
+    private readonly ILeaderboardBroadcaster _leaderboard;
     private readonly AuctionOptions _options;
     private readonly ILogger<BidService> _logger;
 
@@ -35,9 +36,11 @@ public sealed class BidService : IBidService
         IAuctionRealtimeNotifier realtime,
         IRateLimiterService rateLimiter,
         IAuctionCompletionService completion,
+        ILeaderboardBroadcaster leaderboard,
         IOptions<AuctionOptions> options,
         ILogger<BidService> logger)
     {
+        _leaderboard = leaderboard;
         _db = db;
         _clock = clock;
         _realtime = realtime;
@@ -363,8 +366,9 @@ public sealed class BidService : IBidService
                     bid.AuctionId, bid.NewPrice, targetReached: true, outcome.Now, ct);
             }
 
-            var leaderboard = await GetLeaderboardAsync(bid.AuctionId, null, 10, ct);
-            await _realtime.LeaderboardUpdatedAsync(bid.AuctionId, leaderboard, ct);
+            // Sent a few times a second by the broadcaster rather than queried here on every bid,
+            // which kept each bidder waiting on one more database round trip.
+            _leaderboard.Request(bid.AuctionId);
         }
         catch (Exception ex)
         {
@@ -384,10 +388,12 @@ public sealed class BidService : IBidService
         return string.Join(' ', fullName.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
-    private async Task<IReadOnlyList<LeaderboardEntryDto>> GetLeaderboardAsync(
-        Guid auctionId, Guid? meUserId, int take, CancellationToken ct)
+    /// <summary>The top bidders, as the live leaderboard shows them.</summary>
+    internal static async Task<IReadOnlyList<LeaderboardEntryDto>> ReadLeaderboardAsync(
+        IApplicationDbContext db, Guid auctionId, int take, CancellationToken ct)
     {
-        var rows = await _db.AuctionParticipants
+        Guid? meUserId = null;
+        var rows = await db.AuctionParticipants
             .AsNoTracking()
             .Where(p => p.AuctionId == auctionId && p.BidCount > 0)
             .OrderByDescending(p => p.HighestPrice)

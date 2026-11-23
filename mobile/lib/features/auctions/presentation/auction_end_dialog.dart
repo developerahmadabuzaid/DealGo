@@ -13,6 +13,13 @@ const _finishedStatuses = {'Finished', 'WinnersDeclared', 'PrizeClaim', 'Complet
 /// The places that take a prize.
 const _prizePlaces = 4;
 
+/// Auctions whose end has already been announced in this run of the app.
+final Set<String> _announced = <String>{};
+
+/// Lets a test announce the same auction's end again.
+@visibleForTesting
+void forgetAnnouncedAuctionEnds() => _announced.clear();
+
 /// Tells the user how a running auction ended, the moment it ends: a congratulation for a prize
 /// winner, and for everyone else who took first place and a word of luck for the next one.
 ///
@@ -25,6 +32,11 @@ Future<void> announceAuctionEnd(
 }) async {
   if (before == null || now == null) return;
   if (!before.isLive || !_finishedStatuses.contains(now.status)) return;
+
+  // Once per auction. The live screen and the auction page both listen for the end, and a late
+  // answer from the server could make it look as if the auction ended twice; each of those
+  // stacked another copy of this box on top of the first.
+  if (!_announced.add(now.id)) return;
 
   final bidders = now.leaderboard.where((e) => e.bidCount > 0).toList()
     ..sort((a, b) => a.rank.compareTo(b.rank));

@@ -48,8 +48,8 @@ public static class DependencyInjection
 
     private static void AddPersistence(IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("Postgres")
-            ?? "Host=localhost;Port=5432;Database=auctions;Username=postgres;Password=postgres";
+        var connectionString = PostgresConnection.Tune(configuration.GetConnectionString("Postgres")
+            ?? "Host=localhost;Port=5432;Database=auctions;Username=postgres;Password=postgres");
 
         services.AddDbContext<ApplicationDbContext>(options =>
         {
@@ -171,6 +171,7 @@ public static class DependencyInjection
         services.AddScoped<IAuctionAdminService, AuctionAdminService>();
         services.AddScoped<IParticipationService, ParticipationService>();
         services.AddScoped<IBidService, BidService>();
+        services.AddSingleton<ILeaderboardBroadcaster, LeaderboardBroadcaster>();
         services.AddScoped<IAuctionCompletionService, AuctionCompletionService>();
 
         services.AddScoped<IPrizeClaimService, PrizeClaimService>();

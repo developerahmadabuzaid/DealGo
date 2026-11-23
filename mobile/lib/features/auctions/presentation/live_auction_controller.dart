@@ -182,10 +182,34 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
     }
   }
 
+  /// Which resync was asked for last. Several run at once around the end of an auction — the
+  /// finish event, the winners event and the last bid each ask for one — and on a slow connection
+  /// their answers can arrive out of order.
+  int _resyncSeq = 0;
+
+  static const _endedStatuses = {
+    'Finished', 'WinnersDeclared', 'PrizeClaim', 'Completed', 'Cancelled',
+  };
+
   /// Pulls the authoritative state and re-derives the clock offset from it.
   Future<void> resync() async {
+    final seq = ++_resyncSeq;
     try {
       final snapshot = await _ref.read(auctionRepositoryProvider).snapshot(auctionId);
+      if (!mounted) return;
+
+      // An answer overtaken by a newer request is old news. Applying it put a finished auction
+      // back to "live" for a moment, and the end was then announced a second time.
+      if (seq != _resyncSeq) return;
+
+      // An auction never comes back from having ended, and an older bid count is never newer.
+      final current = state.snapshot;
+      if (current != null &&
+          (_endedStatuses.contains(current.status) && !_endedStatuses.contains(snapshot.status) ||
+              snapshot.lastSequenceNumber < current.lastSequenceNumber)) {
+        return;
+      }
+
       final offset = snapshot.serverTime.difference(DateTime.now().toUtc());
 
       state = state.copyWith(snapshot: snapshot, serverOffset: offset, clearError: true);

@@ -47,6 +47,15 @@ public sealed class DatabaseFixture : IAsyncLifetime
     /// </summary>
     public RecordingBroadcaster Broadcasts { get; } = new();
 
+    /// <summary>Auctions whose leaderboard a bid asked to have broadcast, across every scope.</summary>
+    public RecordingLeaderboardBroadcaster LeaderboardRequests { get; } = new();
+
+    public sealed class RecordingLeaderboardBroadcaster : ILeaderboardBroadcaster
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<Guid> Requested { get; } = new();
+        public void Request(Guid auctionId) => Requested.Enqueue(auctionId);
+    }
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -139,6 +148,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IAuctionService, AuctionService>();
         services.AddScoped<IParticipationService, ParticipationService>();
         services.AddScoped<IBidService, BidService>();
+        // Bids only ask for a leaderboard broadcast; tests read the requests from here.
+        services.AddSingleton<ILeaderboardBroadcaster>(LeaderboardRequests);
         services.AddScoped<IAuctionCompletionService, AuctionCompletionService>();
         services.AddScoped<IAuctionAdminService, AuctionAdminService>();
         services.AddScoped<IAppAdService, AppAdService>();

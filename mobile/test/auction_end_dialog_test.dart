@@ -8,6 +8,8 @@ import 'package:mobile/features/auctions/presentation/auction_end_dialog.dart';
 
 /// The message an auction leaves the moment it closes: congratulations, or better luck next time.
 void main() {
+  setUp(forgetAnnouncedAuctionEnds);
+
   AuctionSnapshot snapshot(String status, {required bool meFirst}) => AuctionSnapshot.fromJson({
         'id': 'a1',
         'status': status,
@@ -67,6 +69,17 @@ void main() {
     expect(find.textContaining('403.00'), findsOneWidget);
     expect(find.text('أجهزتي'), findsOneWidget);
     expect(find.textContaining('حظاً أوفر'), findsNothing);
+  });
+
+  testWidgets('the end of one auction is announced only once', (tester) async {
+    await run(tester, snapshot('Live', meFirst: false), snapshot('Finished', meFirst: false));
+    await tester.tap(find.text('تأكيد'));
+    await tester.pumpAndSettle();
+
+    // A late answer from the server makes it look as if the auction ended a second time.
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    expect(find.text('انتهى المزاد'), findsNothing);
   });
 
   testWidgets('an auction that was already over says nothing', (tester) async {
