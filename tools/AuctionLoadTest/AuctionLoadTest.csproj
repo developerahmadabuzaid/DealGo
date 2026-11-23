@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Bidding load test and live-auction monitor. A development tool: never deployed, never
+    referenced by the API. See README.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AuctionLoadTest</RootNamespace>
+    <!-- Hundreds of simulated bidders and their live connections in one process. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NoWarn>$(NoWarn);NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Local runs create their test users and read the results straight from the database. -->
+    <ProjectReference Include="..\..\src\AuctionPlatform.Infrastructure\AuctionPlatform.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
