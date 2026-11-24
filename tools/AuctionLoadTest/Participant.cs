@@ -18,11 +18,13 @@ sealed record BidAttempt(
     [JsonIgnore] public string Outcome => Classify(Status, Code, Accepted);
 
     /// <summary>
-    /// accepted · rejected (a rule said no, as it should) · failed (the server or the network let
-    /// the bidder down). Anything not known to be a rule is a failure, so nothing hides.
+    /// accepted · rejected (a rule said no, as it should) · busy (the auction's queue was full or the
+    /// wait too long; certainly not placed, safe to retry) · failed (the server or the network let
+    /// the bidder down). Anything not known is a failure, so nothing hides.
     /// </summary>
     public static string Classify(int status, string? code, bool accepted) =>
         accepted ? "accepted"
+        : code == "AUCTION_BUSY" ? "busy"
         : code is "CONSECUTIVE_BID_NOT_ALLOWED" or "RATE_LIMITED" or "TARGET_ALREADY_REACHED"
             or "AUCTION_FINISHED" or "AUCTION_NOT_ACTIVE" ? "rejected"
         : "failed";

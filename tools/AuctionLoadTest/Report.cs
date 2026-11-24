@@ -22,21 +22,34 @@ static class Report
 
         md.AppendLine("## Summary");
         md.AppendLine();
-        md.AppendLine("| Participants | Bids tried/s | Accepted | Bid latency p50 / p95 / p99 | Rejected (rules) | Failed | Price reaches clients p50 / p95 / p99 | Missed | Shown out of order | Leaderboard lag p50 / p95 / p99 | Lock wait p95 | Lock held avg → ceiling | DB connections in use / waiting (peak) | Server CPU avg / max | Memory max | Closing checks |");
-        md.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+        md.AppendLine("| Participants | Bids tried/s | Accepted | Bid latency p50 / p95 / p99 | Rejected (rules) | Failed / busy | Price reaches clients p50 / p95 / p99 | Missed | Shown out of order | Leaderboard lag p50 / p95 / p99 | Queue wait p95 | Lock wait p95 | Lock held avg → ceiling | DB connections in use / waiting (peak) | Server CPU avg / max | Memory max | Closing checks |");
+        md.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
         foreach (var r in results)
         {
             var srv = r.Server;
             md.AppendLine(
                 $"| {r.Participants} | {r.AttemptsPerSecond:0.0} | {r.Accepted} ({r.AcceptedPerSecond:0.0}/s) | {Trio(r.BidLatency)} | " +
-                $"{r.Rejected} | {Bad(r.Failed)} | {Trio(r.Propagation)} | {Bad(r.MissingDeliveries)} | {r.PriceRegressions} | " +
-                $"{Trio(r.LeaderboardLag)} | {Srv(srv, Summary.F(srv.BidLockWait.P95))} | " +
+                $"{r.Rejected} | {Bad(r.Failed)} / {r.Busy} | {Trio(r.Propagation)} | {Bad(r.MissingDeliveries)} | {r.PriceRegressions} | " +
+                $"{Trio(r.LeaderboardLag)} | {Srv(srv, srv.BidQueueWait.Count == 0 ? "—" : Summary.F(srv.BidQueueWait.P95))} | {Srv(srv, Summary.F(srv.BidLockWait.P95))} | " +
                 $"{Srv(srv, srv.BidLockHeld.Count == 0 ? "—" : $"{srv.BidLockHeld.MeanMs:0.0} ms → {srv.CapacityBidsPerSecond:0}/s")} | " +
                 $"{Srv(srv, $"{srv.PoolUsedMax:0} of {srv.PoolMax:0} / {srv.PoolWaitingMax:0}")} | " +
                 $"{Srv(srv, $"{srv.CpuAvgPercent:0}% / {srv.CpuMaxPercent:0}% ({srv.CoresUsedMax:0.0} cores)")} | " +
                 $"{Srv(srv, $"{srv.WorkingSetMaxMb:0} MB")} | {(r.AllChecksPassed ? "✅ all passed" : $"❌ {r.Checks.Count(c => !c.Passed)} failed")} |");
         }
         md.AppendLine();
+        if (results.Any(r => r.NeighborParticipants > 0))
+        {
+            md.AppendLine("### Another auction at the same time");
+            md.AppendLine();
+            md.AppendLine("A small auction ran beside each busy one, its bidders at the steady rate throughout. If a busy auction could hold up the others, these bids would show it.");
+            md.AppendLine();
+            md.AppendLine("| Busy auction | Other auction's bidders | Its bids | Its bid latency p50 / p95 / p99 | Failed |");
+            md.AppendLine("|---|---|---|---|---|");
+            foreach (var r in results.Where(r => r.NeighborParticipants > 0))
+                md.AppendLine($"| {r.Participants} | {r.NeighborParticipants} | {r.NeighborAccepted} of {r.NeighborAttempts} | {Trio(r.NeighborBidLatency ?? Summary.Empty)} (max {(r.NeighborBidLatency ?? Summary.Empty).Max:0}) | {Bad(r.NeighborFailed)} |");
+            md.AppendLine();
+        }
+
         md.AppendLine("Latencies are milliseconds unless marked. *Bid latency* is from sending the bid to having the answer. " +
                       "*Price reaches clients* is from the server accepting a bid to each connected client receiving it. " +
                       "*Leaderboard lag* is from a bid being accepted to a client receiving a top-ten list that includes it. " +
@@ -61,7 +74,7 @@ static class Report
             md.AppendLine("### Bids");
             md.AppendLine();
             md.AppendLine($"- {r.Attempts} tried in {r.BiddingSeconds:0.0} s ({r.AttemptsPerSecond:0.0}/s): " +
-                          $"{r.Accepted} accepted, {r.Rejected} rejected by a rule, {r.Failed} failed. " +
+                          $"{r.Accepted} accepted, {r.Rejected} rejected by a rule, {r.Busy} turned away as busy (not placed), {r.Failed} failed. " +
                           $"{r.SkippedAsLastBidder} taps skipped because that person had the last bid.");
             md.AppendLine($"- Latency, all attempts (p50 / p95 / p99): {r.BidLatency.Text}");
             md.AppendLine($"- Latency, accepted bids: {r.AcceptedBidLatency.Text}");
@@ -90,7 +103,8 @@ static class Report
             md.AppendLine($"- Live connections: {r.HubConnect.Text}, {r.HubConnectFailures} failed.");
             md.AppendLine($"- Joins, all at once: {r.Join.Text}; {r.JoinFailures} failed; participant count afterwards {r.ParticipantCountAfterJoin}.");
             if (r.JoinServer.Available)
-                md.AppendLine($"- Server side while joining: lock wait {r.JoinServer.JoinLockWait.Text}, join request {r.JoinServer.ServerJoinRequest.Text}, " +
+                md.AppendLine($"- Server side while joining: queue wait {r.JoinServer.JoinQueueWait.Text} (at most {r.JoinServer.JoinQueueLengthMax:0} waiting), " +
+                              $"lock wait {r.JoinServer.JoinLockWait.Text}, join request {r.JoinServer.ServerJoinRequest.Text}, " +
                               $"DB pool in use max {r.JoinServer.PoolUsedMax:0}, waiting max {r.JoinServer.PoolWaitingMax:0}.");
             md.AppendLine();
 
@@ -111,6 +125,9 @@ static class Report
                               $"{srv.PoolTimeouts:0} timeouts; {srv.DbCommandFailures:0} failed commands.");
                 md.AppendLine($"- Getting a connection (p50 / p95 / p99): {srv.ConnectionOpen.Text}; creating a new one: {srv.ConnectionCreate.Text} ({srv.ConnectionCreate.Count} created).");
                 md.AppendLine($"- Database commands: {srv.DbCommand.Text} over {srv.DbCommand.Count} commands.");
+                if (srv.BidQueueWait.Count > 0)
+                    md.AppendLine($"- Waiting for the auction's turn in the server's queue (no database connection held): {srv.BidQueueWait.Text}; " +
+                                  $"at most {srv.BidQueueLengthMax:0} bids waiting at once; {srv.BidsRefusedClosed:0} late bids refused without a transaction.");
                 md.AppendLine($"- Waiting for the auction's lock per bid: {srv.BidLockWait.Text}; then holding it until COMMIT: {srv.BidLockHeld.Text} " +
                               $"(average {srv.BidLockHeld.MeanMs:0.0} ms, so at most about {srv.CapacityBidsPerSecond:0} bids a second on one auction).");
                 md.AppendLine($"- Bid request inside the server: {srv.ServerBidRequest.Text}; {srv.ServerBid5xx:0} server errors.");

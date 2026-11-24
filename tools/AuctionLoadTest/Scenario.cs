@@ -8,7 +8,10 @@ namespace AuctionLoadTest;
 
 sealed record RunSettings(
     Uri BaseUrl, int DurationSeconds, double Rate, double BurstRate, int BurstSeconds, double MinGapMs,
-    string Mode, string Close, int TargetBids, decimal EntryFee, int ConnectConcurrency, int Seed);
+    string Mode, string Close, int TargetBids, decimal EntryFee, int ConnectConcurrency, int Seed,
+    // Bidders in a small second auction running at the same time, to see whether a busy auction
+    // slows the others down. 0 = none.
+    int Neighbors = 0);
 
 sealed record Check(string Name, bool Passed, string Detail);
 
@@ -36,7 +39,10 @@ sealed record ScenarioResult(
     Summary DeadlineToFinishedEvent, Summary DeadlineToWinnersEvent, double DeadlineToFinalStatusMs,
     List<Check> Checks,
     // server
-    ServerSummary Server, ServerSummary JoinServer, double GeneratorCpuPercent)
+    ServerSummary Server, ServerSummary JoinServer, double GeneratorCpuPercent,
+    // the small auction running beside it
+    int NeighborParticipants = 0, int NeighborAttempts = 0, int NeighborAccepted = 0, int NeighborFailed = 0,
+    Summary? NeighborBidLatency = null, int Busy = 0, int JoinsBusy = 0)
 {
     public bool AllChecksPassed => Checks.All(c => c.Passed);
 }
@@ -122,6 +128,9 @@ sealed class ScenarioRunner
         var participantCount = started.ParticipantCount;
         Log($"live, ends {endsAtServer:HH:mm:ss} UTC");
 
+        // A small auction beside this one, bidding at the steady rate the whole time.
+        var neighbor = _s.Neighbors > 0 ? await StartNeighborAsync(n, tag, offset) : null;
+
         var byTarget = _s.Close == "target";
         var context = new BiddingContext
         {
@@ -138,8 +147,13 @@ sealed class ScenarioRunner
         holder.Context = context;
 
         var biddingStartTs = await sampler.MarkAsync();
+        var neighborBidding = neighbor is null
+            ? Task.CompletedTask
+            : Task.WhenAll(neighbor.Participants.Select(p => p.BidLoopAsync(neighbor.Context)));
         await Task.WhenAll(participants.Select(p => p.BidLoopAsync(context)));
         var biddingEndTs = context.EndedTs != 0 ? context.EndedTs : Clock.Ts;
+        neighbor?.Context.End("the busy auction is over");
+        await neighborBidding;
         await sampler.MarkAsync();
         Log($"bidding over ({context.EndedBy ?? "time limit"})");
 
@@ -151,9 +165,25 @@ sealed class ScenarioRunner
                            / Clock.Ms(scenarioStartTs, scenarioEndTs) / Environment.ProcessorCount * 100;
         await Task.WhenAll(participants.Select(p => p.DisconnectAsync()));
 
+        if (neighbor is not null)
+        {
+            // Called off now that it has served its purpose, so it does not close during the next run.
+            await _api.SendAsync<DetailDto>(HttpMethod.Post, $"api/v1/admin/auctions/{neighbor.AuctionId}/cancel",
+                _admin.Token, new { reason = "Load test over" });
+            await Task.WhenAll(neighbor.Participants.Select(p => p.DisconnectAsync()));
+        }
+        var neighborAttempts = neighbor?.Participants.SelectMany(p => p.Attempts).ToList() ?? new List<BidAttempt>();
+
         // ------------------------------------------------------------ what happened
         await using var db = _local.Db();
-        var auction = await db.Auctions.AsNoTracking().SingleAsync(a => a.Id == auctionId);
+
+        // Only the columns every version of the schema has, so this tool can check older builds too.
+        var auction = await db.Auctions.AsNoTracking().Where(a => a.Id == auctionId).Select(a => new
+        {
+            a.CurrentPrice, a.LastSequenceNumber, a.StartingPrice, a.BidIncrement, a.TargetPrice, a.ActualStartedAt,
+            a.DurationSeconds, a.TargetReached, a.Status, a.WinnersDeclared, a.RefundsProcessed, a.OriginalPrice,
+            a.TargetPercentage
+        }).SingleAsync();
         var dbBids = await db.Bids.AsNoTracking().Where(b => b.AuctionId == auctionId)
             .OrderBy(b => b.SequenceNumber)
             .Select(b => new { b.SequenceNumber, b.ParticipantId, b.PreviousPrice, b.NewPrice, b.ReachedTarget, b.ServerTimestamp, b.IdempotencyKey })
@@ -390,7 +420,10 @@ sealed class ScenarioRunner
             lastSequence, finalPrice, auction.Status.ToString(), context.EndedBy ?? "time limit",
             finishedEvent, winnersEvent, finalStatusMs,
             checks,
-            sampler.Summarise(biddingStartTs, biddingEndTs), sampler.Summarise(joinStartTs, joinEndTs), generatorCpu);
+            sampler.Summarise(biddingStartTs, biddingEndTs), sampler.Summarise(joinStartTs, joinEndTs), generatorCpu,
+            neighbor?.Participants.Count ?? 0, neighborAttempts.Count, neighborAttempts.Count(a => a.Accepted),
+            neighborAttempts.Count(a => a.Outcome == "failed"), Summary.Of(neighborAttempts.Select(a => a.Ms)),
+            attempts.Count(a => a.Outcome == "busy"), joins.Count(j => j.Code == "AUCTION_BUSY"));
 
         Log($"{accepted.Count} bids accepted, {result.Failed} failed; checks {(result.AllChecksPassed ? "all passed" : "FAILED")}");
 
@@ -402,6 +435,54 @@ sealed class ScenarioRunner
                 (Clock.Utc(a.StartTs) - closeAt).TotalMilliseconds.ToString("0")))
             .Prepend("participant,sent_utc,latency_ms,status,code,sequence,price,server_time_utc,in_burst,sent_ms_from_close"));
         return result;
+    }
+
+    private sealed record NeighborRun(Guid AuctionId, List<Participant> Participants, BiddingContext Context);
+
+    /// <summary>
+    /// A small, quiet auction run at the same time as the busy one: its own bidders (taken after the
+    /// busy auction's), its own live connections, the steady bidding rate throughout. If a busy
+    /// auction could hold up others, these bids would show it.
+    /// </summary>
+    private async Task<NeighborRun> StartNeighborAsync(int n, string tag, TimeSpan offset)
+    {
+        var paid = _s.Mode == "paid";
+        var users = _pool.Skip(n).Take(_s.Neighbors).ToList();
+        await _local.ResetWalletsAsync(users.Select(u => u.Id).ToList(), paid ? _s.EntryFee : 0m);
+
+        var created = (await _api.SendAsync<DetailDto>(HttpMethod.Post, "api/v1/admin/auctions", _admin.Token,
+            AuctionRequest(users.Count, $"{tag}-side"))).Require("Creating the neighbour auction");
+        (await _api.SendAsync<DetailDto>(HttpMethod.Post, $"api/v1/admin/auctions/{created.Id}/publish", _admin.Token))
+            .Require("Publishing the neighbour auction");
+
+        var holder = new BiddingContextHolder();
+        var participants = users.Select((u, i) => new Participant { Index = 100_000 + i, User = u }).ToList();
+        foreach (var p in participants)
+        {
+            await p.ConnectAsync(_api.BaseUrl, created.Id, holder);
+            p.ParticipantId = (await _api.JoinAsync(p.User.Token, created.Id, $"join-{tag}-side-{p.Index}"))
+                .Require("Joining the neighbour auction").ParticipantId;
+        }
+
+        var started = (await _api.SendAsync<DetailDto>(HttpMethod.Post, $"api/v1/admin/auctions/{created.Id}/start",
+            _admin.Token, new { reason = "Load test neighbour" })).Require("Starting the neighbour auction");
+        var endsAtLocal = (started.EndsAt ?? DateTime.UtcNow.AddSeconds(_s.DurationSeconds)) - offset;
+
+        var context = new BiddingContext
+        {
+            Api = _api,
+            AuctionId = created.Id,
+            RunTag = $"{tag}-side",
+            Rate = _s.Rate,
+            BurstRate = _s.Rate,
+            BurstFrom = DateTime.MaxValue,
+            StopAt = endsAtLocal + TimeSpan.FromSeconds(20),
+            MinGapMs = _s.MinGapMs,
+            Seed = _s.Seed + 7
+        };
+        holder.Context = context;
+        Log($"neighbour auction {created.AuctionNumber} live with {participants.Count} bidders");
+        return new NeighborRun(created.Id, participants, context);
     }
 
     private object AuctionRequest(int n, string tag)

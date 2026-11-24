@@ -259,6 +259,7 @@ static class AuctionMonitor
             md.AppendLine($"- Database pool: up to {server.PoolUsedMax:0} of {server.PoolMax:0} in use; up to {server.PoolWaitingMax:0} waiting; {server.PoolTimeouts:0} timeouts; {server.DbCommandFailures:0} failed commands.");
             md.AppendLine($"- Getting a connection: {server.ConnectionOpen.Text}; creating one: {server.ConnectionCreate.Text} ({server.ConnectionCreate.Count} created).");
             md.AppendLine($"- Database commands: {server.DbCommand.Text}.");
+            md.AppendLine($"- Queue wait per bid: {server.BidQueueWait.Text} (at most {server.BidQueueLengthMax:0} waiting; {server.BidsRefusedClosed:0} late bids refused at the door).");
             md.AppendLine($"- Lock wait per bid: {server.BidLockWait.Text}; lock held per bid: {server.BidLockHeld.Text} (one auction tops out near {server.CapacityBidsPerSecond:0} bids/s).");
             md.AppendLine($"- Bid request inside the server: {server.ServerBidRequest.Text} over {server.ServerBidRequest.Count} bids; {server.ServerBid5xx:0} server errors.");
             md.AppendLine($"- SignalR connections peak {server.SignalRConnectionsMax:0}.");

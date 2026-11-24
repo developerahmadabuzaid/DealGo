@@ -31,6 +31,7 @@ try
         "monitor" => await AuctionMonitor.RunAsync(options),
         "proxy" => await LatencyProxy.RunAsync(options),
         "token" => await TokenAsync(options),
+        "compare" => await Compare.RunAsync(options),
         _ => throw new ArgumentException($"Unknown command '{command}'. Use run, monitor or proxy.")
     };
 }
@@ -73,7 +74,8 @@ static async Task<int> RunAsync(Args a)
         a.Int("target-bids", 3000),
         (decimal)a.Double("entry-fee", 20),
         a.Int("connect-concurrency", 64),
-        a.Int("seed", 42));
+        a.Int("seed", 42),
+        a.Int("neighbors", 0));
 
     if (settings.Mode is not ("paid" or "demo")) throw new ArgumentException("--mode is paid or demo.");
     if (settings.Close is not ("time" or "target")) throw new ArgumentException("--close is time or target.");
@@ -89,7 +91,7 @@ static async Task<int> RunAsync(Args a)
 
     using var api = new Api(baseUrl, TimeSpan.FromSeconds(a.Int("timeout-seconds", 30)));
     var admin = await local.EnsureAdminAsync();
-    var pool = await local.EnsureBiddersAsync(sizes.Max());
+    var pool = await local.EnsureBiddersAsync(sizes.Max() + settings.Neighbors);
     Console.WriteLine($"{pool.Count} test bidders ready; writing to {Path.GetFullPath(outDir)}");
 
     var runner = new ScenarioRunner(settings, api, local, admin, pool);

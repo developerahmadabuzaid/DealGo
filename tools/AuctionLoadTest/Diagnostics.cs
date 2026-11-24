@@ -142,6 +142,11 @@ sealed class DiagnosticsSampler
             BidLockWait: Histogram("app.auction.lock_wait{operation=bid}"),
             JoinLockWait: Histogram("app.auction.lock_wait{operation=join}"),
             BidLockHeld: Histogram("app.bid.lock_held"),
+            BidQueueWait: Histogram("app.auction.queue_wait{operation=bid}"),
+            JoinQueueWait: Histogram("app.auction.queue_wait{operation=join}"),
+            BidQueueLengthMax: Max(s => Peak(s, "app.auction.queue_length{operation=bid}")),
+            JoinQueueLengthMax: Max(s => Peak(s, "app.auction.queue_length{operation=join}")),
+            BidsRefusedClosed: Total(last, "app.bid.refused_closed") - Total(first, "app.bid.refused_closed"),
             ServerBidRequest: Histogram($"http {bids}"),
             ServerJoinRequest: Histogram($"http {join}"),
             ServerBid5xx: Total(last, $"http.responses {bids} 5xx") - Total(first, $"http.responses {bids} 5xx"),
@@ -162,6 +167,8 @@ sealed record ServerSummary(
     double DbCommandFailures, double SignalRConnectionsMax, double ActiveRequestsMax,
     ServerWindow ConnectionOpen, ServerWindow ConnectionCreate, ServerWindow DbCommand,
     ServerWindow BidLockWait, ServerWindow JoinLockWait, ServerWindow BidLockHeld,
+    ServerWindow BidQueueWait, ServerWindow JoinQueueWait, double BidQueueLengthMax, double JoinQueueLengthMax,
+    double BidsRefusedClosed,
     ServerWindow ServerBidRequest, ServerWindow ServerJoinRequest, double ServerBid5xx, double ServerJoin5xx,
     Summary DiagnosticsRequest, int SamplerFailures, string? SamplerLastFailure)
 {
@@ -173,6 +180,8 @@ sealed record ServerSummary(
 
     public static ServerSummary Unavailable(int failures, string? lastFailure) => new(
         false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ServerWindow.Empty, ServerWindow.Empty, ServerWindow.Empty, ServerWindow.Empty, ServerWindow.Empty,
-        ServerWindow.Empty, ServerWindow.Empty, ServerWindow.Empty, 0, 0, Summary.Empty, failures, lastFailure);
+        ServerWindow.Empty, ServerWindow.Empty, ServerWindow.Empty,                 // connections, commands
+        ServerWindow.Empty, ServerWindow.Empty, ServerWindow.Empty,                 // locks
+        ServerWindow.Empty, ServerWindow.Empty, 0, 0, 0,                            // queue
+        ServerWindow.Empty, ServerWindow.Empty, 0, 0, Summary.Empty, failures, lastFailure);
 }

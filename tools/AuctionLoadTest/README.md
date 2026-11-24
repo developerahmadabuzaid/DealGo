@@ -20,7 +20,9 @@ unless `--allow-remote-server` is given on purpose.
 | Price on every screen | Each simulated phone keeps a live connection; for every bid: did it arrive, how long after the server accepted it, did it arrive out of order, and would the app have shown an older price |
 | Leaderboard latency | From a bid being accepted to each phone receiving a top-ten list that includes it |
 | Database pool | Connections in use and the pool size, requests waiting for a connection (true peak), time to get a connection, time to create one, command times, failures |
+| The bid queue | How long bids and joins waited for their auction's turn in the server's queue (holding no database connection), the longest line, how long each turn took, and requests refused as busy, timed out or shut out |
 | Lock contention | Time each bid and join waited for the auction's row lock, and how long a bid then held it — which sets the most bids a second one auction can take |
+| Other auctions | With `-Neighbors N`, a small second auction bids alongside the busy one; its bid times show whether a busy auction slows the rest |
 | CPU and memory | Server process CPU (average and peak per second), working set, GC heap, allocation rate, collections, thread pool |
 | Closing accuracy | Every confirmed bid stored and nothing else; sequence 1…N with no gaps; each bid exactly one increment; nobody twice in a row; no bid at or after the closing time (or exactly one reaching the target); final price; winners = top four by price then time; prize amounts; one refund per loser; wallets add up |
 
@@ -60,6 +62,24 @@ Useful variations:
 
 `-DbDelayMs` puts a relay between the API and PostgreSQL that holds every packet for that long,
 to imitate a database on another machine, which is how SmarterASP is set up.
+
+To measure another build with the same tool — an older commit, say — check it out beside this one
+and point the runner at its API:
+
+```powershell
+git worktree add ..\dealgo-before perf-baseline-2026-11-23
+.	ools\AuctionLoadTestun-local.ps1 -ApiProject ..\dealgo-before\src\AuctionPlatform.Api\AuctionPlatform.Api.csproj
+```
+
+## Comparing two runs
+
+```powershell
+dotnet run --project tools\AuctionLoadTest -c Release -- compare --baseline artifacts\loadtest\<before> --candidate artifacts\loadtest\<after> --out compare.md
+```
+
+Side by side for each participant count present in both: bid latency, throughput, failures,
+database connections and waits, queue and lock times, leaderboard and price delivery, how soon the
+winners appear, CPU, memory and the closing checks.
 
 ## Watching the next live auction
 

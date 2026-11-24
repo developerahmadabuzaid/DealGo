@@ -36,6 +36,11 @@ param(
     [int]$ApiPort = 5199,
     [int]$PostgresPort = 5462,
     [string]$OutputPath,
+    # Bidders in a small second auction run alongside each busy one. 0 = none.
+    [int]$Neighbors = 0,
+    # The API to test; by default this checkout's. Point it at another checkout (a git worktree of an
+    # older commit) to measure that build with the same tool.
+    [string]$ApiProject,
     [switch]$KeepDatabase,
     # Also runs `monitor` beside the load test; it watches the first auction, as it would a live one.
     [switch]$WithMonitor
@@ -76,7 +81,9 @@ try {
 
     Step "Building the API and the load test (Release)"
     $publish = Join-Path $OutputPath 'api'
-    dotnet publish (Join-Path $root 'src\AuctionPlatform.Api\AuctionPlatform.Api.csproj') -c Release -o $publish --nologo -v quiet
+    if (-not $ApiProject) { $ApiProject = Join-Path $root 'src\AuctionPlatform.Api\AuctionPlatform.Api.csproj' }
+    Write-Host "    API: $ApiProject"
+    dotnet publish $ApiProject -c Release -o $publish --nologo -v quiet
     if ($LASTEXITCODE -ne 0) { throw "Publishing the API failed." }
     dotnet build (Join-Path $root 'tools\AuctionLoadTest\AuctionLoadTest.csproj') -c Release --nologo -v quiet
     if ($LASTEXITCODE -ne 0) { throw "Building the load test failed." }
@@ -132,7 +139,7 @@ try {
     $environment = "local Release build, PostgreSQL 16 in Docker" + $(if ($DbDelayMs -gt 0) { ", $DbDelayMs ms added each way to the database" } else { ", database on the same machine" })
     dotnet $tool run --base-url "http://127.0.0.1:$ApiPort/" --db $directConnection --jwt-secret $jwtSecret `
         --participants ($Participants -join ',') --duration $DurationSeconds --rate $Rate --burst-rate $BurstRate `
-        --burst-seconds $BurstSeconds --mode $Mode --close $Close --out $OutputPath --environment $environment
+        --burst-seconds $BurstSeconds --mode $Mode --close $Close --neighbors $Neighbors --out $OutputPath --environment $environment
     $exit = $LASTEXITCODE
 
     if ($monitor) {
