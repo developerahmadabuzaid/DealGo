@@ -65,11 +65,21 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
         }
 
         var declared = await DeclareWinnersAsync(auctionId, ct);
-        await ProcessRefundsAsync(auctionId, ct);
 
+        // Everyone watching learns who won as soon as it is decided. Waiting for the refunds first
+        // kept a 400-person auction's screens on "finished" for 8–11 s while 396 refunds were paid
+        // one by one (load test, 24 Nov 2026).
         if (declared is { Count: > 0 })
         {
             await BroadcastAndNotifyWinnersAsync(auctionId, declared, ct);
+        }
+
+        await ProcessRefundsAsync(auctionId, ct);
+
+        // Told only now, because their message says the entry fee has come back.
+        if (declared is { Count: > 0 })
+        {
+            await NotifyLosersAsync(auctionId, ct);
         }
     }
 
@@ -579,6 +589,17 @@ public sealed class AuctionCompletionService : IAuctionCompletionService
                 }
             }
 
+        });
+    }
+
+    private async Task NotifyLosersAsync(Guid auctionId, CancellationToken ct)
+    {
+        var isDemo = await _db.Auctions.AsNoTracking()
+            .Where(a => a.Id == auctionId).Select(a => a.IsDemo).FirstOrDefaultAsync(ct);
+        if (isDemo) return;
+
+        await SafeNotifyAsync(async () =>
+        {
             var losers = await _db.AuctionParticipants
                 .AsNoTracking()
                 .Where(p => p.AuctionId == auctionId &&

@@ -60,6 +60,9 @@ public interface IApplicationDbContext
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Forgets every entity this context is tracking, so a retried transaction reads afresh.</summary>
+    void ClearChangeTracker();
+
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

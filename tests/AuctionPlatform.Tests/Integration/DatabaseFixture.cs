@@ -47,6 +47,12 @@ public sealed class DatabaseFixture : IAsyncLifetime
     /// </summary>
     public RecordingBroadcaster Broadcasts { get; } = new();
 
+    /// <summary>The per-auction queue, one for the whole test run like one per server process.</summary>
+    public AuctionQueue Queue { get; } = new();
+
+    /// <summary>What would have gone out over SignalR, in the order it was sent, across every scope.</summary>
+    public RecordingRealtimeNotifier Realtime { get; } = new();
+
     /// <summary>Auctions whose leaderboard a bid asked to have broadcast, across every scope.</summary>
     public RecordingLeaderboardBroadcaster LeaderboardRequests { get; } = new();
 
@@ -121,7 +127,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddSingleton<IRateLimiterService, NoopRateLimiter>();
         services.AddSingleton<ICacheService, InMemoryCacheService>();
         services.AddSingleton<IPushNotificationSender, NoopPushSender>();
-        services.AddSingleton<IAuctionRealtimeNotifier, NoopRealtimeNotifier>();
+        services.AddSingleton<IAuctionRealtimeNotifier>(Realtime);
 
         services.AddScoped<ICurrentUserService>(_ => new TestCurrentUser(actingUserId));
         services.AddScoped<IOtpService, OtpService>();
@@ -148,6 +154,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IAuctionService, AuctionService>();
         services.AddScoped<IParticipationService, ParticipationService>();
         services.AddScoped<IBidService, BidService>();
+        // Shared by every scope, as the one queue is shared by every request in the real server.
+        services.AddSingleton<IAuctionQueue>(Queue);
         // Bids only ask for a leaderboard broadcast; tests read the requests from here.
         services.AddSingleton<ILeaderboardBroadcaster>(LeaderboardRequests);
         services.AddScoped<IAuctionCompletionService, AuctionCompletionService>();
@@ -350,18 +358,34 @@ public sealed class DatabaseFixture : IAsyncLifetime
             Task.FromResult<IReadOnlyCollection<string>>(Array.Empty<string>());
     }
 
-    /// <summary>SignalR is not exercised here; broadcasting is a delivery concern, not a rule.</summary>
-    private sealed class NoopRealtimeNotifier : IAuctionRealtimeNotifier
+    /// <summary>
+    /// SignalR itself is not exercised here; broadcasting is a delivery concern, not a rule. The
+    /// order bids are announced in is recorded, because that order is a promise.
+    /// </summary>
+    public sealed class RecordingRealtimeNotifier : IAuctionRealtimeNotifier
     {
+        public System.Collections.Concurrent.ConcurrentQueue<(Guid AuctionId, long Sequence)> BidsAnnounced { get; } = new();
+        public System.Collections.Concurrent.ConcurrentQueue<(Guid AuctionId, long Sequence, decimal Price)> PricesAnnounced { get; } = new();
+
         public Task ParticipantCountChangedAsync(Guid a, int c, int r, CancellationToken ct = default) => Task.CompletedTask;
         public Task AuctionReadyAsync(Guid a, int c, DateTime t, CancellationToken ct = default) => Task.CompletedTask;
         public Task AuctionStartScheduledAsync(Guid a, DateTime s, CancellationToken ct = default) => Task.CompletedTask;
         public Task AuctionStartTimeChangedAsync(Guid a, DateTime? p, DateTime n, CancellationToken ct = default) => Task.CompletedTask;
         public Task AuctionStartedAsync(Guid a, DateTime s, DateTime e, decimal p, CancellationToken ct = default) => Task.CompletedTask;
-        public Task BidPlacedAsync(Guid a, BidBroadcast b, CancellationToken ct = default) => Task.CompletedTask;
-        public Task AuctionPriceChangedAsync(Guid a, decimal c, decimal t, decimal p, CancellationToken ct = default) => Task.CompletedTask;
+        public Task BidPlacedAsync(Guid a, BidBroadcast b, CancellationToken ct = default)
+        {
+            BidsAnnounced.Enqueue((a, b.SequenceNumber));
+            return Task.CompletedTask;
+        }
+
+        public Task AuctionPriceChangedAsync(Guid a, decimal c, decimal t, decimal p, long s, CancellationToken ct = default)
+        {
+            PricesAnnounced.Enqueue((a, s, c));
+            return Task.CompletedTask;
+        }
+
         public Task ParticipantRankChangedAsync(Guid a, Guid u, int r, decimal h, CancellationToken ct = default) => Task.CompletedTask;
-        public Task LeaderboardUpdatedAsync(Guid a, IReadOnlyList<LeaderboardEntryDto> l, CancellationToken ct = default) => Task.CompletedTask;
+        public Task LeaderboardUpdatedAsync(Guid a, IReadOnlyList<LeaderboardEntryDto> l, long s, CancellationToken ct = default) => Task.CompletedTask;
         public Task FinalPhaseStartedAsync(Guid a, decimal c, decimal t, int? r, CancellationToken ct = default) => Task.CompletedTask;
         public Task AuctionFinishedAsync(Guid a, decimal p, bool t, DateTime f, CancellationToken ct = default) => Task.CompletedTask;
         public Task WinnersDeclaredAsync(Guid a, IReadOnlyList<WinnerDto> w, CancellationToken ct = default) => Task.CompletedTask;

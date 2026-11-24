@@ -103,6 +103,14 @@ public class Auction : AuditableEntity
     /// <summary>Monotonic bid counter, assigned inside the bid transaction.</summary>
     public long LastSequenceNumber { get; set; }
 
+    /// <summary>
+    /// The participant who placed bid number <see cref="LastSequenceNumber"/>, kept on the row so
+    /// the "never twice in a row" rule is read with the lock instead of looked up among the bids:
+    /// one trip to the database fewer while every other bid on the auction waits. Null before the
+    /// first bid (and on bids placed before this column existed, which fall back to the lookup).
+    /// </summary>
+    public Guid? LastBidParticipantId { get; set; }
+
     // Refund configuration (per-auction override of the platform defaults).
     public bool RefundLosingParticipantsEntryFee { get; set; } = true;
     public bool RefundWinnerEntryFee { get; set; }

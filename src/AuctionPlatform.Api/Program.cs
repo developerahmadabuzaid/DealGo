@@ -464,6 +464,11 @@ app.Services.GetRequiredService<AuctionPlatform.Infrastructure.Diagnostics.Runti
     lifetime.ApplicationStopping.Register(() =>
         lifetimeLog.LogInformation("The API was asked to stop; shutting down normally."));
 
+    // Bids still waiting for their auction's turn are sent away with a clear "not placed, try again"
+    // rather than cut off; a bid that already has its turn finishes before the process exits.
+    lifetime.ApplicationStopping.Register(() =>
+        app.Services.GetRequiredService<AuctionPlatform.Application.Bidding.IAuctionQueue>().Close());
+
     // Which of the two OTP paths this deployment is on, said once at startup, so "nobody got a
     // code" can be answered from the first page of the log.
     var tawked = app.Services.GetRequiredService<IOptions<TawkedOptions>>().Value;

@@ -91,6 +91,19 @@ class LiveAuctionState {
 /// The controller holds no authority of its own: it renders the server's snapshot, applies pushed
 /// events on top, and refetches the snapshot whenever the connection was interrupted or an event
 /// might have been missed.
+/// Whether a live price update is older than what the screen already shows.
+///
+/// Every accepted bid has a number, one higher than the bid before, and the server sends each
+/// bid's updates with it. Two updates can still reach a phone the wrong way round — over a
+/// reconnect, or from before the server sent them in order — and showing the older one would move
+/// the price backwards. So an update numbered below the newest bid shown is dropped. A BidPlaced
+/// with the same number is that bid again; a price update with the same number is the same price,
+/// and is let through. Updates without a number (an older server) are always applied.
+bool isStaleBidUpdate(String eventName, int? sequence, int newestShown) {
+  if (sequence == null) return false;
+  return eventName == 'BidPlaced' ? sequence <= newestShown : sequence < newestShown;
+}
+
 class LiveAuctionController extends StateNotifier<LiveAuctionState> {
   // The hub is read once, here, and kept: dispose runs after the provider container may already be
   // gone, and reading it again from there throws.
@@ -212,6 +225,10 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
 
       final offset = snapshot.serverTime.difference(DateTime.now().toUtc());
 
+      // The snapshot's list is as new as its bids; a leaderboard update older than it is stale.
+      if (snapshot.lastSequenceNumber > _leaderboardSequence) {
+        _leaderboardSequence = snapshot.lastSequenceNumber;
+      }
       state = state.copyWith(snapshot: snapshot, serverOffset: offset, clearError: true);
     } catch (e) {
       if (e is ApiException) state = state.copyWith(error: e.displayMessage);
@@ -230,6 +247,9 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
       case 'BidPlaced':
       case 'AuctionPriceChanged':
         final price = (event.payload['newPrice'] ?? event.payload['currentPrice']) as num?;
+        final sequence = (event.payload['sequenceNumber'] as num?)?.toInt();
+        if (isStaleBidUpdate(event.name, sequence, snapshot.lastSequenceNumber)) break;
+
         // Only BidPlaced names the bidder; it is what unlocks the button for the previous one.
         final bidder = event.payload['participantId'] as String?;
         if (price != null) {
@@ -239,6 +259,8 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
               targetReached: price >= snapshot.targetPrice,
               progress: _progress(snapshot, price.toDouble()),
               lastBidParticipantId: bidder,
+              lastSequenceNumber:
+                  sequence != null && sequence > snapshot.lastSequenceNumber ? sequence : null,
             ),
             lastBidFlash: price.toDouble(),
           );
@@ -255,6 +277,13 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
         break;
 
       case 'LeaderboardUpdated':
+        // Numbered by the newest bid the list includes. One older than the list on screen arrived
+        // late and would put people back in places they have already left.
+        final includes = (event.payload['lastSequenceNumber'] as num?)?.toInt();
+        if (includes != null) {
+          if (includes < _leaderboardSequence) break;
+          _leaderboardSequence = includes;
+        }
         final raw = event.payload['leaderboard'] as List?;
         if (raw != null) {
           final entries = raw
@@ -286,6 +315,9 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
         break;
     }
   }
+
+  /// The newest bid the leaderboard on screen includes.
+  int _leaderboardSequence = 0;
 
   double _progress(AuctionSnapshot s, double price) {
     final span = s.targetPrice - s.startingPrice;
@@ -319,6 +351,9 @@ class LiveAuctionController extends StateNotifier<LiveAuctionState> {
             currentPrice: price,
             targetReached: result.reachedTarget || before.targetReached,
             progress: _progress(before, price),
+            lastSequenceNumber: result.sequenceNumber > before.lastSequenceNumber
+                ? result.sequenceNumber
+                : null,
             // Still the last bid only when no newer price has arrived meanwhile.
             lastBidParticipantId:
                 price == result.newPrice ? before.myParticipantId : before.lastBidParticipantId,

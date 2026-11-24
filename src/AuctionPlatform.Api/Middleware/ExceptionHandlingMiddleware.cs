@@ -136,6 +136,10 @@ public sealed class ExceptionHandlingMiddleware
         // client that retries on 503 but gives up on 400 has to be able to tell them apart.
         ErrorCodes.ServiceUnavailable => StatusCodes.Status503ServiceUnavailable,
 
+        // An auction with more bids waiting than it can serve in time: the bid was not placed and
+        // may be sent again, which is exactly what a 503 says.
+        ErrorCodes.AuctionBusy => StatusCodes.Status503ServiceUnavailable,
+
         // Everything else is a well-formed request the platform's rules decline: 400.
         _ => StatusCodes.Status400BadRequest
     };

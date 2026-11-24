@@ -16,9 +16,14 @@ public interface IAuctionRealtimeNotifier
     Task AuctionStartedAsync(Guid auctionId, DateTime startedAt, DateTime endsAt, decimal currentPrice, CancellationToken ct = default);
 
     Task BidPlacedAsync(Guid auctionId, BidBroadcast bid, CancellationToken ct = default);
-    Task AuctionPriceChangedAsync(Guid auctionId, decimal currentPrice, decimal targetPrice, decimal progress, CancellationToken ct = default);
+    /// <summary>The new price, numbered by the bid that set it, so a client can drop an older one that arrives late.</summary>
+    Task AuctionPriceChangedAsync(Guid auctionId, decimal currentPrice, decimal targetPrice, decimal progress, long sequenceNumber, CancellationToken ct = default);
     Task ParticipantRankChangedAsync(Guid auctionId, Guid userId, int rank, decimal highestPrice, CancellationToken ct = default);
-    Task LeaderboardUpdatedAsync(Guid auctionId, IReadOnlyList<LeaderboardEntryDto> leaderboard, CancellationToken ct = default);
+    /// <summary>
+    /// The top bidders, with the number of the latest bid the list includes at least, so a client
+    /// can drop a list older than the one it shows.
+    /// </summary>
+    Task LeaderboardUpdatedAsync(Guid auctionId, IReadOnlyList<LeaderboardEntryDto> leaderboard, long lastSequenceNumber, CancellationToken ct = default);
 
     Task FinalPhaseStartedAsync(Guid auctionId, decimal currentPrice, decimal targetPrice, int? remainingSeconds, CancellationToken ct = default);
 

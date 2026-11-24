@@ -17,8 +17,12 @@ namespace AuctionPlatform.Application.Bidding;
 ///
 /// Correctness rests on one thing: every bid for an auction takes a row-level lock on that
 /// auction inside a database transaction, so bids on the same auction serialise no matter how
-/// many API instances are running. In-memory locks are never used, because they would only
-/// protect a single process.
+/// many API instances are running.
+///
+/// Who goes next is decided earlier, in memory, by <see cref="IAuctionQueue"/>: a bid waits for its
+/// auction's turn there, holding no database connection, instead of waiting on the row lock with a
+/// connection taken from everyone else. The queue only protects one process, so it is never the
+/// guarantee — the database lock is.
 /// </summary>
 public sealed class BidService : IBidService
 {
@@ -28,6 +32,7 @@ public sealed class BidService : IBidService
     private readonly IRateLimiterService _rateLimiter;
     private readonly IAuctionCompletionService _completion;
     private readonly ILeaderboardBroadcaster _leaderboard;
+    private readonly IAuctionQueue _queue;
     private readonly AuctionOptions _options;
     private readonly ILogger<BidService> _logger;
 
@@ -38,10 +43,12 @@ public sealed class BidService : IBidService
         IRateLimiterService rateLimiter,
         IAuctionCompletionService completion,
         ILeaderboardBroadcaster leaderboard,
+        IAuctionQueue queue,
         IOptions<AuctionOptions> options,
         ILogger<BidService> logger)
     {
         _leaderboard = leaderboard;
+        _queue = queue;
         _db = db;
         _clock = clock;
         _realtime = realtime;
@@ -91,25 +98,61 @@ public sealed class BidService : IBidService
 
         await EnforceRateLimitAsync(auctionId, userId, ct);
 
-        BidOutcome outcome;
-        try
+        // A late tap on an auction that can never take another bid is answered here, without
+        // queueing and without a transaction.
+        RefuseIfClosed(auctionId);
+
+        BidOutcome? outcome = null;
+        var duplicate = false;
+        DomainException? refusedAsConsecutive = null;
+
+        // Wait for this auction's turn in memory, holding no database connection. Leaving before it
+        // comes — the bidder gave up — means the bid is never placed.
+        using (await _queue.EnterAsync(auctionId, "bid", ct))
         {
-            outcome = await ExecuteBidTransactionAsync(auctionId, participant.Id, userId, idempotencyKey, ct);
+            // It may have closed while this bid was waiting.
+            RefuseIfClosed(auctionId);
+
+            try
+            {
+                outcome = await ExecuteBidAsync(auctionId, participant, userId, idempotencyKey, ct);
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+            {
+                duplicate = true;
+            }
+            catch (DomainException ex) when (ex.Code == ErrorCodes.ConsecutiveBidNotAllowed)
+            {
+                // A retry of this person's own last bid looks like a second bid in a row. Whether it
+                // is the same request is settled below, outside the turn.
+                refusedAsConsecutive = ex;
+            }
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+
+        if (duplicate || refusedAsConsecutive is not null)
         {
-            // Two identical requests raced past the fast path; the unique index settled it.
+            // The same request sent twice gets the same answer twice: the original bid, never a
+            // second one. The unique index on the idempotency key is what guarantees it.
             var existing = await FindExistingBidAsync(auctionId, participant.Id, idempotencyKey, ct);
             if (existing is not null)
             {
                 return await BuildResultAsync(existing, wasDuplicate: true, ct);
             }
-            throw new DomainException(ErrorCodes.DuplicateRequest, "This bid was already submitted.");
+            throw refusedAsConsecutive ?? new DomainException(ErrorCodes.DuplicateRequest, "This bid was already submitted.");
         }
 
-        // Everything below happens strictly after COMMIT. SignalR only ever reports facts that
-        // are already durable in PostgreSQL.
-        await PublishAsync(outcome, DisplayName(row!.Name), ct);
+        var placed = outcome!.Bid;
+        _logger.LogInformation(
+            "Bid {Sequence} on auction {AuctionId} by {UserId}: {Previous} -> {New}{Target}",
+            placed.SequenceNumber, auctionId, userId, placed.PreviousPrice, placed.NewPrice,
+            placed.ReachedTarget ? " (TARGET REACHED)" : string.Empty);
+
+        // Strictly after COMMIT — SignalR only ever reports facts already durable in PostgreSQL — and
+        // after passing the turn on. Sending to hundreds of phones inside the turn made every bid
+        // wait for the one before it to finish sending (load test: about 40% fewer bids a second at
+        // 400 participants). Each update carries the bid's number, and the app drops any that
+        // arrives after a newer one, so order on the wire no longer matters.
+        await AnnounceAsync(outcome, DisplayName(row!.Name));
 
         if (outcome.AuctionFinished)
         {
@@ -147,6 +190,13 @@ public sealed class BidService : IBidService
             false);
     }
 
+    private void RefuseIfClosed(Guid auctionId)
+    {
+        if (_queue.RefusalFor(auctionId) is not { } refusal) return;
+        AppMetrics.BidsRefusedClosed.Add(1);
+        throw refusal;
+    }
+
     private async Task EnforceRateLimitAsync(Guid auctionId, Guid userId, CancellationToken ct)
     {
         var perSecond = await _rateLimiter.TryAcquireAsync(
@@ -162,11 +212,37 @@ public sealed class BidService : IBidService
     }
 
     /// <summary>
+    /// The bid transaction, with the participant as read before the turn. If that row changed in
+    /// the meantime — only another bid by the same person, from another device, can change it — the
+    /// update matches no row (its xmin moved), and the bid is tried once more, reading the
+    /// participant under the lock this time. Nothing is written by the failed attempt.
+    /// </summary>
+    private async Task<BidOutcome> ExecuteBidAsync(
+        Guid auctionId, AuctionParticipant participant, Guid userId, string idempotencyKey, CancellationToken ct)
+    {
+        try
+        {
+            return await ExecuteBidTransactionAsync(auctionId, participant.Id, participant, userId, idempotencyKey, ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _db.ClearChangeTracker();
+            return await ExecuteBidTransactionAsync(auctionId, participant.Id, null, userId, idempotencyKey, ct);
+        }
+    }
+
+    /// <summary>
     /// The transactional core. Order of operations matters: lock, validate against the locked row,
     /// mutate, then commit.
+    ///
+    /// Every other bid on the auction waits while this runs, so it makes as few trips to the
+    /// database as it can: the locking read (which also carries who bid last), one batch with every
+    /// write, and the commit. The participant comes in already read — checked by its row version
+    /// when written — instead of being read again under the lock.
     /// </summary>
     private async Task<BidOutcome> ExecuteBidTransactionAsync(
-        Guid auctionId, Guid participantId, Guid userId, string idempotencyKey, CancellationToken ct)
+        Guid auctionId, Guid participantId, AuctionParticipant? readBefore, Guid userId, string idempotencyKey,
+        CancellationToken ct)
     {
         await using var tx = await _db.BeginTransactionAsync(ct);
 
@@ -185,16 +261,19 @@ public sealed class BidService : IBidService
 
         if (!AuctionStateMachine.AcceptsBids(auction.Status))
         {
-            throw new DomainException(
-                auction.Status is AuctionStatus.Finished or AuctionStatus.WinnersDeclared
-                    or AuctionStatus.PrizeClaim or AuctionStatus.Completed
-                    ? ErrorCodes.AuctionFinished
-                    : ErrorCodes.AuctionNotActive,
-                $"The auction is not accepting bids (status {auction.Status}).");
+            var finished = auction.Status is AuctionStatus.Finished or AuctionStatus.WinnersDeclared
+                or AuctionStatus.PrizeClaim or AuctionStatus.Completed;
+            var code = finished ? ErrorCodes.AuctionFinished : ErrorCodes.AuctionNotActive;
+            var message = $"The auction is not accepting bids (status {auction.Status}).";
+
+            // Finished and cancelled are for good; paused or not started yet are not.
+            if (finished || auction.Status == AuctionStatus.Cancelled) _queue.MarkClosed(auctionId, code, message);
+            throw new DomainException(code, message);
         }
 
         if (auction.TargetReached)
         {
+            _queue.MarkClosed(auctionId, ErrorCodes.TargetAlreadyReached, "The target price has already been reached.");
             throw new DomainException(ErrorCodes.TargetAlreadyReached, "The target price has already been reached.");
         }
 
@@ -203,29 +282,43 @@ public sealed class BidService : IBidService
         if (auction.EndsAt is { } endsAt && now >= endsAt)
         {
             // The duration elapsed. Reject and let the expiry worker apply the configured policy.
+            // Unless that policy extends or restarts the auction, it can never take a bid again.
+            if (auction.ExpirationPolicy is ExpirationPolicy.EndAndDistribute or ExpirationPolicy.Cancel)
+                _queue.MarkClosed(auctionId, ErrorCodes.AuctionFinished, "The auction duration has elapsed.");
             throw new DomainException(ErrorCodes.AuctionFinished, "The auction duration has elapsed.");
         }
 
-        var participant = await _db.AuctionParticipants
-            .FirstOrDefaultAsync(p => p.Id == participantId, ct)
-            ?? throw new DomainException(ErrorCodes.ParticipantNotFound, "Participant not found.");
-
         // No one bids twice in a row: after a bid, someone else has to bid before the same
-        // participant may bid again. Read under the auction's row lock, so two quick taps from one
+        // participant may bid again. Read from the locked row itself, so two quick taps from one
         // person queue behind each other and the second sees the first.
-        if (auction.LastSequenceNumber > 0)
+        var lastBidder = auction.LastBidParticipantId;
+        if (lastBidder is null && auction.LastSequenceNumber > 0)
         {
-            var lastBidder = await _db.Bids
+            // Bids placed before the auction row kept its last bidder.
+            lastBidder = await _db.Bids
                 .Where(b => b.AuctionId == auction.Id && b.SequenceNumber == auction.LastSequenceNumber)
                 .Select(b => (Guid?)b.ParticipantId)
                 .FirstOrDefaultAsync(ct);
+        }
 
-            if (lastBidder == participant.Id)
-            {
-                throw new DomainException(
-                    ErrorCodes.ConsecutiveBidNotAllowed,
-                    "You placed the last bid. Wait for another participant to bid first.");
-            }
+        if (lastBidder == participantId)
+        {
+            throw new DomainException(
+                ErrorCodes.ConsecutiveBidNotAllowed,
+                "You placed the last bid. Wait for another participant to bid first.");
+        }
+
+        AuctionParticipant participant;
+        if (readBefore is not null)
+        {
+            // Written back only if unchanged since it was read: its xmin is part of the UPDATE.
+            _db.AuctionParticipants.Attach(readBefore);
+            participant = readBefore;
+        }
+        else
+        {
+            participant = await _db.AuctionParticipants.FirstOrDefaultAsync(p => p.Id == participantId, ct)
+                ?? throw new DomainException(ErrorCodes.ParticipantNotFound, "Participant not found.");
         }
 
         var previousPrice = auction.CurrentPrice;
@@ -251,6 +344,7 @@ public sealed class BidService : IBidService
 
         auction.CurrentPrice = newPrice;
         auction.LastSequenceNumber = sequenceNumber;
+        auction.LastBidParticipantId = participant.Id;
         auction.UpdatedAt = now;
 
         var enteredFinalPhase = false;
@@ -326,10 +420,15 @@ public sealed class BidService : IBidService
         await tx.CommitAsync(ct);
         AppMetrics.BidLockHeld.Record(Stopwatch.GetElapsedTime(lockAcquired).TotalSeconds);
 
-        _logger.LogInformation(
-            "Bid {Sequence} on auction {AuctionId} by {UserId}: {Previous} -> {New}{Target}",
-            sequenceNumber, auctionId, userId, previousPrice, newPrice,
-            reachedTarget ? " (TARGET REACHED)" : string.Empty);
+        if (reachedTarget)
+        {
+            // What any later bid would now be told by the database, given without asking it.
+            _queue.MarkClosed(auctionId, ErrorCodes.AuctionFinished,
+                $"The auction is not accepting bids (status {AuctionStatus.Finished}).");
+        }
+
+        // Logged by the caller, after the turn is passed on: writing the log is not the next
+        // bidder's business.
 
         return new BidOutcome(
             bid,
@@ -344,31 +443,39 @@ public sealed class BidService : IBidService
             participant);
     }
 
-    private async Task PublishAsync(BidOutcome outcome, string displayName, CancellationToken ct)
+    /// <summary>
+    /// Sends the bid to everyone watching. Each update is numbered by the bid, so a phone that
+    /// receives two out of order keeps the newer.
+    ///
+    /// The bidder's cancellation is deliberately not passed on: closing the app straight after a
+    /// bid must not cancel its announcement to everyone else.
+    /// </summary>
+    private Task AnnounceAsync(BidOutcome outcome, string displayName)
     {
+        var bid = outcome.Bid;
+        var sends = new List<Task>(4);
         try
         {
-            var bid = outcome.Bid;
             var progress = AuctionRules.Progress(outcome.StartingPrice, bid.NewPrice, outcome.TargetPrice);
 
-            await _realtime.BidPlacedAsync(bid.AuctionId, new BidBroadcast(
+            sends.Add(_realtime.BidPlacedAsync(bid.AuctionId, new BidBroadcast(
                 bid.Id, bid.SequenceNumber, bid.ParticipantId, displayName,
                 bid.PreviousPrice, bid.NewPrice, outcome.TargetPrice, progress,
-                bid.ReachedTarget, bid.ServerTimestamp), ct);
+                bid.ReachedTarget, bid.ServerTimestamp)));
 
-            await _realtime.AuctionPriceChangedAsync(
-                bid.AuctionId, bid.NewPrice, outcome.TargetPrice, progress, ct);
+            sends.Add(_realtime.AuctionPriceChangedAsync(
+                bid.AuctionId, bid.NewPrice, outcome.TargetPrice, progress, bid.SequenceNumber));
 
             if (outcome.EnteredFinalPhase)
             {
-                await _realtime.FinalPhaseStartedAsync(
-                    bid.AuctionId, bid.NewPrice, outcome.TargetPrice, outcome.RemainingSeconds, ct);
+                sends.Add(_realtime.FinalPhaseStartedAsync(
+                    bid.AuctionId, bid.NewPrice, outcome.TargetPrice, outcome.RemainingSeconds));
             }
 
             if (outcome.AuctionFinished)
             {
-                await _realtime.AuctionFinishedAsync(
-                    bid.AuctionId, bid.NewPrice, targetReached: true, outcome.Now, ct);
+                sends.Add(_realtime.AuctionFinishedAsync(
+                    bid.AuctionId, bid.NewPrice, targetReached: true, outcome.Now));
             }
 
             // Sent a few times a second by the broadcaster rather than queried here on every bid,
@@ -379,7 +486,21 @@ public sealed class BidService : IBidService
         {
             // Broadcasting is best-effort: the bid is already committed and clients resynchronise
             // from the snapshot endpoint on reconnect.
-            _logger.LogWarning(ex, "Failed to broadcast bid for auction {AuctionId}", outcome.Bid.AuctionId);
+            _logger.LogWarning(ex, "Failed to broadcast bid for auction {AuctionId}", bid.AuctionId);
+        }
+
+        return FinishAnnouncingAsync(sends, bid.AuctionId);
+    }
+
+    private async Task FinishAnnouncingAsync(List<Task> sends, Guid auctionId)
+    {
+        try
+        {
+            await Task.WhenAll(sends);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to broadcast bid for auction {AuctionId}", auctionId);
         }
     }
 

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using AuctionPlatform.Application.Realtime;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -55,12 +56,16 @@ public sealed class LeaderboardBroadcaster : ILeaderboardBroadcaster, IDisposabl
                 try
                 {
                     await using var scope = _scopes.CreateAsyncScope();
-                    var leaderboard = await BidService.ReadLeaderboardAsync(
-                        scope.ServiceProvider.GetRequiredService<Common.IApplicationDbContext>(),
-                        auctionId, 10, CancellationToken.None);
+                    var db = scope.ServiceProvider.GetRequiredService<Common.IApplicationDbContext>();
+
+                    // Read before the list, so the list includes at least this bid: a client keeps
+                    // the list with the highest number and drops one that arrives late.
+                    var lastSequence = await db.Auctions.AsNoTracking()
+                        .Where(a => a.Id == auctionId).Select(a => a.LastSequenceNumber).FirstOrDefaultAsync();
+                    var leaderboard = await BidService.ReadLeaderboardAsync(db, auctionId, 10, CancellationToken.None);
 
                     await scope.ServiceProvider.GetRequiredService<IAuctionRealtimeNotifier>()
-                        .LeaderboardUpdatedAsync(auctionId, leaderboard, CancellationToken.None);
+                        .LeaderboardUpdatedAsync(auctionId, leaderboard, lastSequence, CancellationToken.None);
                 }
                 catch (Exception ex)
                 {

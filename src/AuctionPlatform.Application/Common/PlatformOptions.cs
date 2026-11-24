@@ -48,6 +48,19 @@ public sealed class AuctionOptions
     public int BidRateLimitPerMinute { get; set; } = 120;
 
     /// <summary>
+    /// Most bids and joins that may wait for one auction's turn at once (Bidding.AuctionQueue).
+    /// Beyond it a request is refused straight away as AUCTION_BUSY rather than queued.
+    /// </summary>
+    public int QueueMaxWaitingPerAuction { get; set; } = 1000;
+
+    /// <summary>
+    /// Longest a bid or join waits for its turn before it is refused as AUCTION_BUSY, never having
+    /// touched the database. Kept well inside the app's 20 second request timeout, so the bidder
+    /// always gets a definite answer.
+    /// </summary>
+    public int QueueMaxWaitSeconds { get; set; } = 10;
+
+    /// <summary>
     /// Require a one-time code to confirm a withdrawal. On by default: a withdrawal moves real
     /// money out of the platform, so a stolen access token alone must not be enough.
     /// </summary>

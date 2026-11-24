@@ -44,17 +44,17 @@ public sealed class SignalRAuctionNotifier : IAuctionRealtimeNotifier
     public Task BidPlacedAsync(Guid auctionId, BidBroadcast bid, CancellationToken ct = default) =>
         Auction(auctionId).SendAsync("BidPlaced", bid, ct);
 
-    public Task AuctionPriceChangedAsync(Guid auctionId, decimal currentPrice, decimal targetPrice, decimal progress, CancellationToken ct = default) =>
+    public Task AuctionPriceChangedAsync(Guid auctionId, decimal currentPrice, decimal targetPrice, decimal progress, long sequenceNumber, CancellationToken ct = default) =>
         Auction(auctionId).SendAsync("AuctionPriceChanged",
-            new { auctionId, currentPrice, targetPrice, progress }, ct);
+            new { auctionId, currentPrice, targetPrice, progress, sequenceNumber }, ct);
 
     public Task ParticipantRankChangedAsync(Guid auctionId, Guid userId, int rank, decimal highestPrice, CancellationToken ct = default) =>
         User(userId).SendAsync("ParticipantRankChanged",
             new { auctionId, rank, highestPrice }, ct);
 
-    public Task LeaderboardUpdatedAsync(Guid auctionId, IReadOnlyList<LeaderboardEntryDto> leaderboard, CancellationToken ct = default) =>
+    public Task LeaderboardUpdatedAsync(Guid auctionId, IReadOnlyList<LeaderboardEntryDto> leaderboard, long lastSequenceNumber, CancellationToken ct = default) =>
         Auction(auctionId).SendAsync("LeaderboardUpdated",
-            new { auctionId, leaderboard }, ct);
+            new { auctionId, leaderboard, lastSequenceNumber }, ct);
 
     public Task FinalPhaseStartedAsync(Guid auctionId, decimal currentPrice, decimal targetPrice, int? remainingSeconds, CancellationToken ct = default) =>
         Auction(auctionId).SendAsync("FinalPhaseStarted",

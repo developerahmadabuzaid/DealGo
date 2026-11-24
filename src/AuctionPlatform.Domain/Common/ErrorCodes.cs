@@ -29,6 +29,12 @@ public static class ErrorCodes
     public const string DuplicateRequest = "DUPLICATE_REQUEST";
     public const string RateLimited = "RATE_LIMITED";
 
+    /// <summary>
+    /// Too many bids were already waiting on one auction, or this one waited too long for its turn.
+    /// It never reached the database, so it was certainly not placed; trying again is safe.
+    /// </summary>
+    public const string AuctionBusy = "AUCTION_BUSY";
+
     // Wallet
     public const string InsufficientBalance = "INSUFFICIENT_BALANCE";
     public const string InsufficientShoppingCredit = "INSUFFICIENT_SHOPPING_CREDIT";

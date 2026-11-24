@@ -245,13 +245,13 @@ public sealed class AuctionService : IAuctionService
 
         // Who bid last, so a client can switch the bid button off for that participant until
         // someone else bids. The server enforces the rule either way.
-        Guid? lastBidParticipantId = auction.LastSequenceNumber > 0
+        Guid? lastBidParticipantId = auction.LastBidParticipantId ?? (auction.LastSequenceNumber > 0
             ? await _db.Bids
                 .AsNoTracking()
                 .Where(b => b.AuctionId == auctionId && b.SequenceNumber == auction.LastSequenceNumber)
                 .Select(b => (Guid?)b.ParticipantId)
                 .FirstOrDefaultAsync(ct)
-            : null;
+            : null);
 
         return new AuctionSnapshotDto(
             auction.Id, auction.Status, auction.CurrentPrice, auction.StartingPrice,

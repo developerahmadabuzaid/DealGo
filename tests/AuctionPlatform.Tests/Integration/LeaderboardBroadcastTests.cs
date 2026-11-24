@@ -66,19 +66,20 @@ public class LeaderboardBroadcastTests
         await Task.Delay(LeaderboardBroadcaster.Interval * 3);
 
         notifier.Sent.Should().ContainSingle("four requests between two flushes make one broadcast");
-        var (sentFor, board) = notifier.Sent.Single();
+        var (sentFor, board, includesUpTo) = notifier.Sent.Single();
         sentFor.Should().Be(auctionId);
+        includesUpTo.Should().Be(4, "the list carries the number of the latest bid it includes, so a phone can drop an older one");
         board.Select(e => e.UserId).Should().BeEquivalentTo(new[] { a, b });
         board[0].HighestPrice.Should().Be(1080m, "it shows the leader after the fourth bid");
     }
 
     private sealed class RecordingNotifier : IAuctionRealtimeNotifier
     {
-        public ConcurrentQueue<(Guid, IReadOnlyList<LeaderboardEntryDto>)> Sent { get; } = new();
+        public ConcurrentQueue<(Guid, IReadOnlyList<LeaderboardEntryDto>, long)> Sent { get; } = new();
 
-        public Task LeaderboardUpdatedAsync(Guid a, IReadOnlyList<LeaderboardEntryDto> l, CancellationToken ct = default)
+        public Task LeaderboardUpdatedAsync(Guid a, IReadOnlyList<LeaderboardEntryDto> l, long s, CancellationToken ct = default)
         {
-            Sent.Enqueue((a, l));
+            Sent.Enqueue((a, l, s));
             return Task.CompletedTask;
         }
 
@@ -88,7 +89,7 @@ public class LeaderboardBroadcastTests
         public Task AuctionStartTimeChangedAsync(Guid a, DateTime? p, DateTime n, CancellationToken ct = default) => Task.CompletedTask;
         public Task AuctionStartedAsync(Guid a, DateTime s, DateTime e, decimal p, CancellationToken ct = default) => Task.CompletedTask;
         public Task BidPlacedAsync(Guid a, BidBroadcast b, CancellationToken ct = default) => Task.CompletedTask;
-        public Task AuctionPriceChangedAsync(Guid a, decimal c, decimal t, decimal p, CancellationToken ct = default) => Task.CompletedTask;
+        public Task AuctionPriceChangedAsync(Guid a, decimal c, decimal t, decimal p, long s, CancellationToken ct = default) => Task.CompletedTask;
         public Task ParticipantRankChangedAsync(Guid a, Guid u, int r, decimal h, CancellationToken ct = default) => Task.CompletedTask;
         public Task FinalPhaseStartedAsync(Guid a, decimal c, decimal t, int? r, CancellationToken ct = default) => Task.CompletedTask;
         public Task AuctionFinishedAsync(Guid a, decimal p, bool t, DateTime f, CancellationToken ct = default) => Task.CompletedTask;

@@ -68,6 +68,8 @@ public class ApplicationDbContext
     /// nested handle whose Commit and Dispose do nothing: the outermost caller owns the outcome.
     /// Without this, an inner `await using` would commit or dispose its caller's transaction.
     /// </summary>
+    public void ClearChangeTracker() => ChangeTracker.Clear();
+
     public async Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
         var ambient = Database.CurrentTransaction;

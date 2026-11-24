@@ -1,3 +1,4 @@
+using AuctionPlatform.Application.Bidding;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Realtime;
@@ -23,6 +24,7 @@ public sealed class ParticipationService : IParticipationService
     private readonly IAuctionRealtimeNotifier _realtime;
     private readonly INotificationService _notifications;
     private readonly IAuditService _audit;
+    private readonly IAuctionQueue _queue;
     private readonly ILogger<ParticipationService> _logger;
 
     public ParticipationService(
@@ -32,8 +34,10 @@ public sealed class ParticipationService : IParticipationService
         IAuctionRealtimeNotifier realtime,
         INotificationService notifications,
         IAuditService audit,
+        IAuctionQueue queue,
         ILogger<ParticipationService> logger)
     {
+        _queue = queue;
         _db = db;
         _wallets = wallets;
         _clock = clock;
@@ -52,12 +56,11 @@ public sealed class ParticipationService : IParticipationService
             throw new DomainException(ErrorCodes.AlreadyJoined, "You have already joined this auction.");
         }
 
-        var now = _clock.UtcNow;
         JoinOutcome outcome;
 
         try
         {
-            outcome = await ExecuteJoinAsync(auctionId, userId, idempotencyKey, now, ct);
+            outcome = await ExecuteJoinAsync(auctionId, userId, idempotencyKey, ct);
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
@@ -94,7 +97,6 @@ public sealed class ParticipationService : IParticipationService
             throw new DomainException(ErrorCodes.AlreadyJoined, "This user has already joined this auction.");
         }
 
-        var now = _clock.UtcNow;
         var fee = Money.Round(request.EntryFee);
         JoinOutcome outcome;
 
@@ -102,7 +104,7 @@ public sealed class ParticipationService : IParticipationService
         {
             // The same path a user takes to join, so the counter, the start schedule and the wallet
             // charge behave identically. Only the fee differs.
-            outcome = await ExecuteJoinAsync(auctionId, user.Id, idempotencyKey: null, now, ct, fee);
+            outcome = await ExecuteJoinAsync(auctionId, user.Id, idempotencyKey: null, ct, fee);
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
@@ -119,9 +121,15 @@ public sealed class ParticipationService : IParticipationService
     }
 
     private async Task<JoinOutcome> ExecuteJoinAsync(
-        Guid auctionId, Guid userId, string? idempotencyKey, DateTime now, CancellationToken ct,
+        Guid auctionId, Guid userId, string? idempotencyKey, CancellationToken ct,
         decimal? entryFeeOverride = null)
     {
+        // Joins take the auction's turn in memory first, like bids, so a crowd joining at once waits
+        // here instead of each holding a database connection on the auction's row lock.
+        using var turn = await _queue.EnterAsync(auctionId, "join", ct);
+
+        // Read after waiting: the join, and any start it schedules, happen now.
+        var now = _clock.UtcNow;
         await using var tx = await _db.BeginTransactionAsync(ct);
 
         // Locking the auction row serialises the participant counter, so participant #400 is

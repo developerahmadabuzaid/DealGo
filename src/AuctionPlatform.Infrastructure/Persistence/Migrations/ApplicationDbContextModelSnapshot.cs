@@ -275,6 +275,9 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsFeatured")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid?>("LastBidParticipantId")
+                        .HasColumnType("uuid");
+
                     b.Property<long>("LastSequenceNumber")
                         .HasColumnType("bigint");
 

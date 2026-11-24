@@ -157,4 +157,71 @@ void main() {
     sub.close();
     container.dispose();
   });
+  group('updates that arrive out of order', () {
+    test('a bid numbered at or below the newest shown is stale; a price with the same number is not', () {
+      expect(isStaleBidUpdate('BidPlaced', 4, 5), isTrue);
+      expect(isStaleBidUpdate('BidPlaced', 5, 5), isTrue, reason: 'the same bid again');
+      expect(isStaleBidUpdate('BidPlaced', 6, 5), isFalse);
+      expect(isStaleBidUpdate('AuctionPriceChanged', 5, 5), isFalse, reason: 'the price that bid set');
+      expect(isStaleBidUpdate('AuctionPriceChanged', 4, 5), isTrue);
+      expect(isStaleBidUpdate('AuctionPriceChanged', null, 5), isFalse,
+          reason: 'an older server sends no number; its updates still count');
+    });
+
+    test('the price and the leaderboard never go backwards', () async {
+      final hub = _ScriptedHub();
+      final container = ProviderContainer(overrides: [
+        _signedIn,
+        hubClientProvider.overrideWithValue(hub),
+        auctionRepositoryProvider.overrideWithValue(_Repo()),
+      ]);
+      container.listen(liveAuctionProvider('a1'), (_, _) {});
+      for (var i = 0; i < 20 && container.read(liveAuctionProvider('a1')).snapshot == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      Map<String, dynamic> board(int includes, num top) => {
+            'auctionId': 'a1',
+            'lastSequenceNumber': includes,
+            'leaderboard': [
+              {'rank': 1, 'participantId': 'p$includes', 'displayName': 'P', 'highestPrice': top, 'bidCount': 1},
+            ],
+          };
+
+      // Bid 2 arrives before bid 1, and each list before an older one.
+      await hub.send('BidPlaced', {'sequenceNumber': 2, 'newPrice': 1502, 'participantId': 'p2'});
+      await hub.send('BidPlaced', {'sequenceNumber': 1, 'newPrice': 1501, 'participantId': 'p1'});
+      await hub.send('AuctionPriceChanged', {'auctionId': 'a1', 'sequenceNumber': 1, 'currentPrice': 1501});
+      await hub.send('AuctionPriceChanged', {'auctionId': 'a1', 'sequenceNumber': 2, 'currentPrice': 1502});
+      await hub.send('LeaderboardUpdated', board(2, 1502));
+      await hub.send('LeaderboardUpdated', board(1, 1501));
+
+      var snapshot = container.read(liveAuctionProvider('a1')).snapshot!;
+      expect(snapshot.currentPrice, 1502);
+      expect(snapshot.lastSequenceNumber, 2);
+      expect(snapshot.lastBidParticipantId, 'p2', reason: 'the late bid 1 must not make p1 the last bidder');
+      expect(snapshot.leaderboard.single.highestPrice, 1502);
+
+      // A newer bid still goes straight through.
+      await hub.send('BidPlaced', {'sequenceNumber': 3, 'newPrice': 1503, 'participantId': 'p3'});
+      snapshot = container.read(liveAuctionProvider('a1')).snapshot!;
+      expect(snapshot.currentPrice, 1503);
+      expect(snapshot.lastSequenceNumber, 3);
+
+      container.dispose();
+    });
+  });
+}
+
+/// A connected hub whose events the test sends one by one.
+class _ScriptedHub extends _AlreadyConnectedHub {
+  final _controller = StreamController<HubEvent>.broadcast();
+
+  @override
+  Stream<HubEvent> get events => _controller.stream;
+
+  Future<void> send(String name, Map<String, dynamic> payload) async {
+    _controller.add(HubEvent(name, payload));
+    await Future<void>.delayed(Duration.zero);
+  }
 }

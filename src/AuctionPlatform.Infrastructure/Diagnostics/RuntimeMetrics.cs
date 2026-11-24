@@ -29,7 +29,8 @@ public sealed class RuntimeMetrics : IDisposable
     private static readonly HashSet<string> KeptTags = new(StringComparer.Ordinal)
     {
         "db.client.connection.state",
-        "operation"
+        "operation",
+        "reason"
     };
 
     private readonly MeterListener _listener = new();

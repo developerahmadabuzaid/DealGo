@@ -433,6 +433,7 @@ class AuctionSnapshot {
     String? lastBidParticipantId,
     int? myRank,
     double? myHighestPrice,
+    int? lastSequenceNumber,
   }) =>
       AuctionSnapshot(
         id: id, status: status, currentPrice: currentPrice ?? this.currentPrice,
@@ -446,7 +447,7 @@ class AuctionSnapshot {
         myRank: myRank ?? this.myRank,
         myHighestPrice: myHighestPrice ?? this.myHighestPrice,
         leaderboard: leaderboard ?? this.leaderboard,
-        lastSequenceNumber: lastSequenceNumber, serverTime: serverTime,
+        lastSequenceNumber: lastSequenceNumber ?? this.lastSequenceNumber, serverTime: serverTime,
         myParticipantId: myParticipantId,
         lastBidParticipantId: lastBidParticipantId ?? this.lastBidParticipantId,
         isDemo: isDemo,

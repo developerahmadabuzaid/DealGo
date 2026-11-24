@@ -20,6 +20,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 namespace AuctionPlatform.Infrastructure;
@@ -178,6 +179,12 @@ public static class DependencyInjection
         services.AddScoped<IAuctionAdminService, AuctionAdminService>();
         services.AddScoped<IParticipationService, ParticipationService>();
         services.AddScoped<IBidService, BidService>();
+        // One per process: bids and joins on an auction take turns here before the database.
+        services.AddSingleton<IAuctionQueue>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<AuctionOptions>>().Value;
+            return new AuctionQueue(options.QueueMaxWaitingPerAuction, TimeSpan.FromSeconds(options.QueueMaxWaitSeconds));
+        });
         services.AddSingleton<ILeaderboardBroadcaster, LeaderboardBroadcaster>();
         services.AddScoped<IAuctionCompletionService, AuctionCompletionService>();
 
