@@ -3599,7 +3599,7 @@ async function viewAppAds() {
         h('th', { class: 'num' }, 'الترتيب'), h('th', {}, 'الصورة'), h('th', {}, 'العنوان'),
         h('th', {}, 'يفتح'), h('th', {}, 'المدة'), h('th', {}, 'الحالة'), h('th', {}, ''))),
       h('tbody', {}, ...rows.map((ad) => {
-        const when = [
+        const period = [
           ad.startsAt ? `من ${when(ad.startsAt)}` : null,
           ad.endsAt ? `حتى ${when(ad.endsAt)}` : null,
         ].filter(Boolean).join(' · ') || 'دائم';
@@ -3613,7 +3613,7 @@ async function viewAppAds() {
           h('td', {}, h('img', { src: ad.imageUrl, alt: '', class: 'cover-preview sm' })),
           title,
           h('td', {}, document.createTextNode(targetLabel(ad))),
-          h('td', {}, when),
+          h('td', {}, period),
           h('td', {}, h('span', { class: ad.isPublished ? 'badge live' : 'badge warn' },
             ad.isPublished ? 'منشور' : 'مسودة')),
           h('td', {}, h('div', { class: 'row' },
