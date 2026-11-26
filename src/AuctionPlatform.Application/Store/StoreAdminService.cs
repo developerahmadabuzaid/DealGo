@@ -882,6 +882,7 @@ public sealed class StoreAdminService : IStoreAdminService
         settings.RefundPolicy = request.RefundPolicy;
         settings.LowStockThreshold = request.LowStockThreshold;
         settings.ShowStockQuantity = request.ShowStockQuantity;
+        settings.ShowStockQuantityOnOffers = request.ShowStockQuantityOnOffers;
         settings.UpdatedAt = _clock.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -910,7 +911,7 @@ public sealed class StoreAdminService : IStoreAdminService
         s.ShoppingCreditExpirationEnabled, s.ShoppingCreditExpirationDays,
         s.RefundPolicy, s.LowStockThreshold,
         s.M5aznShippingCost, s.M5aznShippingCovered, s.M5aznShippingTaxPercentage,
-        s.ShowStockQuantity);
+        s.ShowStockQuantity, s.ShowStockQuantityOnOffers);
 
     /// <summary>
     /// The price before an offer. Zero or less clears the offer; anything not above the price

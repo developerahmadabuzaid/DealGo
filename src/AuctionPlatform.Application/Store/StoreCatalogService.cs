@@ -184,9 +184,9 @@ public sealed class StoreCatalogService : IStoreCatalogService
             throw new DomainException(ErrorCodes.ProductNotAvailable, "This product is not available.");
         }
 
-        // No settings row yet means the defaults, which show the stock.
+        // Exclusive offers have their own switch. No settings row yet means the defaults, which show the stock.
         var showStock = await _db.StoreSettings.AsNoTracking()
-            .Select(s => (bool?)s.ShowStockQuantity)
+            .Select(s => (bool?)(product.IsExclusiveOffer ? s.ShowStockQuantityOnOffers : s.ShowStockQuantity))
             .FirstOrDefaultAsync(ct) ?? true;
 
         return MapDetail(product) with { ShowStockQuantity = showStock };

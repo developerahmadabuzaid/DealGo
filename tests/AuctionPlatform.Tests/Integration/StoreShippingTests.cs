@@ -210,4 +210,38 @@ public class StoreShippingTests
             await admin.UpdateSettingsAsync(current);
         }
     }
+
+    [Fact]
+    public async Task Exclusive_offers_have_their_own_stock_line_switch()
+    {
+        await using var scope = _fixture.CreateScope();
+        var admin = scope.ServiceProvider.GetRequiredService<IStoreAdminService>();
+        var catalog = scope.ServiceProvider.GetRequiredService<IStoreCatalogService>();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var current = await admin.GetSettingsAsync();
+
+        var plain = await admin.CreateProductAsync(new CreateStoreProductRequest(
+            "منتج", null, null, null, $"PLN-{Guid.NewGuid():N}"[..20], 50m, null, null, 5,
+            StoreProductStatus.Active, StorePaymentMode.Both, false, true, 0m, null, null));
+        var offer = await admin.CreateProductAsync(new CreateStoreProductRequest(
+            "عرض", null, null, null, $"OFR-{Guid.NewGuid():N}"[..20], 50m, null, null, 5,
+            StoreProductStatus.Active, StorePaymentMode.Both, false, true, 0m, null, null));
+        await db.StoreProducts.Where(p => p.Id == offer.Id).ExecuteUpdateAsync(u => u
+            .SetProperty(p => p.IsExclusiveOffer, true)
+            .SetProperty(p => p.OfferStartsAt, DateTime.UtcNow.AddHours(-1))
+            .SetProperty(p => p.OfferEndsAt, DateTime.UtcNow.AddDays(1))
+            .SetProperty(p => p.OfferMaxPerUser, 1));
+
+        try
+        {
+            await admin.UpdateSettingsAsync(current with { ShowStockQuantity = true, ShowStockQuantityOnOffers = false });
+
+            (await catalog.GetProductAsync(offer.Id)).ShowStockQuantity.Should().BeFalse();
+            (await catalog.GetProductAsync(plain.Id)).ShowStockQuantity.Should().BeTrue();
+        }
+        finally
+        {
+            await admin.UpdateSettingsAsync(current);
+        }
+    }
 }

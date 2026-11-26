@@ -334,7 +334,10 @@ public sealed record StoreSettingsDto(
     decimal M5aznShippingTaxPercentage = 0m,
 
     /// <summary>Whether the app shows the "available stock" line on a product.</summary>
-    bool ShowStockQuantity = true);
+    bool ShowStockQuantity = true,
+
+    /// <summary>Whether exclusive-offer products show that line.</summary>
+    bool ShowStockQuantityOnOffers = true);
 
 public sealed record StoreOverviewDto(
     int TotalProducts,

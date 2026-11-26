@@ -99,6 +99,9 @@ public class StoreSettings : AuditableEntity
     /// <summary>Whether the app shows customers how many pieces of a product are left.</summary>
     public bool ShowStockQuantity { get; set; } = true;
 
+    /// <summary>The same, for exclusive-offer products only.</summary>
+    public bool ShowStockQuantityOnOffers { get; set; } = true;
+
     public decimal MinimumOrderAmount { get; set; }
     public decimal MaximumOrderAmount { get; set; } = 100000m;
 
