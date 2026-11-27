@@ -231,30 +231,25 @@ public sealed class NotificationService : INotificationService
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, _clock.UtcNow), ct);
     }
 
+    /// <summary>
+    /// Saves a phone's push token, or moves it to this user if it is already known (a device can
+    /// move between accounts; the token follows the current user).
+    ///
+    /// One statement, insert-or-update on the unique token: the app often registers the same token
+    /// twice at once (on sign-in and when Firebase hands it over), and a look-up followed by an
+    /// insert let both requests insert, so the second failed on the unique index with a 500.
+    /// </summary>
     public async Task RegisterDeviceAsync(Guid userId, string token, string? platform, CancellationToken ct = default)
     {
-        var existing = await _db.UserDeviceTokens.FirstOrDefaultAsync(t => t.Token == token, ct);
-
-        if (existing is not null)
-        {
-            // A device can move between accounts; the token follows the current user.
-            existing.UserId = userId;
-            existing.Platform = platform ?? existing.Platform;
-            existing.LastSeenAt = _clock.UtcNow;
-        }
-        else
-        {
-            _db.UserDeviceTokens.Add(new UserDeviceToken
-            {
-                UserId = userId,
-                Token = token,
-                Platform = platform,
-                CreatedAt = _clock.UtcNow,
-                LastSeenAt = _clock.UtcNow
-            });
-        }
-
-        await _db.SaveChangesAsync(ct);
+        var now = _clock.UtcNow;
+        await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "UserDeviceTokens" ("Id", "UserId", "Token", "Platform", "CreatedAt", "LastSeenAt")
+            VALUES ({Guid.NewGuid()}, {userId}, {token}, {platform}, {now}, {now})
+            ON CONFLICT ("Token") DO UPDATE SET
+                "UserId" = EXCLUDED."UserId",
+                "Platform" = COALESCE(EXCLUDED."Platform", "UserDeviceTokens"."Platform"),
+                "LastSeenAt" = EXCLUDED."LastSeenAt"
+            """, ct);
     }
 
     public async Task UnregisterDeviceAsync(Guid userId, string token, CancellationToken ct = default)
