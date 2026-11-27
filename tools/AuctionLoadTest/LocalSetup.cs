@@ -52,6 +52,22 @@ sealed class LocalSetup
         return users.Select(u => u with { Token = Mint(u.Id, u.Email, u.Name, Roles.User) }).ToList();
     }
 
+    /// <summary>Bidders with ordinary Arabic names, for `play`, where a person watches them on screen.</summary>
+    public async Task<List<TestUser>> EnsurePlayBotsAsync(int count)
+    {
+        string[] first = ["محمد", "عبدالله", "فهد", "سارة", "نورة", "خالد", "ريم", "سلطان", "هند", "تركي",
+            "منيرة", "ناصر", "لمى", "بندر", "غادة", "ماجد", "جود", "عبدالعزيز", "شهد", "يوسف"];
+        string[] last = ["العتيبي", "القحطاني", "الشمري", "الدوسري", "الحربي", "المطيري", "الغامدي", "الزهراني", "السبيعي", "العنزي"];
+
+        var emails = Enumerable.Range(1, count).Select(i => $"play-bot-{i:000}@{EmailDomain}").ToList();
+        var users = await EnsureAsync(emails, email =>
+        {
+            var i = int.Parse(email[9..12]) - 1;
+            return $"{first[i % first.Length]} {last[(i / first.Length + i) % last.Length]}";
+        });
+        return users.Select(u => u with { Token = Mint(u.Id, u.Email, u.Name, Roles.User) }).ToList();
+    }
+
     private async Task<List<TestUser>> EnsureAsync(IReadOnlyList<string> emails, Func<string, string> name)
     {
         await using var db = Db();

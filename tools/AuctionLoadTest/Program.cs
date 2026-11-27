@@ -32,6 +32,7 @@ try
         "proxy" => await LatencyProxy.RunAsync(options),
         "token" => await TokenAsync(options),
         "compare" => await Compare.RunAsync(options),
+        "play" => await Play.RunAsync(options),
         _ => throw new ArgumentException($"Unknown command '{command}'. Use run, monitor or proxy.")
     };
 }
