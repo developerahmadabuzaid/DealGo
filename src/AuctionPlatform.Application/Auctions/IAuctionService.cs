@@ -57,7 +57,9 @@ public interface IAuctionAdminService
 /// <summary>Joining an auction: entry fee payment plus the participant threshold bookkeeping.</summary>
 public interface IParticipationService
 {
-    Task<MyParticipationDto> JoinAsync(Guid auctionId, Guid userId, string? idempotencyKey, CancellationToken ct = default);
+    /// <param name="acceptedPolicyVersion">The auction policies version the person accepted; required while policies are published.</param>
+    Task<MyParticipationDto> JoinAsync(Guid auctionId, Guid userId, string? idempotencyKey,
+        int? acceptedPolicyVersion = null, CancellationToken ct = default);
 
     /// <summary>
     /// An administrator adds a user to the auction, at an entry fee the administrator chooses. The

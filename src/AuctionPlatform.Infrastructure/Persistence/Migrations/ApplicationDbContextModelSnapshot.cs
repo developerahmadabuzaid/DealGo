@@ -529,6 +529,12 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LastBidAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("PolicyAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PolicyVersionAccepted")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -1615,6 +1621,20 @@ namespace AuctionPlatform.Infrastructure.Persistence.Migrations
                     b.Property<string>("AppStoreUrl")
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("AuctionPolicyBody")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
+
+                    b.Property<string>("AuctionPolicyTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("AuctionPolicyUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("AuctionPolicyVersion")
+                        .HasColumnType("integer");
 
                     b.Property<string>("ContactEmail")
                         .HasMaxLength(256)

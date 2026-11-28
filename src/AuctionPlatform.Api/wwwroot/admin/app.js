@@ -411,6 +411,8 @@ const AR = {
   'Support': 'الدعم الفني', 'WhatsApp support': 'دعم واتساب', 'WhatsApp number': 'رقم واتساب',
   'Support number saved.': 'تم حفظ رقم الدعم.', 'Save number': 'حفظ الرقم',
   'Open chat': 'فتح المحادثة',
+  'Auction policies': 'سياسات المزاد', 'Save policies': 'حفظ السياسات',
+  'Policies saved.': 'تم حفظ السياسات.', 'Nothing changed.': 'لم يتغير شيء.',
   'Open on map': 'فتح على الخريطة',
 
   // notifications
@@ -1105,6 +1107,7 @@ const NAV = [
     items: [
       { id: 'auctions', label: 'All auctions', icon: 'gavel' },
       { id: 'auction-new', label: 'Create auction', icon: 'plus' },
+      { id: 'auction-policy', label: 'Auction policies', icon: 'shield' },
     ],
   },
   {
@@ -1233,6 +1236,7 @@ function routeView(route) {
     'auctions': viewAuctions,
     'auction-new': viewAuctionForm,
     'auction-edit': viewAuctionForm,
+    'auction-policy': viewAuctionPolicy,
     'store-overview': viewStoreOverview,
     'store-products': viewStoreProducts,
     'store-offers': viewStoreOffers,
@@ -4998,6 +5002,74 @@ async function viewSupport() {
       h('div', { style: 'display:flex;gap:8px;margin-top:12px' },
         h('button', { class: 'btn', onclick: save }, 'Save number'),
         link)));
+}
+
+// ---------------------------------------------------------------- auction policies
+
+/*
+ * The policies a person reads and accepts every time they join an auction. Empty means none are
+ * published and joining asks for nothing. Each saved change raises the version, so people who
+ * accepted the old wording accept the new one on their next join.
+ */
+const AUCTION_POLICY_DRAFT = [
+  'الاشتراك في المزاد',
+  'الاشتراك في أي مزاد يعني قراءة هذه السياسات والموافقة عليها في كل مرة.',
+  'رسوم الدخول تُخصم من المحفظة الرئيسية عند الاشتراك ولا تُسترد إلا وفق ما توضحه هذه السياسات.',
+  'المزايدة',
+  'كل مزايدة نهائية ولا يمكن إلغاؤها بعد قبولها.',
+  'لا يحق للمشارك المزايدة مرتين متتاليتين، وترتيب الفائزين يحدده النظام وحده.',
+  'الفائزون ودفع قيمة الجهاز',
+  'على الفائز دفع قيمة الجهاز خلال 24 ساعة من انتهاء المزاد.',
+  'إذا لم يدفع الفائز خلال 24 ساعة يفقد حقه في الجهاز، وتُحوَّل رسوم الدخول التي دفعها إلى رصيد التسوق.',
+  'المشاركون الذين لم يفوزوا',
+  'تُحوَّل رسوم دخول المشاركين الذين لم يفوزوا إلى رصيد التسوق لاستخدامه في المتجر.',
+  'رصيد التسوق لا يمكن سحبه أو تحويله إلى المحفظة الرئيسية.',
+].join(String.fromCharCode(10));
+
+async function viewAuctionPolicy() {
+  const p = await api('/admin/auction-policy');
+
+  const title = h('input', { maxlength: '200', value: p.title || '' });
+  const body = h('textarea', { rows: '20', maxlength: '20000', dir: 'rtl', style: 'width:100%;line-height:1.8' });
+  // An unsaved suggestion while nothing is published: it is only a starting point to edit.
+  body.value = p.body || AUCTION_POLICY_DRAFT;
+  const status = h('div', { class: 'hint' });
+  const showStatus = (x) => {
+    status.textContent = x.required
+      ? `منشورة · الإصدار ${x.version}${x.updatedAt ? ` · آخر تعديل ${when(x.updatedAt)}` : ''}`
+      : 'غير منشورة: الاشتراك لا يطلب الموافقة على أي سياسات. احفظ النص لنشره.';
+  };
+  showStatus(p);
+
+  const save = async () => {
+    try {
+      const saved = await api('/admin/auction-policy', {
+        method: 'PUT',
+        body: JSON.stringify({ title: title.value, body: body.value }),
+      });
+      toast(saved.version === p.version ? 'Nothing changed.' : 'Policies saved.', 'ok');
+      Object.assign(p, saved);
+      title.value = saved.title;
+      body.value = saved.body || AUCTION_POLICY_DRAFT;
+      showStatus(saved);
+    } catch (e) { toast(e.message, 'err'); }
+  };
+
+  return h('div', {},
+    pageHead('Auction policies', 'يقرأها المشترك ويوافق عليها في كل مرة يشترك فيها في مزاد.'),
+    h('div', { class: 'card' },
+      status,
+      h('div', { class: 'field' },
+        h('label', {}, 'Title'),
+        title),
+      h('div', { class: 'field' },
+        h('label', {}, 'النص'),
+        body,
+        h('div', { class: 'hint' },
+          'كل سطر فقرة. السطر الذي لا ينتهي بنقطة يظهر عنواناً. حفظ أي تعديل يطلب من الجميع الموافقة من جديد عند اشتراكهم التالي. ',
+          'لإيقاف طلب الموافقة امسح النص كله واحفظ.')),
+      h('div', { style: 'display:flex;gap:8px;margin-top:12px' },
+        h('button', { class: 'btn', onclick: save }, 'Save policies'))));
 }
 
 // ---------------------------------------------------------------- notifications

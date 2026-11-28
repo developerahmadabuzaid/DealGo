@@ -198,6 +198,7 @@ public static class DependencyInjection
         services.AddScoped<IShippingAddressService, ShippingAddressService>();
         services.AddScoped<ISiteContentService, SiteContentService>();
         services.AddScoped<ISupportService, SupportService>();
+        services.AddScoped<IAuctionPolicyService, AuctionPolicyService>();
         services.AddScoped<IAppAdService, AppAdService>();
 
         services.AddScoped<IDashboardService, DashboardService>();

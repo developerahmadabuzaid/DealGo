@@ -73,7 +73,7 @@ public sealed class AuctionsController : ApiControllerBase
     [Authorize]
     public async Task<ActionResult<MyParticipationDto>> Join(
         Guid id, JoinAuctionRequest? request, CancellationToken ct) =>
-        Ok(await _participation.JoinAsync(id, CurrentUserId, request?.IdempotencyKey, ct));
+        Ok(await _participation.JoinAsync(id, CurrentUserId, request?.IdempotencyKey, request?.AcceptedPolicyVersion, ct));
 
     [HttpGet("{id:guid}/my-participation")]
     [Authorize]

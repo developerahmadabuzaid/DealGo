@@ -170,6 +170,9 @@ class AppStrings {
   String get prizes => _t('الأجهزة', 'Devices');
   String get joinAuction => _t('اشترك في المزاد', 'Join auction');
   String get joined => _t('أنت مشترك', 'You have joined');
+  String get auctionPolicyAgree =>
+      _t('قرأت سياسات المزاد وأوافق عليها', 'I have read and accept the auction policies');
+  String get auctionPolicyAccept => _t('موافقة والاشتراك', 'Accept and join');
 
   // ---- demo auctions: free to join, no cap on participants, devices only on show
   String get demoAuction => _t('مزاد تجريبي', 'Demo auction');
@@ -600,6 +603,8 @@ class AppStrings {
     'AUCTION_FULL': 'اكتمل عدد المشاركين.',
     'PARTICIPANT_NOT_FOUND': 'أنت غير مشترك في هذا المزاد.',
     'ALREADY_JOINED': 'أنت مشترك في هذا المزاد بالفعل.',
+    'POLICIES_NOT_ACCEPTED': 'يجب الموافقة على سياسات المزاد قبل الاشتراك.',
+    'POLICIES_CHANGED': 'تم تحديث سياسات المزاد. اقرأها ووافق عليها مرة أخرى.',
     'ENTRY_PAYMENT_REQUIRED': 'يجب دفع رسوم الاشتراك أولاً.',
     'BID_NOT_ALLOWED': 'لا يمكن المزايدة الآن.',
     'CONSECUTIVE_BID_NOT_ALLOWED': 'أنت صاحب آخر مزايدة. انتظر حتى يزايد غيرك.',

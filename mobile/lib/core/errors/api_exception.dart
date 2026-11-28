@@ -52,6 +52,8 @@ class ErrorCodes {
 
   static const participantNotFound = 'PARTICIPANT_NOT_FOUND';
   static const alreadyJoined = 'ALREADY_JOINED';
+  static const policiesNotAccepted = 'POLICIES_NOT_ACCEPTED';
+  static const policiesChanged = 'POLICIES_CHANGED';
   static const entryPaymentRequired = 'ENTRY_PAYMENT_REQUIRED';
 
   static const bidNotAllowed = 'BID_NOT_ALLOWED';

@@ -17,6 +17,7 @@ import '../../../shared/widgets.dart';
 import '../../wallets/presentation/top_up_sheet.dart';
 import '../data/auction_models.dart';
 import 'auction_end_dialog.dart';
+import 'auction_policy_sheet.dart';
 import 'auction_results_screen.dart';
 import 'bidding_arena_screen.dart';
 import 'demo_auction_badge.dart';
@@ -390,6 +391,14 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
     setState(() => _busy = true);
 
     try {
+      // Every join accepts the auction policies first, before any money is asked for. Read fresh
+      // each time, so the version sent is the one just shown.
+      final repo = ref.read(auctionRepositoryProvider);
+      final policy = await repo.policy();
+      if (!mounted) return;
+      if (policy.required && !await confirmAuctionPolicy(context, policy)) return;
+      if (!mounted) return;
+
       // The entry fee comes from the Main wallet. Short of it, the top-up opens first for what is
       // missing, and joining carries on once the money is in.
       // A demo auction is free, so there is nothing to check or top up.
@@ -405,7 +414,11 @@ class _RegistrationPanelState extends ConsumerState<_RegistrationPanel> {
 
       final key =
           'join-${widget.detail.id}-${DateTime.now().microsecondsSinceEpoch}';
-      await ref.read(auctionRepositoryProvider).join(widget.detail.id, key);
+      await repo.join(
+        widget.detail.id,
+        key,
+        acceptedPolicyVersion: policy.required ? policy.version : null,
+      );
 
       ref.invalidate(auctionDetailProvider(widget.detail.id));
       ref.invalidate(walletsProvider);

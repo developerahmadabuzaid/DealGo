@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import 'auction_models.dart';
+import 'auction_policy.dart';
 
 /// REST access to the auction endpoints.
 ///
@@ -56,10 +57,19 @@ class AuctionRepository {
     return (data as List).map((e) => BidHistoryEntry.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<MyParticipation> join(String id, String idempotencyKey) async {
-    final data = await _api.post('/auctions/$id/join', body: {'idempotencyKey': idempotencyKey});
+  /// Joins, naming the version of the auction policies the person just accepted, if any.
+  Future<MyParticipation> join(String id, String idempotencyKey, {int? acceptedPolicyVersion}) async {
+    final data = await _api.post('/auctions/$id/join', body: {
+      'idempotencyKey': idempotencyKey,
+      'acceptedPolicyVersion': ?acceptedPolicyVersion,
+    });
     return MyParticipation.fromJson(data as Map<String, dynamic>);
   }
+
+  /// The auction policies a person accepts before every join. Not cached: a join must name the
+  /// version that is current now.
+  Future<AuctionPolicy> policy() async =>
+      AuctionPolicy.fromJson(await _api.get('/auction-policy') as Map<String, dynamic>);
 
   Future<MyParticipation?> myParticipation(String id) async {
     try {

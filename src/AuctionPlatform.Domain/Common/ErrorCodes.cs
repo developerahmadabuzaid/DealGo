@@ -20,6 +20,12 @@ public static class ErrorCodes
     // Participation
     public const string ParticipantNotFound = "PARTICIPANT_NOT_FOUND";
     public const string AlreadyJoined = "ALREADY_JOINED";
+
+    /// <summary>Joining without accepting the current auction policies.</summary>
+    public const string PoliciesNotAccepted = "POLICIES_NOT_ACCEPTED";
+
+    /// <summary>The policies changed after the person read them; they read the new text first.</summary>
+    public const string PoliciesChanged = "POLICIES_CHANGED";
     public const string EntryPaymentRequired = "ENTRY_PAYMENT_REQUIRED";
 
     // Bidding

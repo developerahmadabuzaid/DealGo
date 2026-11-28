@@ -260,7 +260,8 @@ public sealed record UpdateScheduleRequest(DateTime ScheduledStartAt, string? Re
 
 public sealed record PlaceBidRequest(string IdempotencyKey);
 
-public sealed record JoinAuctionRequest(string? IdempotencyKey);
+/// <param name="AcceptedPolicyVersion">The version of the auction policies the person read and accepted.</param>
+public sealed record JoinAuctionRequest(string? IdempotencyKey, int? AcceptedPolicyVersion = null);
 
 /// <summary>An administrator adding a user to an auction, at an entry fee of their choosing.</summary>
 public sealed record AddParticipantRequest(Guid UserId, decimal EntryFee);

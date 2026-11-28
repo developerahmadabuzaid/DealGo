@@ -2,6 +2,7 @@ using AuctionPlatform.Application.Bidding;
 using AuctionPlatform.Application.Common;
 using AuctionPlatform.Application.Notifications;
 using AuctionPlatform.Application.Realtime;
+using AuctionPlatform.Application.Site;
 using AuctionPlatform.Application.Wallets;
 using AuctionPlatform.Domain.Common;
 using AuctionPlatform.Domain.Entities;
@@ -25,6 +26,7 @@ public sealed class ParticipationService : IParticipationService
     private readonly INotificationService _notifications;
     private readonly IAuditService _audit;
     private readonly IAuctionQueue _queue;
+    private readonly IAuctionPolicyService _policies;
     private readonly ILogger<ParticipationService> _logger;
 
     public ParticipationService(
@@ -35,9 +37,11 @@ public sealed class ParticipationService : IParticipationService
         INotificationService notifications,
         IAuditService audit,
         IAuctionQueue queue,
+        IAuctionPolicyService policies,
         ILogger<ParticipationService> logger)
     {
         _queue = queue;
+        _policies = policies;
         _db = db;
         _wallets = wallets;
         _clock = clock;
@@ -48,7 +52,8 @@ public sealed class ParticipationService : IParticipationService
     }
 
     public async Task<MyParticipationDto> JoinAsync(
-        Guid auctionId, Guid userId, string? idempotencyKey, CancellationToken ct = default)
+        Guid auctionId, Guid userId, string? idempotencyKey,
+        int? acceptedPolicyVersion = null, CancellationToken ct = default)
     {
         var existing = await GetMyParticipationAsync(auctionId, userId, ct);
         if (existing is not null)
@@ -56,11 +61,15 @@ public sealed class ParticipationService : IParticipationService
             throw new DomainException(ErrorCodes.AlreadyJoined, "You have already joined this auction.");
         }
 
+        // Every join accepts the published auction policies, in their current wording. Checked
+        // before anything is charged. An administrator adding someone skips this.
+        var policyVersion = await _policies.RequireAcceptedAsync(acceptedPolicyVersion, ct);
+
         JoinOutcome outcome;
 
         try
         {
-            outcome = await ExecuteJoinAsync(auctionId, userId, idempotencyKey, ct);
+            outcome = await ExecuteJoinAsync(auctionId, userId, idempotencyKey, ct, policyVersion: policyVersion);
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
@@ -122,7 +131,7 @@ public sealed class ParticipationService : IParticipationService
 
     private async Task<JoinOutcome> ExecuteJoinAsync(
         Guid auctionId, Guid userId, string? idempotencyKey, CancellationToken ct,
-        decimal? entryFeeOverride = null)
+        decimal? entryFeeOverride = null, int? policyVersion = null)
     {
         // Joins take the auction's turn in memory first, like bids, so a crowd joining at once waits
         // here instead of each holding a database connection on the auction's row lock.
@@ -169,7 +178,9 @@ public sealed class ParticipationService : IParticipationService
             Currency = auction.Currency,
             CurrentPrice = 0m,
             HighestPrice = 0m,
-            Status = ParticipantStatus.Active
+            Status = ParticipantStatus.Active,
+            PolicyVersionAccepted = policyVersion,
+            PolicyAcceptedAt = policyVersion is null ? null : now
         };
 
         // Charge the entry fee from the Main wallet. The Shopping wallet can never pay it.

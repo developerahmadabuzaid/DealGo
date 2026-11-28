@@ -187,6 +187,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         services.AddScoped<IAdminWithdrawalService, AdminWithdrawalService>();
         services.AddScoped<ISiteContentService, SiteContentService>();
         services.AddScoped<ISupportService, SupportService>();
+        services.AddScoped<IAuctionPolicyService, AuctionPolicyService>();
 
         // M5azn is off unless a test hands in its own stand-in for the supplier's API.
         services.Configure<M5aznOptions>(o =>

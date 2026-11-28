@@ -76,5 +76,8 @@ public enum AuditActionType
     NotificationScheduled = 38,
 
     /// <summary>Staff cancelled a scheduled message before it went out.</summary>
-    NotificationScheduleCancelled = 39
+    NotificationScheduleCancelled = 39,
+
+    /// <summary>Staff changed the auction policies people accept before joining an auction.</summary>
+    AuctionPolicyChanged = 40
 }

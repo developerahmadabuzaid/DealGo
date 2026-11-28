@@ -78,8 +78,15 @@ sealed class Api : IDisposable
     public Task<ApiResult<BidResultDto>> BidAsync(string token, Guid auctionId, string key) =>
         SendAsync<BidResultDto>(HttpMethod.Post, $"api/v1/auctions/{auctionId}/bids", token, new { idempotencyKey = key });
 
-    public Task<ApiResult<ParticipationDto>> JoinAsync(string token, Guid auctionId, string key) =>
-        SendAsync<ParticipationDto>(HttpMethod.Post, $"api/v1/auctions/{auctionId}/join", token, new { idempotencyKey = key });
+    /// <summary>Joins, accepting the auction policies the server publishes (if any), as the app does.</summary>
+    public async Task<ApiResult<ParticipationDto>> JoinAsync(string token, Guid auctionId, string key)
+    {
+        var policy = (await SendAsync<PolicyDto>(HttpMethod.Get, "api/v1/auction-policy", null)).Value;
+        return await SendAsync<ParticipationDto>(HttpMethod.Post, $"api/v1/auctions/{auctionId}/join", token,
+            new { idempotencyKey = key, acceptedPolicyVersion = policy is { Required: true } ? policy.Version : (int?)null });
+    }
+
+    private sealed record PolicyDto(int Version, bool Required);
 
     public Task<ApiResult<SnapshotDto>> SnapshotAsync(Guid auctionId, string? token = null) =>
         SendAsync<SnapshotDto>(HttpMethod.Get, $"api/v1/auctions/{auctionId}/snapshot", token);

@@ -120,6 +120,25 @@ public class SiteContent : AuditableEntity
 
     public const string DefaultSupportWhatsapp = "+966533851110";
 
+    // ------------------------------------------------------------------ auction policies
+
+    /// <summary>The heading of the auction policies a person accepts before joining an auction.</summary>
+    public string? AuctionPolicyTitle { get; set; }
+
+    /// <summary>
+    /// The policies themselves. Empty means none are published, and joining asks for nothing.
+    /// Heading lines and paragraphs, one per line, as in the app's terms document.
+    /// </summary>
+    public string? AuctionPolicyBody { get; set; }
+
+    /// <summary>
+    /// Goes up by one each time the wording changes. A join names the version the person accepted,
+    /// so someone who read an older text is asked to read the new one first.
+    /// </summary>
+    public int AuctionPolicyVersion { get; set; }
+
+    public DateTime? AuctionPolicyUpdatedAt { get; set; }
+
     // ------------------------------------------------------------------ search engines
 
     public string? MetaTitle { get; set; }

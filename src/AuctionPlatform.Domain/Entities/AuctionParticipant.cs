@@ -33,6 +33,13 @@ public class AuctionParticipant : Entity
 
     public ParticipantStatus Status { get; set; } = ParticipantStatus.Active;
 
+    /// <summary>
+    /// The version of the auction policies this person accepted when joining, and when. Empty for
+    /// someone an administrator added, or who joined while no policies were published.
+    /// </summary>
+    public int? PolicyVersionAccepted { get; set; }
+    public DateTime? PolicyAcceptedAt { get; set; }
+
     /// <summary>Optimistic concurrency token mapped to the PostgreSQL xmin system column.</summary>
     public uint Version { get; set; }
 
